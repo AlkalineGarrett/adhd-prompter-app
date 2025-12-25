@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "613948682660",
+    "project_id": "adhd-prompter",
+    "storage_bucket": "adhd-prompter.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:613948682660:android:0bee734527b5983cec5131",
+        "android_client_info": {
+          "package_name": "org.alkaline.adhdprompter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbbjG7ynlks5DodHoATVjJLHu_K_JX3KI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
