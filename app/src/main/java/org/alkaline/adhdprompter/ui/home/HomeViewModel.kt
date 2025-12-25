@@ -1,4 +1,4 @@
-package com.example.adhdprompter.ui.home
+package org.alkaline.adhdprompter.ui.home
 
 import androidx.lifecycle.ViewModel
 

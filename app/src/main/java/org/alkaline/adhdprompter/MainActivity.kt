@@ -1,4 +1,4 @@
-package com.example.adhdprompter
+package org.alkaline.adhdprompter
 
 import android.os.Bundle
 import android.view.View
@@ -9,7 +9,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupWithNavController
-import com.example.adhdprompter.databinding.ActivityMainBinding
+import org.alkaline.adhdprompter.databinding.ActivityMainBinding
 import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {

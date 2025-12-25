@@ -1,4 +1,4 @@
-package com.example.adhdprompter.ui.home
+package org.alkaline.adhdprompter.ui.home
 
 import android.os.Bundle
 import android.text.method.ScrollingMovementMethod
@@ -8,7 +8,7 @@ import android.view.ViewGroup
 import android.widget.EditText
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
-import com.example.adhdprompter.databinding.FragmentHomeBinding
+import org.alkaline.adhdprompter.databinding.FragmentHomeBinding
 
 class HomeFragment : Fragment() {
 

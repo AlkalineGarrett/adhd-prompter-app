@@ -1,4 +1,4 @@
-package com.example.adhdprompter
+package org.alkaline.adhdprompter
 
 import org.junit.Test
 

@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.adhdprompter"
+    namespace = "org.alkaline.adhdprompter"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.adhdprompter"
+        applicationId = "org.alkaline.adhdprompter"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
