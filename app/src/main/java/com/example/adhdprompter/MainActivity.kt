@@ -1,13 +1,17 @@
 package com.example.adhdprompter
 
 import android.os.Bundle
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import android.view.View
+import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import com.example.adhdprompter.databinding.ActivityMainBinding
+import com.google.android.material.bottomnavigation.BottomNavigationView
 
 class MainActivity : AppCompatActivity() {
 
@@ -31,5 +35,26 @@ class MainActivity : AppCompatActivity() {
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
         navView.setupWithNavController(navController)
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.container) { v, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            
+            val isKeyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            if (isKeyboardVisible) {
+                navView.visibility = View.GONE
+                // When keyboard is visible, add bottom padding equal to IME height
+                // but subtract the system bars if they are also accounted for.
+                // However, since we are hiding navView, the fragment will take full height.
+                // We need to apply padding to the container to push content up.
+                v.setPadding(0, systemBars.top, 0, imeInsets.bottom)
+            } else {
+                navView.visibility = View.VISIBLE
+                // Reset padding when keyboard is hidden
+                v.setPadding(0, systemBars.top, 0, 0)
+            }
+            
+            insets
+        }
     }
 }

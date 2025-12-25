@@ -13,7 +13,9 @@
         android:ems="10"
         android:gravity="start|top"
         android:inputType="textMultiLine"
+        android:maxLines="5"
         android:minLines="5"
+        android:scrollbars="vertical"
         android:singleLine="false"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -24,12 +26,11 @@
         android:id="@+id/agentChatLabel"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:layout_marginTop="584dp"
         android:background="#AED581"
         android:text="@string/agent_chat_label"
         android:textColor="#000000"
         android:textSize="18sp"
+        app:layout_constraintBottom_toTopOf="@+id/agentCommandText"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintStart_toStartOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>

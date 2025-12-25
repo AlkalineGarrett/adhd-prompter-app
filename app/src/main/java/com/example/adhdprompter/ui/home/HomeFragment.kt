@@ -1,9 +1,11 @@
 package com.example.adhdprompter.ui.home
 
 import android.os.Bundle
+import android.text.method.ScrollingMovementMethod
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.example.adhdprompter.databinding.FragmentHomeBinding
@@ -26,6 +28,9 @@ class HomeFragment : Fragment() {
 
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
         val root: View = binding.root
+
+        val agentCommandText: EditText = binding.agentCommandText
+        agentCommandText.movementMethod = ScrollingMovementMethod()
 
         return root
     }
