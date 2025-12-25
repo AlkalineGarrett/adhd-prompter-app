@@ -32,6 +32,9 @@ class HomeFragment : Fragment() {
         val agentCommandText: EditText = binding.agentCommandText
         agentCommandText.movementMethod = ScrollingMovementMethod()
 
+        val userContent: EditText = binding.userContent
+        userContent.movementMethod = ScrollingMovementMethod()
+
         return root
     }
 
