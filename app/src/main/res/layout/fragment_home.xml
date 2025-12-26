@@ -6,6 +6,71 @@
     android:layout_height="match_parent"
     tools:context=".ui.home.HomeFragment">
 
+    <LinearLayout
+        android:id="@+id/statusBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#E0E0E0"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageButton
+            android:id="@+id/saveButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/action_save"
+            android:padding="8dp"
+            android:src="@drawable/ic_save" />
+
+        <TextView
+            android:id="@+id/saveStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:text="@string/status_saved"
+            android:textColor="#000000"
+            android:textSize="14sp" />
+
+        <ImageView
+            android:id="@+id/saveStatusIcon"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/ic_check_circle"
+            app:tint="#4CAF50" />
+
+    </LinearLayout>
+
+    <EditText
+        android:id="@+id/userContent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:ems="10"
+        android:gravity="start|top"
+        android:inputType="textMultiLine"
+        android:scrollbars="vertical"
+        app:layout_constraintBottom_toTopOf="@+id/agentChatLabel"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/statusBar" />
+
+    <TextView
+        android:id="@+id/agentChatLabel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#AED581"
+        android:text="@string/agent_chat_label"
+        android:textColor="#000000"
+        android:textSize="18sp"
+        app:layout_constraintBottom_toTopOf="@+id/agentCommandText"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
     <EditText
         android:id="@+id/agentCommandText"
         android:layout_width="0dp"
@@ -22,28 +87,4 @@
         app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent" />
 
-    <TextView
-        android:id="@+id/agentChatLabel"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:background="#AED581"
-        android:text="@string/agent_chat_label"
-        android:textColor="#000000"
-        android:textSize="18sp"
-        app:layout_constraintBottom_toTopOf="@+id/agentCommandText"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-    <EditText
-        android:id="@+id/userContent"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:ems="10"
-        android:gravity="start|top"
-        android:inputType="textMultiLine"
-        android:scrollbars="vertical"
-        app:layout_constraintBottom_toTopOf="@+id/agentChatLabel"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
 </androidx.constraintlayout.widget.ConstraintLayout>
