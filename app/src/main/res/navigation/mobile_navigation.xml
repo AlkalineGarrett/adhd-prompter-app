@@ -22,4 +22,10 @@
         android:name="org.alkaline.adhdprompter.ui.notifications.NotificationsFragment"
         android:label="@string/title_notifications"
         tools:layout="@layout/fragment_notifications" />
+
+    <fragment
+        android:id="@+id/navigation_auth"
+        android:name="org.alkaline.adhdprompter.ui.auth.GoogleSignInFragment"
+        android:label="@string/google_title_text"
+        tools:layout="@layout/fragment_google" />
 </navigation>

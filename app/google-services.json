@@ -12,7 +12,20 @@
           "package_name": "org.alkaline.adhdprompter"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "613948682660-gjastph694sickplr52ic8m5vubrmn55.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "org.alkaline.adhdprompter",
+            "certificate_hash": "29422af31390d3a932903f5fd3eb51d740e9aaff"
+          }
+        },
+        {
+          "client_id": "613948682660-pc7vp2pdala64j83mqcvg631crbm76nv.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDbbjG7ynlks5DodHoATVjJLHu_K_JX3KI"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "613948682660-pc7vp2pdala64j83mqcvg631crbm76nv.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

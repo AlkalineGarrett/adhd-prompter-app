@@ -4,4 +4,13 @@
     <string name="title_dashboard">Dashboard</string>
     <string name="title_notifications">Notifications</string>
     <string name="agent_chat_label">Make request to agent</string>
+    <string name="default_web_client_id">613948682660-pc7vp2pdala64j83mqcvg631crbm76nv.apps.googleusercontent.com</string>
+
+    <!-- Google Sign In Strings -->
+    <string name="signed_out">Signed Out</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="google_status_fmt">Google User: %s</string>
+    <string name="firebase_status_fmt">Firebase UID: %s</string>
+    <string name="google_title_text">Sign In</string>
 </resources>
