@@ -14,8 +14,20 @@
 
 # Uncomment this to preserve the line number information for
 # debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Firebase
+-keepattributes Signature
+-keepattributes *Annotation*
+-keep class com.google.firebase.** { *; }
+
+# Jetpack Compose
+-keep class androidx.compose.** { *; }
+-keep class androidx.ui.** { *; }
+
+# Models used in Firestore (if any rely on reflection, add them here)
+# Example: -keep class org.alkaline.adhdprompter.data.** { *; }

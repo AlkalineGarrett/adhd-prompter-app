@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -95,11 +96,11 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
         // Agent Chat Label
         Text(
             text = stringResource(id = R.string.agent_chat_label),
-            color = Color.Black,
+            color = colorResource(R.color.brand_text_color),
             fontSize = 18.sp,
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFAED581))
+                .background(colorResource(R.color.brand_color))
                 .padding(4.dp)
         )
 

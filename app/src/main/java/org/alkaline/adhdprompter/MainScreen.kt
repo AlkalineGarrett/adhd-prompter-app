@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -91,10 +92,10 @@ fun MainScreen(
                         Text(stringResource(R.string.app_name)) 
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFFAED581),
-                        titleContentColor = Color.Black,
-                        actionIconContentColor = Color.Black,
-                        navigationIconContentColor = Color.Black
+                        containerColor = colorResource(R.color.brand_color),
+                        titleContentColor = colorResource(R.color.brand_text_color),
+                        actionIconContentColor = colorResource(R.color.brand_text_color),
+                        navigationIconContentColor = colorResource(R.color.brand_text_color)
                     ),
                     actions = {
                         Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {

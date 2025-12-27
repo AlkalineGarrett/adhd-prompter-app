@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand Color: Purple in Release -->
+    <color name="brand_color">#FF6200EE</color>
+    <color name="brand_text_color">#FFFFFFFF</color>
+</resources>

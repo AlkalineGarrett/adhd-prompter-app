@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Brand Color: Green in Debug/Main, Purple in Release -->
+    <color name="brand_color">#AED581</color>
+    <color name="brand_text_color">#FF000000</color>
 </resources>
