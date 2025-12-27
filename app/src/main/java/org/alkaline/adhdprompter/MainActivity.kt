@@ -2,156 +2,116 @@ package org.alkaline.adhdprompter
 
 import android.os.Bundle
 import android.util.Log
-import android.view.Menu
-import android.view.MenuItem
-import android.view.View
+import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.navigation.NavController
-import androidx.navigation.findNavController
-import androidx.navigation.ui.AppBarConfiguration
-import androidx.navigation.ui.setupWithNavController
-import androidx.credentials.ClearCredentialStateRequest
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.credentials.Credential
 import androidx.credentials.CredentialManager
 import androidx.credentials.CredentialManagerCallback
-import androidx.credentials.exceptions.ClearCredentialException
-import com.google.android.material.bottomnavigation.BottomNavigationView
+import androidx.credentials.CustomCredential
+import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetCredentialResponse
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.auth.FirebaseAuth
-import org.alkaline.adhdprompter.databinding.ActivityMainBinding
+import com.google.firebase.auth.GoogleAuthProvider
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var binding: ActivityMainBinding
-    private lateinit var navController: NavController
     private lateinit var auth: FirebaseAuth
+    private lateinit var credentialManager: CredentialManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
-        
-        // Set the toolbar as the Support Action Bar
-        setSupportActionBar(binding.appToolbar)
-
-        val navView: BottomNavigationView = binding.navView
-
-        navController = findNavController(R.id.nav_host_fragment_activity_main)
-        // Passing each menu ID as a set of Ids because each
-        // menu should be considered as top level destinations.
-        val appBarConfiguration = AppBarConfiguration(
-            setOf(
-                R.id.navigation_home, R.id.navigation_dashboard, R.id.navigation_notifications
-            )
-        )
-        // setupActionBarWithNavController(navController, appBarConfiguration)
-        navView.setupWithNavController(navController)
         
         auth = FirebaseAuth.getInstance()
+        credentialManager = CredentialManager.create(this)
 
-        // Check if user is signed in
-        val user = auth.currentUser
-        if (user == null) {
-            // User is not signed in, navigate to GoogleSignInFragment
-            navController.navigate(R.id.navigation_auth)
-            
-            // Hide bottom nav when in auth screen
-            navView.visibility = View.GONE
-        } else {
-             // Ensure bottom nav is visible if we are logged in
-             navView.visibility = View.VISIBLE
-        }
-        
-        // Listener to show/hide bottom nav and action bar based on destination
-        navController.addOnDestinationChangedListener { _, destination, _ ->
-            if (destination.id == R.id.navigation_auth) {
-                navView.visibility = View.GONE
-                supportActionBar?.hide()
-            } else {
-                navView.visibility = View.VISIBLE
-                supportActionBar?.show()
-                // Update the options menu to show/hide sign out button
-                invalidateOptionsMenu() 
-            }
-        }
+        setContent {
+            var user by remember { mutableStateOf(auth.currentUser) }
 
-        ViewCompat.setOnApplyWindowInsetsListener(binding.container) { v, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
-            
-            val isKeyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            
-            val currentDest = navController.currentDestination?.id
-            
-            if (isKeyboardVisible) {
-                if (currentDest != R.id.navigation_auth) {
-                   navView.visibility = View.GONE
+            DisposableEffect(auth) {
+                val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+                    user = firebaseAuth.currentUser
                 }
-                v.setPadding(0, systemBars.top, 0, imeInsets.bottom)
-            } else {
-                if (currentDest != R.id.navigation_auth) {
-                    navView.visibility = View.VISIBLE
+                auth.addAuthStateListener(listener)
+                onDispose {
+                    auth.removeAuthStateListener(listener)
                 }
-                v.setPadding(0, systemBars.top, 0, 0)
             }
-            
-            insets
+
+            MainScreen(
+                onSignInClick = { signIn() },
+                isUserSignedIn = user != null,
+                onSignOutClick = {
+                    auth.signOut()
+                }
+            )
         }
     }
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.main_menu, menu)
-        return true
-    }
-    
-    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
-        val signOutItem = menu?.findItem(R.id.action_sign_out)
-        // Only show sign out button if we are NOT on the auth screen
-        val isAuthScreen = navController.currentDestination?.id == R.id.navigation_auth
-        signOutItem?.isVisible = !isAuthScreen
-        return super.onPrepareOptionsMenu(menu)
-    }
+    private fun signIn() {
+        val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
+            getString(R.string.default_web_client_id)
+        ).build()
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_sign_out -> {
-                signOut()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
+        val request = GetCredentialRequest.Builder()
+            .addCredentialOption(signInWithGoogleOption)
+            .build()
 
-    private fun signOut() {
-        Log.d("MainActivity", "Signing out...")
-        auth.signOut()
-
-        // Clear Credential Manager state
-        val credentialManager = CredentialManager.create(this)
-        val clearRequest = ClearCredentialStateRequest()
-        credentialManager.clearCredentialStateAsync(
-            clearRequest,
-            android.os.CancellationSignal(),
+        credentialManager.getCredentialAsync(
+            this,
+            request,
+            null,
             Executors.newSingleThreadExecutor(),
-            object : CredentialManagerCallback<Void?, ClearCredentialException> {
-                override fun onResult(result: Void?) {
-                    Log.d("MainActivity", "Credential state cleared")
-                     runOnUiThread {
-                        // Navigate back to auth screen
-                        navController.navigate(R.id.navigation_auth)
-                    }
+            object : CredentialManagerCallback<GetCredentialResponse, GetCredentialException> {
+                override fun onResult(result: GetCredentialResponse) {
+                    createGoogleIdToken(result.credential)
                 }
 
-                override fun onError(e: ClearCredentialException) {
-                     Log.e("MainActivity", "Error clearing credential state", e)
-                     runOnUiThread {
-                        // Navigate back to auth screen even if clearing credentials failed
-                        navController.navigate(R.id.navigation_auth)
+                override fun onError(e: GetCredentialException) {
+                    Log.e("MainActivity", "Credential Manager error", e)
+                    runOnUiThread {
+                        if (e is NoCredentialException) {
+                            Toast.makeText(this@MainActivity, "No credentials found.", Toast.LENGTH_LONG).show()
+                        }
                     }
                 }
             }
         )
+    }
+
+    private fun createGoogleIdToken(credential: Credential) {
+        if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            val credentialData = credential.data
+            try {
+                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credentialData)
+                firebaseAuthWithGoogle(googleIdTokenCredential.idToken)
+            } catch (e: Exception) {
+                 Log.e("MainActivity", "Error parsing Google ID Token", e)
+            }
+        }
+    }
+
+    private fun firebaseAuthWithGoogle(idToken: String) {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        auth.signInWithCredential(credential)
+            .addOnCompleteListener(this) { task ->
+                if (task.isSuccessful) {
+                    // Sign-in successful; AuthStateListener will pick this up and update the UI
+                } else {
+                    Log.w("MainActivity", "signInWithCredential:failure", task.exception)
+                    Toast.makeText(this, "Authentication Failed.", Toast.LENGTH_SHORT).show()
+                }
+            }
     }
 }
