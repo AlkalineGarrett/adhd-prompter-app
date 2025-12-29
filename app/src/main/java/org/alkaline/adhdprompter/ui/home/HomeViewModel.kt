@@ -4,21 +4,33 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.launch
+import org.alkaline.adhdprompter.data.PrompterAgent
 
 class HomeViewModel : ViewModel() {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
     
+    private val agent = PrompterAgent()
+    
     private val _saveStatus = MutableLiveData<SaveStatus>()
     val saveStatus: LiveData<SaveStatus> = _saveStatus
 
     private val _loadStatus = MutableLiveData<LoadStatus>()
     val loadStatus: LiveData<LoadStatus> = _loadStatus
+    
+    // Add a LiveData specifically to signal that content has been modified externally (e.g., by AI)
+    private val _contentModified = MutableLiveData<Boolean>()
+    val contentModified: LiveData<Boolean> = _contentModified
+    
+    private val _isAgentProcessing = MutableLiveData<Boolean>(false)
+    val isAgentProcessing: LiveData<Boolean> = _isAgentProcessing
 
     // Hardcoded note ID for the root note
     private val NOTE_ID = "root_note"
@@ -81,6 +93,29 @@ class HomeViewModel : ViewModel() {
                 Log.w("HomeViewModel", "Error writing document", e)
                 _saveStatus.value = SaveStatus.Error(e.message ?: "Unknown error")
             }
+    }
+
+    fun processAgentCommand(currentContent: String, command: String) {
+        _isAgentProcessing.value = true
+        viewModelScope.launch {
+            try {
+                val updatedContent = agent.processCommand(currentContent, command)
+                // Update the UI with the new content
+                _loadStatus.value = LoadStatus.Success(updatedContent)
+                // Signal that the content has been modified and is unsaved
+                _contentModified.value = true
+            } catch (e: Exception) {
+                Log.e("HomeViewModel", "Agent processing failed", e)
+                _loadStatus.value = LoadStatus.Error("Agent failed: ${e.message}")
+            } finally {
+                _isAgentProcessing.value = false
+            }
+        }
+    }
+    
+    // Call this when content is manually edited or when a save completes
+    fun markAsSaved() {
+        _contentModified.value = false
     }
 }
 
