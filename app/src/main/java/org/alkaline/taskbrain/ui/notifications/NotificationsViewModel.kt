@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.ui.notifications
+package org.alkaline.taskbrain.ui.notifications
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData

@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.data
+package org.alkaline.taskbrain.data
 
 import com.google.firebase.Firebase
 import com.google.firebase.ai.ai

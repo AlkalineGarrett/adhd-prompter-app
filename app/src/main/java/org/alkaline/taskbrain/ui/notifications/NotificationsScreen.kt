@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.ui.dashboard
+package org.alkaline.taskbrain.ui.notifications
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -12,8 +12,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
-fun DashboardScreen(dashboardViewModel: DashboardViewModel = viewModel()) {
-    val text by dashboardViewModel.text.observeAsState("Loading...")
+fun NotificationsScreen(notificationsViewModel: NotificationsViewModel = viewModel()) {
+    val text by notificationsViewModel.text.observeAsState("Loading...")
 
     Box(
         modifier = Modifier.fillMaxSize(),

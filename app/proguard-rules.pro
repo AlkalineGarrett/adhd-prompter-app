@@ -30,4 +30,4 @@
 -keep class androidx.ui.** { *; }
 
 # Models used in Firestore (if any rely on reflection, add them here)
-# Example: -keep class org.alkaline.adhdprompter.data.** { *; }
+# Example: -keep class org.alkaline.taskbrain.data.** { *; }

@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.ui.dashboard
+package org.alkaline.taskbrain.ui.dashboard
 
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData

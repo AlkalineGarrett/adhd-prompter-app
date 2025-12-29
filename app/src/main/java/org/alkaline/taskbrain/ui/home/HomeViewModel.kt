@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.ui.home
+package org.alkaline.taskbrain.ui.home
 
 import android.util.Log
 import androidx.lifecycle.LiveData
@@ -10,7 +10,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.launch
-import org.alkaline.adhdprompter.data.PrompterAgent
+import org.alkaline.taskbrain.data.PrompterAgent
 
 class HomeViewModel : ViewModel() {
 

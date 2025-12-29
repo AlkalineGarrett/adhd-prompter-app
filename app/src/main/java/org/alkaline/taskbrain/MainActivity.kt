@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter
+package org.alkaline.taskbrain
 
 import android.os.Bundle
 import android.util.Log

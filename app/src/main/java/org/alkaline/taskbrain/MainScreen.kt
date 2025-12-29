@@ -1,7 +1,6 @@
-package org.alkaline.adhdprompter
+package org.alkaline.taskbrain
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
@@ -40,10 +39,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import org.alkaline.adhdprompter.ui.auth.GoogleSignInScreen
-import org.alkaline.adhdprompter.ui.dashboard.DashboardScreen
-import org.alkaline.adhdprompter.ui.home.HomeScreen
-import org.alkaline.adhdprompter.ui.notifications.NotificationsScreen
+import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
+import org.alkaline.taskbrain.ui.dashboard.DashboardScreen
+import org.alkaline.taskbrain.ui.home.HomeScreen
+import org.alkaline.taskbrain.ui.notifications.NotificationsScreen
 
 sealed class Screen(val route: String, val titleResourceId: Int, val icon: ImageVector) {
     object Home : Screen("home", R.string.title_home, Icons.Filled.Home)

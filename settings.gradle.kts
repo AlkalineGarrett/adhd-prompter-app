@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ADHD Prompter"
+rootProject.name = "TaskBrain"
 include(":app")

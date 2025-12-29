@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter
+package org.alkaline.taskbrain
 
 import org.junit.Test
 

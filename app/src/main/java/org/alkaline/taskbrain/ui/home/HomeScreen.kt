@@ -1,4 +1,4 @@
-package org.alkaline.adhdprompter.ui.home
+package org.alkaline.taskbrain.ui.home
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -43,7 +43,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import org.alkaline.adhdprompter.R
+import org.alkaline.taskbrain.R
 
 @Composable
 fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {

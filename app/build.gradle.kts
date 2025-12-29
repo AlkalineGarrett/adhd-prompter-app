@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "org.alkaline.adhdprompter"
+    namespace = "org.alkaline.taskbrain"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "org.alkaline.adhdprompter"
+        applicationId = "org.alkaline.taskbrain"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
