@@ -13,10 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -32,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Note
+import org.alkaline.taskbrain.ui.components.ActionButton
+import org.alkaline.taskbrain.ui.components.ActionButtonBar
 
 @Composable
 fun NoteListScreen(
@@ -103,17 +103,16 @@ fun NoteListScreen(
 
 @Composable
 fun NoteListTopBar(onAddNoteClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.Start
-    ) {
-        Button(onClick = onAddNoteClick) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Text(text = stringResource(R.string.action_add_note), modifier = Modifier.padding(start = 8.dp))
+    ActionButtonBar(
+        modifier = Modifier,
+        content = {
+            ActionButton(
+                text = stringResource(R.string.action_add_note),
+                icon = Icons.Filled.Add,
+                onClick = onAddNoteClick
+            )
         }
-    }
+    )
 }
 
 @Composable

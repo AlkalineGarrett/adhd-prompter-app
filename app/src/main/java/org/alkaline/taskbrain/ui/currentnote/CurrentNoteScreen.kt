@@ -9,8 +9,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,7 +29,6 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -44,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
+import org.alkaline.taskbrain.ui.Dimens
+import org.alkaline.taskbrain.ui.components.ActionButtonBar
 
 @Composable
 fun CurrentNoteScreen(
@@ -204,36 +203,46 @@ fun StatusBar(
     isSaved: Boolean,
     onSaveClick: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFE0E0E0))
-            .padding(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onSaveClick) {
+    ActionButtonBar {
+        // Save Button (custom ActionButton instead of IconButton)
+        androidx.compose.material3.Button(
+            onClick = onSaveClick,
+            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                containerColor = colorResource(R.color.action_button_background),
+                contentColor = Color.White
+            ),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(Dimens.StatusBarButtonCornerRadius),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Dimens.StatusBarButtonHorizontalPadding, vertical = 0.dp),
+            modifier = Modifier.height(Dimens.StatusBarButtonHeight)
+        ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_save),
                 contentDescription = stringResource(id = R.string.action_save),
-                tint = Color.Black
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = Color.White
+            )
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusBarButtonIconTextSpacing))
+            Text(
+                text = stringResource(id = R.string.action_save),
+                fontSize = Dimens.StatusBarButtonTextSize
             )
         }
 
-        Spacer(modifier = Modifier.width(16.dp))
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusBarItemSpacing))
 
         Text(
             text = if (isSaved) stringResource(id = R.string.status_saved) else stringResource(id = R.string.status_unsaved),
             color = Color.Black,
-            fontSize = 14.sp
+            fontSize = Dimens.StatusTextSize
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusTextIconSpacing))
 
         Icon(
             painter = if (isSaved) painterResource(id = R.drawable.ic_check_circle) else painterResource(id = R.drawable.ic_warning),
             contentDescription = null,
             tint = if (isSaved) Color(0xFF4CAF50) else Color(0xFFFFC107),
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(Dimens.StatusIconSize)
         )
     }
 }

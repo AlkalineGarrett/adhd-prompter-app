@@ -3,6 +3,7 @@ package org.alkaline.taskbrain
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
@@ -34,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -42,6 +44,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
@@ -94,7 +97,10 @@ fun MainScreen(
 
                 TopAppBar(
                     title = { 
-                        Text(stringResource(R.string.app_name)) 
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            fontSize = Dimens.TopAppBarTitleTextSize
+                        )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = colorResource(R.color.brand_color),
@@ -137,7 +143,10 @@ fun MainScreen(
                      items.forEach { screen ->
                          NavigationBarItem(
                              icon = { Icon(screen.icon, contentDescription = null) },
-                             label = { Text(stringResource(screen.titleResourceId)) },
+                             label = { Text(
+                                 text = stringResource(screen.titleResourceId),
+                                 fontSize = Dimens.NavigationBarLabelTextSize
+                             ) },
                              selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                              onClick = {
                                  navController.navigate(screen.route) {

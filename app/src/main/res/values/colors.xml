@@ -11,4 +11,6 @@
     <!-- Brand Color: Green in Debug/Main, Purple in Release -->
     <color name="brand_color">#AED581</color>
     <color name="brand_text_color">#FF000000</color>
+    
+    <color name="action_button_background">#FF6200EE</color>
 </resources>
