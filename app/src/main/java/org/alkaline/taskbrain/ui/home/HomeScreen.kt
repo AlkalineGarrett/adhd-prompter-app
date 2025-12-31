@@ -46,7 +46,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 
 @Composable
-fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
+fun HomeScreen(
+    noteId: String = "root_note",
+    homeViewModel: HomeViewModel = viewModel()
+) {
     val saveStatus by homeViewModel.saveStatus.observeAsState()
     val loadStatus by homeViewModel.loadStatus.observeAsState()
     val contentModified by homeViewModel.contentModified.observeAsState(false)
@@ -61,8 +64,8 @@ fun HomeScreen(homeViewModel: HomeViewModel = viewModel()) {
     var agentCommand by remember { mutableStateOf("") }
 
     // Handle initial data loading
-    LaunchedEffect(Unit) {
-        homeViewModel.loadContent()
+    LaunchedEffect(noteId) {
+        homeViewModel.loadContent(noteId)
     }
     
     // Update content when loaded from VM

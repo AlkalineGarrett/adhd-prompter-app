@@ -32,10 +32,11 @@ class HomeViewModel : ViewModel() {
     private val _isAgentProcessing = MutableLiveData<Boolean>(false)
     val isAgentProcessing: LiveData<Boolean> = _isAgentProcessing
 
-    // Hardcoded note ID for the root note
-    private val NOTE_ID = "root_note"
+    // Current Note ID being edited
+    private var currentNoteId = "root_note"
 
-    fun loadContent() {
+    fun loadContent(noteId: String = "root_note") {
+        currentNoteId = noteId
         val user = auth.currentUser
         if (user == null) {
             _loadStatus.value = LoadStatus.Error("User not signed in")
@@ -44,7 +45,7 @@ class HomeViewModel : ViewModel() {
 
         _loadStatus.value = LoadStatus.Loading
 
-        db.collection("notes").document(NOTE_ID)
+        db.collection("notes").document(currentNoteId)
             .get()
             .addOnSuccessListener { document ->
                 if (document != null && document.exists()) {
@@ -83,7 +84,7 @@ class HomeViewModel : ViewModel() {
             "userId" to user.uid
         )
 
-        db.collection("notes").document(NOTE_ID)
+        db.collection("notes").document(currentNoteId)
             .set(noteData, SetOptions.merge())
             .addOnSuccessListener {
                 Log.d("HomeViewModel", "DocumentSnapshot successfully written!")

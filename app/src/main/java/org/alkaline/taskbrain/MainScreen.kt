@@ -35,18 +35,20 @@ import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
-import org.alkaline.taskbrain.ui.dashboard.DashboardScreen
+import org.alkaline.taskbrain.ui.notelist.NoteListScreen
 import org.alkaline.taskbrain.ui.home.HomeScreen
 import org.alkaline.taskbrain.ui.notifications.NotificationsScreen
 
 sealed class Screen(val route: String, val titleResourceId: Int, val icon: ImageVector) {
     object Home : Screen("home", R.string.title_home, Icons.Filled.Home)
-    object Dashboard : Screen("dashboard", R.string.title_dashboard, Icons.Filled.Dashboard)
+    object NoteList : Screen("note_list", R.string.title_note_list, Icons.Filled.Dashboard)
     object Notifications : Screen("notifications", R.string.title_notifications, Icons.Filled.Notifications)
     object Login : Screen("login", R.string.google_title_text, Icons.Filled.Home) // Icon not used for login
 }
@@ -77,7 +79,7 @@ fun MainScreen(
 
     val items = listOf(
         Screen.Home,
-        Screen.Dashboard,
+        Screen.NoteList,
         Screen.Notifications,
     )
 
@@ -166,11 +168,32 @@ fun MainScreen(
                     onSignInClick = onSignInClick
                 )
             }
+            composable(
+                route = "${Screen.Home.route}?noteId={noteId}",
+                arguments = listOf(navArgument("noteId") {
+                    type = NavType.StringType
+                    defaultValue = "root_note"
+                })
+            ) { backStackEntry ->
+                val noteId = backStackEntry.arguments?.getString("noteId") ?: "root_note"
+                HomeScreen(noteId = noteId)
+            }
+            // Keep the original home route for direct navigation
             composable(Screen.Home.route) {
                 HomeScreen()
             }
-            composable(Screen.Dashboard.route) {
-                DashboardScreen()
+            composable(Screen.NoteList.route) {
+                NoteListScreen(
+                    onNoteClick = { noteId ->
+                        navController.navigate("${Screen.Home.route}?noteId=$noteId") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             composable(Screen.Notifications.route) {
                 NotificationsScreen()
