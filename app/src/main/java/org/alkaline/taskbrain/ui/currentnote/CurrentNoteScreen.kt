@@ -1,4 +1,4 @@
-package org.alkaline.taskbrain.ui.home
+package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -46,14 +46,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 
 @Composable
-fun HomeScreen(
-    noteId: String = "root_note",
-    homeViewModel: HomeViewModel = viewModel()
+fun CurrentNoteScreen(
+    noteId: String? = null,
+    currentNoteViewModel: CurrentNoteViewModel = viewModel()
 ) {
-    val saveStatus by homeViewModel.saveStatus.observeAsState()
-    val loadStatus by homeViewModel.loadStatus.observeAsState()
-    val contentModified by homeViewModel.contentModified.observeAsState(false)
-    val isAgentProcessing by homeViewModel.isAgentProcessing.observeAsState(false)
+    val saveStatus by currentNoteViewModel.saveStatus.observeAsState()
+    val loadStatus by currentNoteViewModel.loadStatus.observeAsState()
+    val contentModified by currentNoteViewModel.contentModified.observeAsState(false)
+    val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
     
     // State to hold the user content
     var userContent by remember { mutableStateOf("") }
@@ -65,7 +65,7 @@ fun HomeScreen(
 
     // Handle initial data loading
     LaunchedEffect(noteId) {
-        homeViewModel.loadContent(noteId)
+        currentNoteViewModel.loadContent(noteId)
     }
     
     // Update content when loaded from VM
@@ -86,7 +86,7 @@ fun HomeScreen(
     LaunchedEffect(saveStatus) {
         if (saveStatus is SaveStatus.Success) {
             isSaved = true
-            homeViewModel.markAsSaved()
+            currentNoteViewModel.markAsSaved()
         }
     }
 
@@ -95,7 +95,7 @@ fun HomeScreen(
         StatusBar(
             isSaved = isSaved,
             onSaveClick = {
-                homeViewModel.saveContent(userContent)
+                currentNoteViewModel.saveContent(userContent)
             }
         )
 
@@ -145,7 +145,7 @@ fun HomeScreen(
                      enabled = !isAgentProcessing && agentCommand.isNotBlank(),
                      onClick = {
                          if (agentCommand.isNotBlank()) {
-                             homeViewModel.processAgentCommand(userContent, agentCommand)
+                             currentNoteViewModel.processAgentCommand(userContent, agentCommand)
                              agentCommand = ""
                          }
                      }
@@ -240,6 +240,6 @@ fun StatusBar(
 
 @Preview(showBackground = true)
 @Composable
-fun HomeScreenPreview() {
-    HomeScreen()
+fun CurrentNoteScreenPreview() {
+    CurrentNoteScreen()
 }

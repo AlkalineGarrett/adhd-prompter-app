@@ -1,9 +1,12 @@
-package org.alkaline.taskbrain.ui.home
+package org.alkaline.taskbrain.ui.currentnote
 
+import android.app.Application
+import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
@@ -12,10 +15,11 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.data.PrompterAgent
 
-class HomeViewModel : ViewModel() {
+class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = FirebaseFirestore.getInstance()
     private val auth = FirebaseAuth.getInstance()
+    private val sharedPreferences: SharedPreferences = application.getSharedPreferences("taskbrain_prefs", Context.MODE_PRIVATE)
     
     private val agent = PrompterAgent()
     
@@ -34,9 +38,15 @@ class HomeViewModel : ViewModel() {
 
     // Current Note ID being edited
     private var currentNoteId = "root_note"
+    private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
 
-    fun loadContent(noteId: String = "root_note") {
-        currentNoteId = noteId
+    fun loadContent(noteId: String? = null) {
+        // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
+        currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
+        
+        // Save the current note as the last viewed note
+        sharedPreferences.edit().putString(LAST_VIEWED_NOTE_KEY, currentNoteId).apply()
+        
         val user = auth.currentUser
         if (user == null) {
             _loadStatus.value = LoadStatus.Error("User not signed in")
@@ -49,7 +59,7 @@ class HomeViewModel : ViewModel() {
             .get()
             .addOnSuccessListener { document ->
                 if (document != null && document.exists()) {
-                    Log.d("HomeViewModel", "DocumentSnapshot data: ${document.data}")
+                    Log.d("CurrentNoteViewModel", "DocumentSnapshot data: ${document.data}")
                     val content = document.getString("content")
                     if (content != null) {
                         _loadStatus.value = LoadStatus.Success(content)
@@ -58,13 +68,13 @@ class HomeViewModel : ViewModel() {
                         _loadStatus.value = LoadStatus.Success("") 
                     }
                 } else {
-                    Log.d("HomeViewModel", "No such document")
+                    Log.d("CurrentNoteViewModel", "No such document")
                     // Document doesn't exist yet (new user/note), treat as empty
                      _loadStatus.value = LoadStatus.Success("")
                 }
             }
             .addOnFailureListener { exception ->
-                Log.d("HomeViewModel", "get failed with ", exception)
+                Log.d("CurrentNoteViewModel", "get failed with ", exception)
                 _loadStatus.value = LoadStatus.Error(exception.message ?: "Unknown error")
             }
     }
@@ -87,11 +97,11 @@ class HomeViewModel : ViewModel() {
         db.collection("notes").document(currentNoteId)
             .set(noteData, SetOptions.merge())
             .addOnSuccessListener {
-                Log.d("HomeViewModel", "DocumentSnapshot successfully written!")
+                Log.d("CurrentNoteViewModel", "DocumentSnapshot successfully written!")
                 _saveStatus.value = SaveStatus.Success
             }
             .addOnFailureListener { e ->
-                Log.w("HomeViewModel", "Error writing document", e)
+                Log.w("CurrentNoteViewModel", "Error writing document", e)
                 _saveStatus.value = SaveStatus.Error(e.message ?: "Unknown error")
             }
     }
@@ -106,7 +116,7 @@ class HomeViewModel : ViewModel() {
                 // Signal that the content has been modified and is unsaved
                 _contentModified.value = true
             } catch (e: Exception) {
-                Log.e("HomeViewModel", "Agent processing failed", e)
+                Log.e("CurrentNoteViewModel", "Agent processing failed", e)
                 _loadStatus.value = LoadStatus.Error("Agent failed: ${e.message}")
             } finally {
                 _isAgentProcessing.value = false

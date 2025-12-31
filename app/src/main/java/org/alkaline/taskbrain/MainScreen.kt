@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
@@ -42,12 +43,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
+import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
-import org.alkaline.taskbrain.ui.home.HomeScreen
 import org.alkaline.taskbrain.ui.notifications.NotificationsScreen
 
 sealed class Screen(val route: String, val titleResourceId: Int, val icon: ImageVector) {
-    object Home : Screen("home", R.string.title_home, Icons.Filled.Home)
+    object CurrentNote : Screen("current_note", R.string.title_current_note, Icons.Filled.Description)
     object NoteList : Screen("note_list", R.string.title_note_list, Icons.Filled.Dashboard)
     object Notifications : Screen("notifications", R.string.title_notifications, Icons.Filled.Notifications)
     object Login : Screen("login", R.string.google_title_text, Icons.Filled.Home) // Icon not used for login
@@ -63,11 +64,11 @@ fun MainScreen(
     val navController = rememberNavController()
     
     // Determine the start destination based on sign-in status
-    val startDestination = if (isUserSignedIn) Screen.Home.route else Screen.Login.route
+    val startDestination = if (isUserSignedIn) Screen.CurrentNote.route else Screen.Login.route
 
     LaunchedEffect(isUserSignedIn) {
         if (isUserSignedIn) {
-            navController.navigate(Screen.Home.route) {
+            navController.navigate(Screen.CurrentNote.route) {
                 popUpTo(Screen.Login.route) { inclusive = true }
             }
         } else {
@@ -78,7 +79,7 @@ fun MainScreen(
     }
 
     val items = listOf(
-        Screen.Home,
+        Screen.CurrentNote,
         Screen.NoteList,
         Screen.Notifications,
     )
@@ -169,23 +170,23 @@ fun MainScreen(
                 )
             }
             composable(
-                route = "${Screen.Home.route}?noteId={noteId}",
+                route = "${Screen.CurrentNote.route}?noteId={noteId}",
                 arguments = listOf(navArgument("noteId") {
                     type = NavType.StringType
-                    defaultValue = "root_note"
+                    nullable = true
                 })
             ) { backStackEntry ->
-                val noteId = backStackEntry.arguments?.getString("noteId") ?: "root_note"
-                HomeScreen(noteId = noteId)
+                val noteId = backStackEntry.arguments?.getString("noteId")
+                CurrentNoteScreen(noteId = noteId)
             }
-            // Keep the original home route for direct navigation
-            composable(Screen.Home.route) {
-                HomeScreen()
+            // Keep the basic route for direct navigation (tab clicks)
+            composable(Screen.CurrentNote.route) {
+                CurrentNoteScreen()
             }
             composable(Screen.NoteList.route) {
                 NoteListScreen(
                     onNoteClick = { noteId ->
-                        navController.navigate("${Screen.Home.route}?noteId=$noteId") {
+                        navController.navigate("${Screen.CurrentNote.route}?noteId=$noteId") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }
