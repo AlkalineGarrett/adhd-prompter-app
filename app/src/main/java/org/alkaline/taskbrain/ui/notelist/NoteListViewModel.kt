@@ -4,7 +4,9 @@ import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import org.alkaline.taskbrain.data.Note
 
@@ -18,6 +20,9 @@ class NoteListViewModel : ViewModel() {
 
     private val _loadStatus = MutableLiveData<LoadStatus>()
     val loadStatus: LiveData<LoadStatus> = _loadStatus
+
+    private val _createNoteStatus = MutableLiveData<CreateNoteStatus>()
+    val createNoteStatus: LiveData<CreateNoteStatus> = _createNoteStatus
 
     fun loadNotes() {
         val user = auth.currentUser
@@ -49,10 +54,45 @@ class NoteListViewModel : ViewModel() {
                 _loadStatus.value = LoadStatus.Error(exception.message ?: "Unknown error")
             }
     }
+
+    fun createNote(onSuccess: (String) -> Unit) {
+        val user = auth.currentUser
+        if (user == null) {
+            _createNoteStatus.value = CreateNoteStatus.Error("User not signed in")
+            return
+        }
+
+        _createNoteStatus.value = CreateNoteStatus.Loading
+
+        val newNote = hashMapOf(
+            "userId" to user.uid,
+            "content" to "",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        db.collection("notes")
+            .add(newNote)
+            .addOnSuccessListener { documentReference ->
+                Log.d("NoteListViewModel", "Note created with ID: ${documentReference.id}")
+                _createNoteStatus.value = CreateNoteStatus.Success(documentReference.id)
+                onSuccess(documentReference.id)
+            }
+            .addOnFailureListener { e ->
+                Log.w("NoteListViewModel", "Error adding document", e)
+                _createNoteStatus.value = CreateNoteStatus.Error(e.message ?: "Unknown error")
+            }
+    }
 }
 
 sealed class LoadStatus {
     object Loading : LoadStatus()
     object Success : LoadStatus()
     data class Error(val message: String) : LoadStatus()
+}
+
+sealed class CreateNoteStatus {
+    object Loading : CreateNoteStatus()
+    data class Success(val noteId: String) : CreateNoteStatus()
+    data class Error(val message: String) : CreateNoteStatus()
 }

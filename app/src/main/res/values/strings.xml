@@ -6,6 +6,8 @@
     <string name="agent_chat_label">Make request to agent</string>
     <string name="default_web_client_id">613948682660-pc7vp2pdala64j83mqcvg631crbm76nv.apps.googleusercontent.com</string>
 
+    <string name="action_add_note">Add note</string>
+
     <!-- Google Sign In Strings -->
     <string name="signed_out">Signed Out</string>
     <string name="sign_in_google">Sign in with Google</string>
