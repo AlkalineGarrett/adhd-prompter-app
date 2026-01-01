@@ -12,7 +12,12 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.data.PrompterAgent
 
 class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {
@@ -55,28 +60,55 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         _loadStatus.value = LoadStatus.Loading
 
-        db.collection("notes").document(currentNoteId)
-            .get()
-            .addOnSuccessListener { document ->
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val document = db.collection("notes").document(currentNoteId).get().await()
                 if (document != null && document.exists()) {
-                    Log.d("CurrentNoteViewModel", "DocumentSnapshot data: ${document.data}")
-                    val content = document.getString("content")
-                    if (content != null) {
-                        _loadStatus.value = LoadStatus.Success(content)
+                    val note = document.toObject(Note::class.java)
+                    if (note != null) {
+                        val sb = StringBuilder()
+                        sb.append(note.content)
+
+                        if (note.containedNotes.isNotEmpty()) {
+                            val childDeferreds = note.containedNotes.map { childId ->
+                                async {
+                                    if (childId.isEmpty()) {
+                                        ""
+                                    } else {
+                                        try {
+                                            val childDoc = db.collection("notes").document(childId).get().await()
+                                            if (childDoc.exists()) {
+                                                 childDoc.toObject(Note::class.java)?.content ?: ""
+                                            } else {
+                                                ""
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("CurrentNoteViewModel", "Error fetching child note $childId", e)
+                                            "" 
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            val childContents = childDeferreds.awaitAll()
+                            for (content in childContents) {
+                                sb.append("\n").append(content)
+                            }
+                        }
+                        
+                        _loadStatus.postValue(LoadStatus.Success(sb.toString()))
                     } else {
-                        // Document exists but content is null or missing
-                        _loadStatus.value = LoadStatus.Success("") 
+                        _loadStatus.postValue(LoadStatus.Success(""))
                     }
                 } else {
-                    Log.d("CurrentNoteViewModel", "No such document")
                     // Document doesn't exist yet (new user/note), treat as empty
-                     _loadStatus.value = LoadStatus.Success("")
+                    _loadStatus.postValue(LoadStatus.Success(""))
                 }
+            } catch (e: Exception) {
+                Log.e("CurrentNoteViewModel", "Error loading note", e)
+                _loadStatus.postValue(LoadStatus.Error(e.message ?: "Unknown error"))
             }
-            .addOnFailureListener { exception ->
-                Log.d("CurrentNoteViewModel", "get failed with ", exception)
-                _loadStatus.value = LoadStatus.Error(exception.message ?: "Unknown error")
-            }
+        }
     }
 
     fun saveContent(content: String) {
