@@ -126,50 +126,82 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
     /**
      * Updates the tracked lines based on the new content provided by the user.
-     * It attempts to match new lines with existing note IDs using a simple diff heuristic.
+     * It uses a heuristic to match lines and preserve Note IDs across edits, insertions, and deletions.
      */
     fun updateTrackedLines(newContent: String) {
         val newLinesContent = newContent.lines()
         val oldLines = trackedLines
         val newTrackedLines = mutableListOf<NoteLine>()
         
-        // This is a simplified diffing strategy. 
-        // A more robust one would use Myer's diff algorithm or similar.
-        // Here we try to map lines greedily.
-        
         var oldIndex = 0
-        for (newLineContent in newLinesContent) {
-            // Try to find a match in the remaining old lines
-            var foundMatchIndex = -1
+        var newIndex = 0
+        
+        while (newIndex < newLinesContent.size) {
+            val newLine = newLinesContent[newIndex]
             
-            // 1. Exact match search forward
-            for (i in oldIndex until oldLines.size) {
-                if (oldLines[i].content == newLineContent) {
-                    foundMatchIndex = i
+            // If we ran out of old lines, everything remaining is new
+            if (oldIndex >= oldLines.size) {
+                newTrackedLines.add(NoteLine(newLine, null))
+                newIndex++
+                continue
+            }
+            
+            val oldLine = oldLines[oldIndex]
+            
+            // 1. Exact Match
+            if (oldLine.content == newLine) {
+                newTrackedLines.add(oldLine)
+                oldIndex++
+                newIndex++
+                continue
+            }
+            
+            // 2. Look ahead to detect Deletions or Insertions
+            val lookAhead = 5
+            
+            // Check for Deletion: Does the current newLine match a future oldLine?
+            // If so, the intermediate oldLines were deleted.
+            var foundInOld = -1
+            for (k in 1..lookAhead) {
+                if (oldIndex + k < oldLines.size && oldLines[oldIndex + k].content == newLine) {
+                    foundInOld = oldIndex + k
                     break
                 }
             }
             
-            if (foundMatchIndex != -1) {
-                // Found an exact match, consume it and all preceding skipped lines are effectively deleted/replaced
-                newTrackedLines.add(oldLines[foundMatchIndex])
-                oldIndex = foundMatchIndex + 1
-            } else {
-                // No exact match. 
-                // Check if the current old line is "similar" enough to consider it an edit?
-                // For simplicity now, if we are at the same index, we assume it's an edit of that line
-                // unless we ran out of old lines.
-                if (oldIndex < oldLines.size) {
-                    // Assume the current line was edited
-                    // Special case: The first line always corresponds to the parent note ID (currentNoteId)
-                    val noteId = if (newTrackedLines.isEmpty()) currentNoteId else oldLines[oldIndex].noteId
-                    newTrackedLines.add(NoteLine(newLineContent, noteId))
-                    oldIndex++
-                } else {
-                    // New line added at the end
-                    newTrackedLines.add(NoteLine(newLineContent, null))
+            // Check for Insertion: Does the current oldLine match a future newLine?
+            // If so, the intermediate newLines are insertions.
+            var foundInNew = -1
+            for (k in 1..lookAhead) {
+                if (newIndex + k < newLinesContent.size && newLinesContent[newIndex + k] == oldLine.content) {
+                    foundInNew = newIndex + k
+                    break
                 }
             }
+            
+            if (foundInOld != -1 && (foundInNew == -1 || foundInOld < foundInNew)) {
+                // Detected Deletion (or a closer match in old lines implies deletion is more likely)
+                // Consume the match at foundInOld. The lines before it are skipped (deleted).
+                newTrackedLines.add(oldLines[foundInOld])
+                oldIndex = foundInOld + 1
+                newIndex++
+                continue
+            }
+            
+            if (foundInNew != -1) {
+                // Detected Insertion
+                // The current newLine is an insertion. The oldLine is preserved for later.
+                newTrackedLines.add(NoteLine(newLine, null))
+                newIndex++
+                continue
+            }
+            
+            // 3. Fallback: Modification
+            // Assume the current line was edited in place.
+            val noteId = if (newTrackedLines.isEmpty()) currentNoteId else oldLines[oldIndex].noteId
+            newTrackedLines.add(NoteLine(newLine, noteId))
+            oldIndex++
+            newIndex++
         }
         
         // Ensure first line has the parent ID
