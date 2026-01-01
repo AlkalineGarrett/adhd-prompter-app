@@ -192,24 +192,105 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         _saveStatus.value = SaveStatus.Saving
 
-        // For now, we still only save the flat content to the root note as per previous instruction to "Don't implement any other parts".
-        // The trackedLines will be used in the next step for proper saving.
-        val noteData = hashMapOf(
-            "content" to content,
-            "updatedAt" to FieldValue.serverTimestamp(),
-            "userId" to user.uid
-        )
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val parentRef = db.collection("notes").document(currentNoteId)
+                
+                // We use a transaction to ensure atomic updates of parent and child notes
+                val newIdsMap = db.runTransaction { transaction ->
+                    val parentSnapshot = transaction.get(parentRef)
+                    val oldContainedNotes = if (parentSnapshot.exists()) {
+                        parentSnapshot.get("containedNotes") as? List<String> ?: emptyList()
+                    } else {
+                        emptyList()
+                    }
+                    
+                    // Identify IDs to delete: start with all old non-empty IDs
+                    // We will remove IDs from this set as we encounter them in the new content
+                    val idsToDelete = oldContainedNotes.filter { it.isNotEmpty() }.toMutableSet()
+                    val newContainedNotes = mutableListOf<String>()
+                    val createdIdsMap = mutableMapOf<Int, String>()
+                    
+                    // 1. Update Parent Note Content (First Line)
+                    val parentContent = trackedLines.firstOrNull()?.content ?: ""
+                    val parentUpdateData = hashMapOf<String, Any>(
+                        "content" to parentContent,
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                        "userId" to user.uid
+                    )
+                    
+                    // 2. Process Child Lines (starting from index 1)
+                    if (trackedLines.size > 1) {
+                        for (i in 1 until trackedLines.size) {
+                            val line = trackedLines[i]
+                            
+                            if (line.content.isNotEmpty()) {
+                                if (line.noteId != null) {
+                                    // Existing child note: Update content
+                                    val childRef = db.collection("notes").document(line.noteId)
+                                    transaction.set(childRef, mapOf(
+                                        "content" to line.content,
+                                        "updatedAt" to FieldValue.serverTimestamp()
+                                    ), SetOptions.merge())
+                                    
+                                    newContainedNotes.add(line.noteId)
+                                    idsToDelete.remove(line.noteId)
+                                } else {
+                                    // New child note: Create
+                                    val newChildRef = db.collection("notes").document()
+                                    val newNoteData = hashMapOf(
+                                        "userId" to user.uid,
+                                        "content" to line.content,
+                                        "createdAt" to FieldValue.serverTimestamp(),
+                                        "updatedAt" to FieldValue.serverTimestamp(),
+                                        "parentNoteId" to currentNoteId
+                                    )
+                                    transaction.set(newChildRef, newNoteData)
+                                    
+                                    newContainedNotes.add(newChildRef.id)
+                                    createdIdsMap[i] = newChildRef.id
+                                }
+                            } else {
+                                // Empty line: Represents a gap/spacer
+                                newContainedNotes.add("")
+                            }
+                        }
+                    }
+                    
+                    // 3. Update Parent with new structure
+                    parentUpdateData["containedNotes"] = newContainedNotes
+                    transaction.set(parentRef, parentUpdateData, SetOptions.merge())
+                    
+                    // 4. Soft delete removed notes
+                    for (idToDelete in idsToDelete) {
+                        val docRef = db.collection("notes").document(idToDelete)
+                        transaction.update(docRef, mapOf(
+                            "state" to "deleted",
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        ))
+                    }
+                    
+                    return@runTransaction createdIdsMap
+                }.await()
 
-        db.collection("notes").document(currentNoteId)
-            .set(noteData, SetOptions.merge())
-            .addOnSuccessListener {
-                Log.d("CurrentNoteViewModel", "DocumentSnapshot successfully written!")
-                _saveStatus.value = SaveStatus.Success
+                // Update trackedLines with the newly created IDs so subsequent saves are correct
+                val currentList = trackedLines.toMutableList()
+                for ((index, newId) in newIdsMap) {
+                    if (index < currentList.size) {
+                        currentList[index] = currentList[index].copy(noteId = newId)
+                    }
+                }
+                trackedLines = currentList
+
+                Log.d("CurrentNoteViewModel", "Note saved successfully with structure.")
+                _saveStatus.postValue(SaveStatus.Success)
+                markAsSaved()
+                
+            } catch (e: Exception) {
+                Log.e("CurrentNoteViewModel", "Error saving note", e)
+                _saveStatus.postValue(SaveStatus.Error(e.message ?: "Unknown error"))
             }
-            .addOnFailureListener { e ->
-                Log.w("CurrentNoteViewModel", "Error writing document", e)
-                _saveStatus.value = SaveStatus.Error(e.message ?: "Unknown error")
-            }
+        }
     }
 
     fun processAgentCommand(currentContent: String, command: String) {
