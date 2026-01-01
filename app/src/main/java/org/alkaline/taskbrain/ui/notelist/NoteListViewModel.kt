@@ -83,6 +83,64 @@ class NoteListViewModel : ViewModel() {
                 _createNoteStatus.value = CreateNoteStatus.Error(e.message ?: "Unknown error")
             }
     }
+
+    fun saveNewNote(content: String, onSuccess: (String) -> Unit) {
+        val user = auth.currentUser
+        if (user == null) {
+            _createNoteStatus.value = CreateNoteStatus.Error("User not signed in")
+            return
+        }
+
+        _createNoteStatus.value = CreateNoteStatus.Loading
+
+        val lines = content.lines()
+        val firstLine = lines.firstOrNull() ?: ""
+        val childLines = if (lines.size > 1) lines.subList(1, lines.size) else emptyList()
+
+        val batch = db.batch()
+        val parentNoteRef = db.collection("notes").document()
+        val parentNoteId = parentNoteRef.id
+
+        val childNoteIds = mutableListOf<String>()
+        if (childLines.isNotEmpty()) {
+            for (childLine in childLines) {
+                if (childLine.isNotBlank()) {
+                    val childNoteRef = db.collection("notes").document()
+                    childNoteIds.add(childNoteRef.id)
+                    val newChildNote = hashMapOf(
+                        "userId" to user.uid,
+                        "content" to childLine,
+                        "createdAt" to FieldValue.serverTimestamp(),
+                        "updatedAt" to FieldValue.serverTimestamp(),
+                        "parentNoteId" to parentNoteId
+                    )
+                    batch.set(childNoteRef, newChildNote)
+                } else {
+                    childNoteIds.add("")
+                }
+            }
+        }
+
+        val newParentNote = hashMapOf(
+            "userId" to user.uid,
+            "content" to firstLine,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp(),
+            "containedNotes" to childNoteIds
+        )
+        batch.set(parentNoteRef, newParentNote)
+
+        batch.commit()
+            .addOnSuccessListener {
+                Log.d("NoteListViewModel", "Multi-line note created with ID: $parentNoteId")
+                _createNoteStatus.value = CreateNoteStatus.Success(parentNoteId)
+                onSuccess(parentNoteId)
+            }
+            .addOnFailureListener { e ->
+                Log.w("NoteListViewModel", "Error creating multi-line note", e)
+                _createNoteStatus.value = CreateNoteStatus.Error(e.message ?: "Unknown error")
+            }
+    }
 }
 
 sealed class LoadStatus {
