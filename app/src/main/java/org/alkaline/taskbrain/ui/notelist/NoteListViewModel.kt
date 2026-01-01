@@ -41,11 +41,17 @@ class NoteListViewModel : ViewModel() {
                 for (document in result) {
                     try {
                         val note = document.toObject(Note::class.java).copy(id = document.id)
-                        notesList.add(note)
+                        // Filter out child notes (parentNoteId != null) and deleted notes
+                        if (note.parentNoteId == null && note.state != "deleted") {
+                            notesList.add(note)
+                        }
                     } catch (e: Exception) {
                         Log.e("NoteListViewModel", "Error parsing note", e)
                     }
                 }
+                // Sort by updatedAt descending
+                notesList.sortByDescending { it.updatedAt }
+                
                 _notes.value = notesList
                 _loadStatus.value = LoadStatus.Success
             }
@@ -68,7 +74,8 @@ class NoteListViewModel : ViewModel() {
             "userId" to user.uid,
             "content" to "",
             "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
+            "updatedAt" to FieldValue.serverTimestamp(),
+            "parentNoteId" to null
         )
 
         db.collection("notes")
@@ -126,7 +133,8 @@ class NoteListViewModel : ViewModel() {
             "content" to firstLine,
             "createdAt" to FieldValue.serverTimestamp(),
             "updatedAt" to FieldValue.serverTimestamp(),
-            "containedNotes" to childNoteIds
+            "containedNotes" to childNoteIds,
+            "parentNoteId" to null
         )
         batch.set(parentNoteRef, newParentNote)
 
