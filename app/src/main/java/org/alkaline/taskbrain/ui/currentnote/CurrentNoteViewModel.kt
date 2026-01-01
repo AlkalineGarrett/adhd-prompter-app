@@ -20,6 +20,11 @@ import kotlinx.coroutines.tasks.await
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.data.PrompterAgent
 
+data class NoteLine(
+    val content: String,
+    val noteId: String? = null // Null if it's a new line or hasn't been persisted yet
+)
+
 class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = FirebaseFirestore.getInstance()
@@ -45,6 +50,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
 
+    // Track lines with their corresponding note IDs
+    private var trackedLines = listOf<NoteLine>()
+
     fun loadContent(noteId: String? = null) {
         // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
         currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
@@ -66,42 +74,47 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 if (document != null && document.exists()) {
                     val note = document.toObject(Note::class.java)
                     if (note != null) {
-                        val sb = StringBuilder()
-                        sb.append(note.content)
+                        val loadedLines = mutableListOf<NoteLine>()
+                        // First line is the parent note itself
+                        loadedLines.add(NoteLine(note.content, currentNoteId))
 
                         if (note.containedNotes.isNotEmpty()) {
                             val childDeferreds = note.containedNotes.map { childId ->
                                 async {
                                     if (childId.isEmpty()) {
-                                        ""
+                                        NoteLine("", null) // Empty line, no ID yet
                                     } else {
                                         try {
                                             val childDoc = db.collection("notes").document(childId).get().await()
                                             if (childDoc.exists()) {
-                                                 childDoc.toObject(Note::class.java)?.content ?: ""
+                                                 val content = childDoc.toObject(Note::class.java)?.content ?: ""
+                                                 NoteLine(content, childId)
                                             } else {
-                                                ""
+                                                NoteLine("", null) // Child doc missing, treat as empty new line
                                             }
                                         } catch (e: Exception) {
                                             Log.e("CurrentNoteViewModel", "Error fetching child note $childId", e)
-                                            "" 
+                                            NoteLine("", null)
                                         }
                                     }
                                 }
                             }
                             
-                            val childContents = childDeferreds.awaitAll()
-                            for (content in childContents) {
-                                sb.append("\n").append(content)
-                            }
+                            val childLines = childDeferreds.awaitAll()
+                            loadedLines.addAll(childLines)
                         }
                         
-                        _loadStatus.postValue(LoadStatus.Success(sb.toString()))
+                        trackedLines = loadedLines
+                        val fullContent = loadedLines.joinToString("\n") { it.content }
+                        
+                        _loadStatus.postValue(LoadStatus.Success(fullContent))
                     } else {
+                        trackedLines = listOf(NoteLine("", currentNoteId))
                         _loadStatus.postValue(LoadStatus.Success(""))
                     }
                 } else {
                     // Document doesn't exist yet (new user/note), treat as empty
+                    trackedLines = listOf(NoteLine("", currentNoteId))
                     _loadStatus.postValue(LoadStatus.Success(""))
                 }
             } catch (e: Exception) {
@@ -111,7 +124,66 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /**
+     * Updates the tracked lines based on the new content provided by the user.
+     * It attempts to match new lines with existing note IDs using a simple diff heuristic.
+     */
+    fun updateTrackedLines(newContent: String) {
+        val newLinesContent = newContent.lines()
+        val oldLines = trackedLines
+        val newTrackedLines = mutableListOf<NoteLine>()
+        
+        // This is a simplified diffing strategy. 
+        // A more robust one would use Myer's diff algorithm or similar.
+        // Here we try to map lines greedily.
+        
+        var oldIndex = 0
+        for (newLineContent in newLinesContent) {
+            // Try to find a match in the remaining old lines
+            var foundMatchIndex = -1
+            
+            // 1. Exact match search forward
+            for (i in oldIndex until oldLines.size) {
+                if (oldLines[i].content == newLineContent) {
+                    foundMatchIndex = i
+                    break
+                }
+            }
+            
+            if (foundMatchIndex != -1) {
+                // Found an exact match, consume it and all preceding skipped lines are effectively deleted/replaced
+                newTrackedLines.add(oldLines[foundMatchIndex])
+                oldIndex = foundMatchIndex + 1
+            } else {
+                // No exact match. 
+                // Check if the current old line is "similar" enough to consider it an edit?
+                // For simplicity now, if we are at the same index, we assume it's an edit of that line
+                // unless we ran out of old lines.
+                if (oldIndex < oldLines.size) {
+                    // Assume the current line was edited
+                    // Special case: The first line always corresponds to the parent note ID (currentNoteId)
+                    val noteId = if (newTrackedLines.isEmpty()) currentNoteId else oldLines[oldIndex].noteId
+                    newTrackedLines.add(NoteLine(newLineContent, noteId))
+                    oldIndex++
+                } else {
+                    // New line added at the end
+                    newTrackedLines.add(NoteLine(newLineContent, null))
+                }
+            }
+        }
+        
+        // Ensure first line has the parent ID
+        if (newTrackedLines.isNotEmpty() && newTrackedLines[0].noteId != currentNoteId) {
+             newTrackedLines[0] = newTrackedLines[0].copy(noteId = currentNoteId)
+        }
+        
+        trackedLines = newTrackedLines
+    }
+
     fun saveContent(content: String) {
+        // Update tracked lines before saving to ensure we have the latest state mapping
+        updateTrackedLines(content)
+
         val user = auth.currentUser
         if (user == null) {
             _saveStatus.value = SaveStatus.Error("User not signed in")
@@ -120,6 +192,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         _saveStatus.value = SaveStatus.Saving
 
+        // For now, we still only save the flat content to the root note as per previous instruction to "Don't implement any other parts".
+        // The trackedLines will be used in the next step for proper saving.
         val noteData = hashMapOf(
             "content" to content,
             "updatedAt" to FieldValue.serverTimestamp(),
@@ -145,6 +219,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 val updatedContent = agent.processCommand(currentContent, command)
                 // Update the UI with the new content
                 _loadStatus.value = LoadStatus.Success(updatedContent)
+                
+                // Also update tracked lines since content changed externally
+                updateTrackedLines(updatedContent)
+                
                 // Signal that the content has been modified and is unsaved
                 _contentModified.value = true
             } catch (e: Exception) {
