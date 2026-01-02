@@ -63,7 +63,15 @@ class NoteRepository(
             val parentLine = NoteLine(note.content, noteId)
             val childLines = loadChildNotes(note.containedNotes)
 
-            listOf(parentLine) + childLines
+            val allLines = listOf(parentLine) + childLines
+
+            // Append an empty line for user to type on, unless the note is already
+            // a single empty line (new note case - the existing empty line suffices)
+            if (allLines.size == 1 && allLines[0].content.isEmpty()) {
+                allLines
+            } else {
+                allLines + NoteLine("", null)
+            }
         }
     }.onFailure { Log.e(TAG, "Error loading note", it) }
 
@@ -108,7 +116,8 @@ class NoteRepository(
                 val idsToDelete = oldChildIds.filter { it.isNotEmpty() }.toMutableSet()
 
                 val parentContent = trackedLines.firstOrNull()?.content ?: ""
-                val childLines = trackedLines.drop(1)
+                // Drop trailing empty lines (user's typing line) before saving
+                val childLines = trackedLines.drop(1).dropLastWhile { it.content.isEmpty() }
 
                 val (newContainedNotes, createdIds) = processChildLines(
                     transaction, userId, noteId, childLines, idsToDelete

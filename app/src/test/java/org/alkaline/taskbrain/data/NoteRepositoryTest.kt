@@ -92,18 +92,33 @@ class NoteRepositoryTest {
     }
 
     @Test
-    fun `loadNoteWithChildren returns parent content`() = runTest {
-        mockDocument("note_1", Note(content = "Parent content", containedNotes = emptyList()))
+    fun `loadNoteWithChildren does not add trailing empty line when note is single empty line`() = runTest {
+        mockDocument("note_1", Note(content = "", containedNotes = emptyList()))
 
         val lines = repository.loadNoteWithChildren("note_1").getOrThrow()
 
+        // Single empty line should NOT get another empty line appended
         assertEquals(1, lines.size)
-        assertEquals("Parent content", lines[0].content)
+        assertEquals("", lines[0].content)
         assertEquals("note_1", lines[0].noteId)
     }
 
     @Test
-    fun `loadNoteWithChildren returns parent and children in order`() = runTest {
+    fun `loadNoteWithChildren returns parent content with trailing empty line`() = runTest {
+        mockDocument("note_1", Note(content = "Parent content", containedNotes = emptyList()))
+
+        val lines = repository.loadNoteWithChildren("note_1").getOrThrow()
+
+        assertEquals(2, lines.size)
+        assertEquals("Parent content", lines[0].content)
+        assertEquals("note_1", lines[0].noteId)
+        // Trailing empty line for user to type on
+        assertEquals("", lines[1].content)
+        assertNull(lines[1].noteId)
+    }
+
+    @Test
+    fun `loadNoteWithChildren returns parent and children in order with trailing empty line`() = runTest {
         mockDocument("parent", Note(content = "Parent", containedNotes = listOf("child_1", "child_2")))
         mockDocument("child_1", Note(content = "Child 1"))
         mockDocument("child_2", Note(content = "Child 2"))
@@ -114,7 +129,8 @@ class NoteRepositoryTest {
             listOf(
                 NoteLine("Parent", "parent"),
                 NoteLine("Child 1", "child_1"),
-                NoteLine("Child 2", "child_2")
+                NoteLine("Child 2", "child_2"),
+                NoteLine("", null)  // Trailing empty line
             ),
             lines
         )
@@ -127,11 +143,14 @@ class NoteRepositoryTest {
 
         val lines = repository.loadNoteWithChildren("parent").getOrThrow()
 
-        assertEquals(4, lines.size)
+        assertEquals(5, lines.size)  // parent + 3 children + trailing empty
         assertEquals("", lines[1].content)
         assertNull(lines[1].noteId)
         assertEquals("Child", lines[2].content)
         assertEquals("", lines[3].content)
+        // Trailing empty line
+        assertEquals("", lines[4].content)
+        assertNull(lines[4].noteId)
     }
 
     @Test
@@ -218,6 +237,72 @@ class NoteRepositoryTest {
         )
 
         assertTrue(result.isSuccess)
+    }
+
+    @Test
+    fun `saveNoteWithChildren drops trailing empty lines`() = runTest {
+        val parentRef = mockDocument("note_1", null)
+        val childRef = mockk<DocumentReference> { every { id } returns "child_1" }
+        every { mockCollection.document() } returns childRef
+        mockTransaction(parentRef)
+
+        // Simulate user input with trailing empty line (typing line)
+        val result = repository.saveNoteWithChildren(
+            "note_1",
+            listOf(
+                NoteLine("Parent", "note_1"),
+                NoteLine("Child content", null),
+                NoteLine("", null)  // Trailing empty line should be dropped
+            )
+        ).getOrThrow()
+
+        // Should only return ID for the non-empty child line
+        assertEquals(1, result.size)
+        assertEquals("child_1", result[1])
+    }
+
+    @Test
+    fun `saveNoteWithChildren drops multiple trailing empty lines`() = runTest {
+        val parentRef = mockDocument("note_1", null)
+        val childRef = mockk<DocumentReference> { every { id } returns "child_1" }
+        every { mockCollection.document() } returns childRef
+        mockTransaction(parentRef)
+
+        val result = repository.saveNoteWithChildren(
+            "note_1",
+            listOf(
+                NoteLine("Parent", "note_1"),
+                NoteLine("Child", null),
+                NoteLine("", null),
+                NoteLine("", null),
+                NoteLine("", null)
+            )
+        ).getOrThrow()
+
+        assertEquals(1, result.size)
+        assertEquals("child_1", result[1])
+    }
+
+    @Test
+    fun `saveNoteWithChildren preserves empty lines in the middle`() = runTest {
+        val parentRef = mockDocument("note_1", null)
+        val childRef = mockk<DocumentReference> { every { id } returns "child_1" }
+        every { mockCollection.document() } returns childRef
+        mockTransaction(parentRef)
+
+        val result = repository.saveNoteWithChildren(
+            "note_1",
+            listOf(
+                NoteLine("Parent", "note_1"),
+                NoteLine("", null),  // Empty line in middle - preserved as spacer
+                NoteLine("Child", null),
+                NoteLine("", null)   // Trailing empty - dropped
+            )
+        ).getOrThrow()
+
+        // Only the non-empty child gets an ID returned
+        assertEquals(1, result.size)
+        assertEquals("child_1", result[2])  // Index 2 because of the spacer
     }
 
     // endregion
