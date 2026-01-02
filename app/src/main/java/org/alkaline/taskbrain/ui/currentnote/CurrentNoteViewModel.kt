@@ -62,7 +62,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error loading note", e)
-                    _loadStatus.value = LoadStatus.Error(e.message ?: "Unknown error")
+                    _loadStatus.value = LoadStatus.Error(e)
                 }
             )
         }
@@ -99,7 +99,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error saving note", e)
-                    _saveStatus.value = SaveStatus.Error(e.message ?: "Unknown error")
+                    _saveStatus.value = SaveStatus.Error(e)
                 }
             )
         }
@@ -120,7 +120,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 _contentModified.value = true
             } catch (e: Exception) {
                 Log.e("CurrentNoteViewModel", "Agent processing failed", e)
-                _loadStatus.value = LoadStatus.Error("Agent failed: ${e.message}")
+                _loadStatus.value = LoadStatus.Error(e)
             } finally {
                 _isAgentProcessing.value = false
             }
@@ -131,16 +131,28 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     fun markAsSaved() {
         _contentModified.value = false
     }
+
+    fun clearSaveError() {
+        if (_saveStatus.value is SaveStatus.Error) {
+            _saveStatus.value = null
+        }
+    }
+
+    fun clearLoadError() {
+        if (_loadStatus.value is LoadStatus.Error) {
+            _loadStatus.value = null
+        }
+    }
 }
 
 sealed class SaveStatus {
     object Saving : SaveStatus()
     object Success : SaveStatus()
-    data class Error(val message: String) : SaveStatus()
+    data class Error(val throwable: Throwable) : SaveStatus()
 }
 
 sealed class LoadStatus {
     object Loading : LoadStatus()
     data class Success(val content: String) : LoadStatus()
-    data class Error(val message: String) : LoadStatus()
+    data class Error(val throwable: Throwable) : LoadStatus()
 }

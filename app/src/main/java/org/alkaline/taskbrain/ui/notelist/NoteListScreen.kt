@@ -32,6 +32,7 @@ import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.ui.components.ActionButton
 import org.alkaline.taskbrain.ui.components.ActionButtonBar
+import org.alkaline.taskbrain.ui.components.ErrorDialog
 
 @Composable
 fun NoteListScreen(
@@ -44,6 +45,23 @@ fun NoteListScreen(
 
     LaunchedEffect(Unit) {
         noteListViewModel.loadNotes()
+    }
+
+    // Show error dialogs
+    if (loadStatus is LoadStatus.Error) {
+        ErrorDialog(
+            title = "Load Error",
+            throwable = (loadStatus as LoadStatus.Error).throwable,
+            onDismiss = { noteListViewModel.clearLoadError() }
+        )
+    }
+
+    if (createNoteStatus is CreateNoteStatus.Error) {
+        ErrorDialog(
+            title = "Create Note Error",
+            throwable = (createNoteStatus as CreateNoteStatus.Error).throwable,
+            onDismiss = { noteListViewModel.clearCreateNoteError() }
+        )
     }
 
     Scaffold(
@@ -67,8 +85,9 @@ fun NoteListScreen(
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                 }
                 is LoadStatus.Error -> {
+                    // Error dialog is shown above, just show a simple message here
                     Text(
-                        text = (loadStatus as LoadStatus.Error).message,
+                        text = "An error occurred",
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.align(Alignment.Center)
                     )

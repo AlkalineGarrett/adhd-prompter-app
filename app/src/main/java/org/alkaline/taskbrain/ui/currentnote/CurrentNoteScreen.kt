@@ -43,6 +43,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.components.ActionButtonBar
+import org.alkaline.taskbrain.ui.components.ErrorDialog
 
 @Composable
 fun CurrentNoteScreen(
@@ -87,6 +88,23 @@ fun CurrentNoteScreen(
             isSaved = true
             currentNoteViewModel.markAsSaved()
         }
+    }
+
+    // Show error dialogs
+    if (saveStatus is SaveStatus.Error) {
+        ErrorDialog(
+            title = "Save Error",
+            throwable = (saveStatus as SaveStatus.Error).throwable,
+            onDismiss = { currentNoteViewModel.clearSaveError() }
+        )
+    }
+
+    if (loadStatus is LoadStatus.Error) {
+        ErrorDialog(
+            title = "Load Error",
+            throwable = (loadStatus as LoadStatus.Error).throwable,
+            onDismiss = { currentNoteViewModel.clearLoadError() }
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {

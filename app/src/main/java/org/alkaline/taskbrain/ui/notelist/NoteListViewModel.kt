@@ -36,7 +36,7 @@ class NoteListViewModel : ViewModel() {
                 },
                 onFailure = { exception ->
                     Log.d("NoteListViewModel", "Error getting documents: ", exception)
-                    _loadStatus.value = LoadStatus.Error(exception.message ?: "Unknown error")
+                    _loadStatus.value = LoadStatus.Error(exception)
                 }
             )
         }
@@ -55,7 +55,7 @@ class NoteListViewModel : ViewModel() {
                 },
                 onFailure = { e ->
                     Log.w("NoteListViewModel", "Error adding document", e)
-                    _createNoteStatus.value = CreateNoteStatus.Error(e.message ?: "Unknown error")
+                    _createNoteStatus.value = CreateNoteStatus.Error(e)
                 }
             )
         }
@@ -74,9 +74,21 @@ class NoteListViewModel : ViewModel() {
                 },
                 onFailure = { e ->
                     Log.w("NoteListViewModel", "Error creating multi-line note", e)
-                    _createNoteStatus.value = CreateNoteStatus.Error(e.message ?: "Unknown error")
+                    _createNoteStatus.value = CreateNoteStatus.Error(e)
                 }
             )
+        }
+    }
+
+    fun clearLoadError() {
+        if (_loadStatus.value is LoadStatus.Error) {
+            _loadStatus.value = null
+        }
+    }
+
+    fun clearCreateNoteError() {
+        if (_createNoteStatus.value is CreateNoteStatus.Error) {
+            _createNoteStatus.value = null
         }
     }
 }
@@ -84,11 +96,11 @@ class NoteListViewModel : ViewModel() {
 sealed class LoadStatus {
     object Loading : LoadStatus()
     object Success : LoadStatus()
-    data class Error(val message: String) : LoadStatus()
+    data class Error(val throwable: Throwable) : LoadStatus()
 }
 
 sealed class CreateNoteStatus {
     object Loading : CreateNoteStatus()
     data class Success(val noteId: String) : CreateNoteStatus()
-    data class Error(val message: String) : CreateNoteStatus()
+    data class Error(val throwable: Throwable) : CreateNoteStatus()
 }
