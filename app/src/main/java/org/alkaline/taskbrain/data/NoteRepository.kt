@@ -2,9 +2,11 @@ package org.alkaline.taskbrain.data
 
 import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Transaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -12,293 +14,268 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 /**
- * Repository for managing note operations in Firestore.
+ * Repository for managing composable notes in Firestore.
+ * Notes can contain other notes via the containedNotes field.
  */
 class NoteRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
 ) {
-    
+    private val notesCollection get() = db.collection("notes")
+
+    private fun requireUserId(): String =
+        auth.currentUser?.uid ?: throw IllegalStateException("User not signed in")
+
+    private fun noteRef(noteId: String): DocumentReference = notesCollection.document(noteId)
+
+    private fun newNoteRef(): DocumentReference = notesCollection.document()
+
+    private fun baseNoteData(userId: String, content: String) = hashMapOf(
+        "userId" to userId,
+        "content" to content,
+        "updatedAt" to FieldValue.serverTimestamp()
+    )
+
+    private fun newNoteData(userId: String, content: String, parentNoteId: String? = null): HashMap<String, Any?> =
+        hashMapOf(
+            "userId" to userId,
+            "content" to content,
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp(),
+            "parentNoteId" to parentNoteId
+        )
+
     /**
-     * Loads a note and its child notes from Firestore.
-     * Returns a list of NoteLine objects representing the parent and all child notes.
+     * Loads a note and its child notes, returning a flat list of NoteLines.
      */
-    suspend fun loadNoteWithChildren(noteId: String): Result<List<NoteLine>> = withContext(Dispatchers.IO) {
-        try {
-            val user = auth.currentUser
-            if (user == null) {
-                return@withContext Result.failure(Exception("User not signed in"))
+    suspend fun loadNoteWithChildren(noteId: String): Result<List<NoteLine>> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            val document = noteRef(noteId).get().await()
+
+            if (!document.exists()) {
+                return@withContext listOf(NoteLine("", noteId))
             }
 
-            val document = db.collection("notes").document(noteId).get().await()
-            if (document != null && document.exists()) {
-                val note = document.toObject(Note::class.java)
-                if (note != null) {
-                    val loadedLines = mutableListOf<NoteLine>()
-                    // First line is the parent note itself
-                    loadedLines.add(NoteLine(note.content, noteId))
+            val note = document.toObject(Note::class.java)
+                ?: return@withContext listOf(NoteLine("", noteId))
 
-                    if (note.containedNotes.isNotEmpty()) {
-                        val childDeferreds = note.containedNotes.map { childId ->
-                            async {
-                                if (childId.isEmpty()) {
-                                    NoteLine("", null) // Empty line, no ID yet
-                                } else {
-                                    try {
-                                        val childDoc = db.collection("notes").document(childId).get().await()
-                                        if (childDoc.exists()) {
-                                            val content = childDoc.toObject(Note::class.java)?.content ?: ""
-                                            NoteLine(content, childId)
-                                        } else {
-                                            NoteLine("", null) // Child doc missing, treat as empty new line
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("NoteRepository", "Error fetching child note $childId", e)
-                                        NoteLine("", null)
-                                    }
-                                }
-                            }
-                        }
-                        
-                        val childLines = childDeferreds.awaitAll()
-                        loadedLines.addAll(childLines)
-                    }
-                    
-                    Result.success(loadedLines)
-                } else {
-                    Result.success(listOf(NoteLine("", noteId)))
-                }
+            val parentLine = NoteLine(note.content, noteId)
+            val childLines = loadChildNotes(note.containedNotes)
+
+            listOf(parentLine) + childLines
+        }
+    }.onFailure { Log.e(TAG, "Error loading note", it) }
+
+    private suspend fun loadChildNotes(childIds: List<String>): List<NoteLine> =
+        withContext(Dispatchers.IO) {
+            childIds.map { childId ->
+                async { loadChildNote(childId) }
+            }.awaitAll()
+        }
+
+    private suspend fun loadChildNote(childId: String): NoteLine {
+        if (childId.isEmpty()) return NoteLine("", null)
+
+        return try {
+            val childDoc = noteRef(childId).get().await()
+            if (childDoc.exists()) {
+                val content = childDoc.toObject(Note::class.java)?.content ?: ""
+                NoteLine(content, childId)
             } else {
-                // Document doesn't exist yet (new user/note), treat as empty
-                Result.success(listOf(NoteLine("", noteId)))
+                NoteLine("", null)
             }
         } catch (e: Exception) {
-            Log.e("NoteRepository", "Error loading note", e)
-            Result.failure(e)
+            Log.e(TAG, "Error fetching child note $childId", e)
+            NoteLine("", null)
         }
     }
 
     /**
-     * Saves a note with its child notes structure to Firestore.
+     * Saves a note with its child notes structure.
      * Returns a map of line indices to newly created note IDs.
      */
     suspend fun saveNoteWithChildren(
         noteId: String,
         trackedLines: List<NoteLine>
-    ): Result<Map<Int, String>> = withContext(Dispatchers.IO) {
-        try {
-            val user = auth.currentUser
-            if (user == null) {
-                return@withContext Result.failure(Exception("User not signed in"))
-            }
+    ): Result<Map<Int, String>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val parentRef = noteRef(noteId)
 
-            val parentRef = db.collection("notes").document(noteId)
-            
-            // We use a transaction to ensure atomic updates of parent and child notes
-            val newIdsMap = db.runTransaction { transaction ->
-                val parentSnapshot = transaction.get(parentRef)
-                val oldContainedNotes = if (parentSnapshot.exists()) {
-                    parentSnapshot.get("containedNotes") as? List<String> ?: emptyList()
-                } else {
-                    emptyList()
-                }
-                
-                // Identify IDs to delete: start with all old non-empty IDs
-                // We will remove IDs from this set as we encounter them in the new content
-                val idsToDelete = oldContainedNotes.filter { it.isNotEmpty() }.toMutableSet()
-                val newContainedNotes = mutableListOf<String>()
-                val createdIdsMap = mutableMapOf<Int, String>()
-                
-                // 1. Update Parent Note Content (First Line)
+            db.runTransaction { transaction ->
+                val oldChildIds = getExistingChildIds(transaction, parentRef)
+                val idsToDelete = oldChildIds.filter { it.isNotEmpty() }.toMutableSet()
+
                 val parentContent = trackedLines.firstOrNull()?.content ?: ""
-                val parentUpdateData = hashMapOf<String, Any>(
-                    "content" to parentContent,
-                    "updatedAt" to FieldValue.serverTimestamp(),
-                    "userId" to user.uid
-                )
-                
-                // 2. Process Child Lines (starting from index 1)
-                if (trackedLines.size > 1) {
-                    for (i in 1 until trackedLines.size) {
-                        val line = trackedLines[i]
-                        
-                        if (line.content.isNotEmpty()) {
-                            if (line.noteId != null) {
-                                // Existing child note: Update content
-                                val childRef = db.collection("notes").document(line.noteId)
-                                transaction.set(childRef, mapOf(
-                                    "content" to line.content,
-                                    "updatedAt" to FieldValue.serverTimestamp()
-                                ), SetOptions.merge())
-                                
-                                newContainedNotes.add(line.noteId)
-                                idsToDelete.remove(line.noteId)
-                            } else {
-                                // New child note: Create
-                                val newChildRef = db.collection("notes").document()
-                                val newNoteData = hashMapOf(
-                                    "userId" to user.uid,
-                                    "content" to line.content,
-                                    "createdAt" to FieldValue.serverTimestamp(),
-                                    "updatedAt" to FieldValue.serverTimestamp(),
-                                    "parentNoteId" to noteId
-                                )
-                                transaction.set(newChildRef, newNoteData)
-                                
-                                newContainedNotes.add(newChildRef.id)
-                                createdIdsMap[i] = newChildRef.id
-                            }
-                        } else {
-                            // Empty line: Represents a gap/spacer
-                            newContainedNotes.add("")
-                        }
-                    }
-                }
-                
-                // 3. Update Parent with new structure
-                parentUpdateData["containedNotes"] = newContainedNotes
-                transaction.set(parentRef, parentUpdateData, SetOptions.merge())
-                
-                // 4. Soft delete removed notes
-                for (idToDelete in idsToDelete) {
-                    val docRef = db.collection("notes").document(idToDelete)
-                    transaction.update(docRef, mapOf(
-                        "state" to "deleted",
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    ))
-                }
-                
-                createdIdsMap
-            }.await()
+                val childLines = trackedLines.drop(1)
 
-            Log.d("NoteRepository", "Note saved successfully with structure.")
-            Result.success(newIdsMap)
-        } catch (e: Exception) {
-            Log.e("NoteRepository", "Error saving note", e)
-            Result.failure(e)
+                val (newContainedNotes, createdIds) = processChildLines(
+                    transaction, userId, noteId, childLines, idsToDelete
+                )
+
+                updateParentNote(transaction, parentRef, userId, parentContent, newContainedNotes)
+                softDeleteRemovedNotes(transaction, idsToDelete)
+
+                createdIds
+            }.await()
+        }
+    }.onFailure { Log.e(TAG, "Error saving note", it) }
+
+    private fun getExistingChildIds(transaction: Transaction, parentRef: DocumentReference): List<String> {
+        val snapshot = transaction.get(parentRef)
+        if (!snapshot.exists()) return emptyList()
+        @Suppress("UNCHECKED_CAST")
+        return snapshot.get("containedNotes") as? List<String> ?: emptyList()
+    }
+
+    private fun processChildLines(
+        transaction: Transaction,
+        userId: String,
+        parentNoteId: String,
+        childLines: List<NoteLine>,
+        idsToDelete: MutableSet<String>
+    ): Pair<List<String>, Map<Int, String>> {
+        val newContainedNotes = mutableListOf<String>()
+        val createdIds = mutableMapOf<Int, String>()
+
+        childLines.forEachIndexed { index, line ->
+            val lineIndex = index + 1 // Offset for parent line
+            val childId = processChildLine(transaction, userId, parentNoteId, line, idsToDelete)
+            newContainedNotes.add(childId)
+            if (line.noteId == null && line.content.isNotEmpty()) {
+                createdIds[lineIndex] = childId
+            }
+        }
+
+        return newContainedNotes to createdIds
+    }
+
+    private fun processChildLine(
+        transaction: Transaction,
+        userId: String,
+        parentNoteId: String,
+        line: NoteLine,
+        idsToDelete: MutableSet<String>
+    ): String {
+        if (line.content.isEmpty()) return ""
+
+        return if (line.noteId != null) {
+            updateExistingChild(transaction, line.noteId, line.content)
+            idsToDelete.remove(line.noteId)
+            line.noteId
+        } else {
+            createNewChild(transaction, userId, parentNoteId, line.content)
+        }
+    }
+
+    private fun updateExistingChild(transaction: Transaction, noteId: String, content: String) {
+        transaction.set(
+            noteRef(noteId),
+            mapOf("content" to content, "updatedAt" to FieldValue.serverTimestamp()),
+            SetOptions.merge()
+        )
+    }
+
+    private fun createNewChild(
+        transaction: Transaction,
+        userId: String,
+        parentNoteId: String,
+        content: String
+    ): String {
+        val newRef = newNoteRef()
+        transaction.set(newRef, newNoteData(userId, content, parentNoteId))
+        return newRef.id
+    }
+
+    private fun updateParentNote(
+        transaction: Transaction,
+        parentRef: DocumentReference,
+        userId: String,
+        content: String,
+        containedNotes: List<String>
+    ) {
+        val data = baseNoteData(userId, content).apply {
+            put("containedNotes", containedNotes)
+        }
+        transaction.set(parentRef, data, SetOptions.merge())
+    }
+
+    private fun softDeleteRemovedNotes(transaction: Transaction, idsToDelete: Set<String>) {
+        for (id in idsToDelete) {
+            transaction.update(
+                noteRef(id),
+                mapOf("state" to "deleted", "updatedAt" to FieldValue.serverTimestamp())
+            )
         }
     }
 
     /**
-     * Loads all notes for the current user, filtering out child notes and deleted notes.
+     * Loads all top-level notes for the current user (excludes children and deleted).
      */
-    suspend fun loadUserNotes(): Result<List<Note>> = withContext(Dispatchers.IO) {
-        try {
-            val user = auth.currentUser
-            if (user == null) {
-                return@withContext Result.failure(Exception("User not signed in"))
-            }
+    suspend fun loadUserNotes(): Result<List<Note>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = notesCollection.whereEqualTo("userId", userId).get().await()
 
-            val result = db.collection("notes")
-                .whereEqualTo("userId", user.uid)
-                .get()
-                .await()
-
-            val notesList = mutableListOf<Note>()
-            for (document in result) {
+            result.mapNotNull { doc ->
                 try {
-                    val note = document.toObject(Note::class.java).copy(id = document.id)
-                    // Filter out child notes (parentNoteId != null) and deleted notes
-                    if (note.parentNoteId == null && note.state != "deleted") {
-                        notesList.add(note)
-                    }
+                    doc.toObject(Note::class.java).copy(id = doc.id)
                 } catch (e: Exception) {
-                    Log.e("NoteRepository", "Error parsing note", e)
+                    Log.e(TAG, "Error parsing note", e)
+                    null
                 }
-            }
-
-            Result.success(notesList)
-        } catch (e: Exception) {
-            Log.e("NoteRepository", "Error loading notes", e)
-            Result.failure(e)
+            }.filter { it.parentNoteId == null && it.state != "deleted" }
         }
-    }
+    }.onFailure { Log.e(TAG, "Error loading notes", it) }
 
     /**
      * Creates a new empty note.
      */
-    suspend fun createNote(): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val user = auth.currentUser
-            if (user == null) {
-                return@withContext Result.failure(Exception("User not signed in"))
-            }
-
-            val newNote = hashMapOf(
-                "userId" to user.uid,
-                "content" to "",
-                "createdAt" to FieldValue.serverTimestamp(),
-                "updatedAt" to FieldValue.serverTimestamp(),
-                "parentNoteId" to null
-            )
-
-            val documentReference = db.collection("notes")
-                .add(newNote)
-                .await()
-
-            Log.d("NoteRepository", "Note created with ID: ${documentReference.id}")
-            Result.success(documentReference.id)
-        } catch (e: Exception) {
-            Log.e("NoteRepository", "Error creating note", e)
-            Result.failure(e)
+    suspend fun createNote(): Result<String> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val ref = notesCollection.add(newNoteData(userId, "")).await()
+            Log.d(TAG, "Note created with ID: ${ref.id}")
+            ref.id
         }
-    }
+    }.onFailure { Log.e(TAG, "Error creating note", it) }
 
     /**
-     * Creates a new note with multiple lines (parent + children) using a batch operation.
+     * Creates a new multi-line note (parent + children) using a batch operation.
      */
-    suspend fun createMultiLineNote(content: String): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val user = auth.currentUser
-            if (user == null) {
-                return@withContext Result.failure(Exception("User not signed in"))
-            }
-
+    suspend fun createMultiLineNote(content: String): Result<String> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
             val lines = content.lines()
             val firstLine = lines.firstOrNull() ?: ""
-            val childLines = if (lines.size > 1) lines.subList(1, lines.size) else emptyList()
+            val childLines = lines.drop(1)
 
             val batch = db.batch()
-            val parentNoteRef = db.collection("notes").document()
-            val parentNoteId = parentNoteRef.id
+            val parentRef = newNoteRef()
 
-            val childNoteIds = mutableListOf<String>()
-            if (childLines.isNotEmpty()) {
-                for (childLine in childLines) {
-                    if (childLine.isNotBlank()) {
-                        val childNoteRef = db.collection("notes").document()
-                        childNoteIds.add(childNoteRef.id)
-                        val newChildNote = hashMapOf(
-                            "userId" to user.uid,
-                            "content" to childLine,
-                            "createdAt" to FieldValue.serverTimestamp(),
-                            "updatedAt" to FieldValue.serverTimestamp(),
-                            "parentNoteId" to parentNoteId
-                        )
-                        batch.set(childNoteRef, newChildNote)
-                    } else {
-                        childNoteIds.add("")
-                    }
+            val childIds = childLines.map { line ->
+                if (line.isNotBlank()) {
+                    val childRef = newNoteRef()
+                    batch.set(childRef, newNoteData(userId, line, parentRef.id))
+                    childRef.id
+                } else {
+                    ""
                 }
             }
 
-            val newParentNote = hashMapOf(
-                "userId" to user.uid,
-                "content" to firstLine,
-                "createdAt" to FieldValue.serverTimestamp(),
-                "updatedAt" to FieldValue.serverTimestamp(),
-                "containedNotes" to childNoteIds,
-                "parentNoteId" to null
-            )
-            batch.set(parentNoteRef, newParentNote)
-
+            val parentData = newNoteData(userId, firstLine).apply {
+                put("containedNotes", childIds)
+            }
+            batch.set(parentRef, parentData)
             batch.commit().await()
 
-            Log.d("NoteRepository", "Multi-line note created with ID: $parentNoteId")
-            Result.success(parentNoteId)
-        } catch (e: Exception) {
-            Log.e("NoteRepository", "Error creating multi-line note", e)
-            Result.failure(e)
+            Log.d(TAG, "Multi-line note created with ID: ${parentRef.id}")
+            parentRef.id
         }
+    }.onFailure { Log.e(TAG, "Error creating multi-line note", it) }
+
+    companion object {
+        private const val TAG = "NoteRepository"
     }
 }
