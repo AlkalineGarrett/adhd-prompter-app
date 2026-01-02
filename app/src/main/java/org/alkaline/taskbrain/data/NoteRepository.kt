@@ -255,7 +255,7 @@ class NoteRepository(
             val parentRef = newNoteRef()
 
             val childIds = childLines.map { line ->
-                if (line.isNotBlank()) {
+                if (line.isNotEmpty()) {
                     val childRef = newNoteRef()
                     batch.set(childRef, newNoteData(userId, line, parentRef.id))
                     childRef.id

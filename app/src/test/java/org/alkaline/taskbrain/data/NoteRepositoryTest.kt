@@ -267,6 +267,43 @@ class NoteRepositoryTest {
         verify(exactly = 2) { batch.set(any(), any<Map<String, Any?>>()) }
     }
 
+    @Test
+    fun `createMultiLineNote treats whitespace-only lines as content, not spacers`() = runTest {
+        val refs = listOf("parent_id", "child_1", "child_2").map { id ->
+            mockk<DocumentReference> { every { this@mockk.id } returns id }
+        }
+        every { mockCollection.document() } returnsMany refs
+        val batch = mockk<WriteBatch>(relaxed = true) {
+            every { commit() } returns Tasks.forResult(null)
+        }
+        every { mockFirestore.batch() } returns batch
+
+        // Whitespace-only line should create a child note, not be treated as spacer
+        repository.createMultiLineNote("Line 1\n   \nLine 3").getOrThrow()
+
+        // Should create 3 notes: parent + 2 children (whitespace line is content)
+        verify(exactly = 3) { batch.set(any(), any<Map<String, Any?>>()) }
+    }
+
+    @Test
+    fun `saveNoteWithChildren treats whitespace-only lines as content`() = runTest {
+        val parentRef = mockDocument("note_1", null)
+        val childRef = mockk<DocumentReference> { every { id } returns "new_child" }
+        every { mockCollection.document() } returns childRef
+        mockTransaction(parentRef)
+
+        val result = repository.saveNoteWithChildren(
+            "note_1",
+            listOf(
+                NoteLine("Parent", "note_1"),
+                NoteLine("   ", null)  // Whitespace-only should create child
+            )
+        ).getOrThrow()
+
+        // Should return ID for the whitespace line
+        assertEquals("new_child", result[1])
+    }
+
     // endregion
 
     companion object {

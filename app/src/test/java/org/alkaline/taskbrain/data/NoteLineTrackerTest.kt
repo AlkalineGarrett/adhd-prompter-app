@@ -147,7 +147,7 @@ class NoteLineTrackerTest {
     }
 
     @Test
-    fun `complex scenario - positional matching`() {
+    fun `modification preserves ID at same position`() {
         setLines(
             "Line 1" to parentId,
             "Line 2" to "child_1",
@@ -155,13 +155,85 @@ class NoteLineTrackerTest {
             "Line 4" to "child_3"
         )
 
-        tracker.updateTrackedLines("Line 1\nModified Line 3\nNew Line\nLine 4")
+        tracker.updateTrackedLines("Line 1\nModified Line 2\nLine 3\nLine 4")
 
         assertLines(
             "Line 1" to parentId,
-            "Modified Line 3" to "child_1",
-            "New Line" to "child_2",
+            "Modified Line 2" to "child_1",
+            "Line 3" to "child_2",
             "Line 4" to "child_3"
         )
+    }
+
+    // Requirement: IDs should follow content, not position
+    @Test
+    fun `swapping two lines preserves IDs with content`() {
+        setLines(
+            "Line 1" to parentId,
+            "Line 2" to "child_1",
+            "Line 3" to "child_2"
+        )
+
+        // User swaps Line 2 and Line 3
+        tracker.updateTrackedLines("Line 1\nLine 3\nLine 2")
+
+        assertLines(
+            "Line 1" to parentId,
+            "Line 3" to "child_2",  // ID follows content
+            "Line 2" to "child_1"   // ID follows content
+        )
+    }
+
+    @Test
+    fun `reordering multiple lines preserves IDs with content`() {
+        setLines(
+            "Line 1" to parentId,
+            "AAA" to "child_a",
+            "BBB" to "child_b",
+            "CCC" to "child_c"
+        )
+
+        // User reorders to CCC, AAA, BBB
+        tracker.updateTrackedLines("Line 1\nCCC\nAAA\nBBB")
+
+        assertLines(
+            "Line 1" to parentId,
+            "CCC" to "child_c",
+            "AAA" to "child_a",
+            "BBB" to "child_b"
+        )
+    }
+
+    // Requirement: If first line deleted, second becomes parent content
+    @Test
+    fun `deleting first line promotes second line to parent`() {
+        setLines(
+            "Line 1" to parentId,
+            "Line 2" to "child_1",
+            "Line 3" to "child_2"
+        )
+
+        // User deletes first line
+        tracker.updateTrackedLines("Line 2\nLine 3")
+
+        // Line 2 becomes new first line with parent ID
+        // Line 3 keeps its ID
+        assertLines(
+            "Line 2" to parentId,
+            "Line 3" to "child_2"
+        )
+        // Note: child_1 should be soft-deleted by repository (not tracker's job)
+    }
+
+    @Test
+    fun `whitespace-only line is NOT treated as empty`() {
+        setLines("Line 1" to parentId)
+
+        tracker.updateTrackedLines("Line 1\n   \nLine 3")
+
+        val lines = tracker.getTrackedLines()
+        assertEquals(3, lines.size)
+        assertEquals("   ", lines[1].content)  // Whitespace preserved
+        assertNull(lines[1].noteId)  // New line, needs ID
     }
 }

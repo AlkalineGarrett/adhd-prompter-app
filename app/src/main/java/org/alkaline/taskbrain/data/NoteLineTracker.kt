@@ -1,8 +1,8 @@
 package org.alkaline.taskbrain.data
 
 /**
- * Tracks note lines and their corresponding note IDs, using heuristics to match lines
- * across edits, insertions, and deletions.
+ * Tracks note lines and their corresponding note IDs, preserving IDs with content
+ * across edits, insertions, deletions, and reordering.
  */
 class NoteLineTracker(
     private val parentNoteId: String
@@ -10,90 +10,60 @@ class NoteLineTracker(
     private var trackedLines = listOf<NoteLine>()
 
     /**
-     * Updates the tracked lines based on the new content provided by the user.
-     * It uses a heuristic to match lines and preserve Note IDs across edits, insertions, and deletions.
+     * Updates tracked lines based on new content.
+     * Uses content-based matching to preserve IDs when lines are reordered,
+     * with positional fallback for modifications.
      */
     fun updateTrackedLines(newContent: String) {
         val newLinesContent = newContent.lines()
         val oldLines = trackedLines
-        val newTrackedLines = mutableListOf<NoteLine>()
-        
-        var oldIndex = 0
-        var newIndex = 0
-        
-        while (newIndex < newLinesContent.size) {
-            val newLine = newLinesContent[newIndex]
-            
-            // If we ran out of old lines, everything remaining is new
-            if (oldIndex >= oldLines.size) {
-                newTrackedLines.add(NoteLine(newLine, null))
-                newIndex++
-                continue
+
+        if (oldLines.isEmpty()) {
+            trackedLines = newLinesContent.mapIndexed { index, content ->
+                NoteLine(content, if (index == 0) parentNoteId else null)
             }
-            
-            val oldLine = oldLines[oldIndex]
-            
-            // 1. Exact Match
-            if (oldLine.content == newLine) {
-                newTrackedLines.add(oldLine)
-                oldIndex++
-                newIndex++
-                continue
-            }
-            
-            // 2. Look ahead to detect Deletions or Insertions
-            val lookAhead = 5
-            
-            // Check for Deletion: Does the current newLine match a future oldLine?
-            // If so, the intermediate oldLines were deleted.
-            var foundInOld = -1
-            for (k in 1..lookAhead) {
-                if (oldIndex + k < oldLines.size && oldLines[oldIndex + k].content == newLine) {
-                    foundInOld = oldIndex + k
-                    break
-                }
-            }
-            
-            // Check for Insertion: Does the current oldLine match a future newLine?
-            // If so, the intermediate newLines are insertions.
-            var foundInNew = -1
-            for (k in 1..lookAhead) {
-                if (newIndex + k < newLinesContent.size && newLinesContent[newIndex + k] == oldLine.content) {
-                    foundInNew = newIndex + k
-                    break
-                }
-            }
-            
-            if (foundInOld != -1 && (foundInNew == -1 || foundInOld < foundInNew)) {
-                // Detected Deletion (or a closer match in old lines implies deletion is more likely)
-                // Consume the match at foundInOld. The lines before it are skipped (deleted).
-                newTrackedLines.add(oldLines[foundInOld])
-                oldIndex = foundInOld + 1
-                newIndex++
-                continue
-            }
-            
-            if (foundInNew != -1) {
-                // Detected Insertion
-                // The current newLine is an insertion. The oldLine is preserved for later.
-                newTrackedLines.add(NoteLine(newLine, null))
-                newIndex++
-                continue
-            }
-            
-            // 3. Fallback: Modification
-            // Assume the current line was edited in place.
-            val noteId = if (newTrackedLines.isEmpty()) parentNoteId else oldLines[oldIndex].noteId
-            newTrackedLines.add(NoteLine(newLine, noteId))
-            oldIndex++
-            newIndex++
+            return
         }
-        
-        // Ensure first line has the parent ID
+
+        // Map content to list of indices in oldLines
+        val contentToOldIndices = mutableMapOf<String, MutableList<Int>>()
+        oldLines.forEachIndexed { index, line ->
+            contentToOldIndices.getOrPut(line.content) { mutableListOf() }.add(index)
+        }
+
+        val newIds = arrayOfNulls<String>(newLinesContent.size)
+        val oldConsumed = BooleanArray(oldLines.size)
+
+        // Phase 1: Exact matches
+        newLinesContent.forEachIndexed { index, content ->
+            val indices = contentToOldIndices[content]
+            if (!indices.isNullOrEmpty()) {
+                val oldIdx = indices.removeAt(0)
+                newIds[index] = oldLines[oldIdx].noteId
+                oldConsumed[oldIdx] = true
+            }
+        }
+
+        // Phase 2: Positional matches for modifications
+        newLinesContent.forEachIndexed { index, content ->
+            if (newIds[index] == null) {
+                // Try to take ID from old line at same position if it wasn't consumed
+                if (index < oldLines.size && !oldConsumed[index]) {
+                    newIds[index] = oldLines[index].noteId
+                    oldConsumed[index] = true
+                }
+            }
+        }
+
+        val newTrackedLines = newLinesContent.mapIndexed { index, content ->
+            NoteLine(content, newIds[index])
+        }.toMutableList()
+
+        // Ensure first line always has parent ID
         if (newTrackedLines.isNotEmpty() && newTrackedLines[0].noteId != parentNoteId) {
-             newTrackedLines[0] = newTrackedLines[0].copy(noteId = parentNoteId)
+            newTrackedLines[0] = newTrackedLines[0].copy(noteId = parentNoteId)
         }
-        
+
         trackedLines = newTrackedLines
     }
 
@@ -104,8 +74,8 @@ class NoteLineTracker(
     }
 
     fun updateLineNoteId(index: Int, noteId: String) {
-        val currentList = trackedLines.toMutableList()
-        if (index < currentList.size) {
+        if (index < trackedLines.size) {
+            val currentList = trackedLines.toMutableList()
             currentList[index] = currentList[index].copy(noteId = noteId)
             trackedLines = currentList
         }
@@ -114,6 +84,5 @@ class NoteLineTracker(
 
 data class NoteLine(
     val content: String,
-    val noteId: String? = null // Null if it's a new line or hasn't been persisted yet
+    val noteId: String? = null
 )
-
