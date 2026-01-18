@@ -266,6 +266,17 @@ private fun MainContentTextField(
     // Flag to skip restore logic when unselect is intentional
     var skipNextRestore by remember { mutableStateOf(false) }
 
+    // Immediately sync previousSelection when cursor moves (collapsed → collapsed)
+    // This ensures previousSelection is up-to-date before any interaction logic runs
+    // BUT: Don't sync when a selection collapses (non-collapsed → collapsed),
+    // as that would break the tap-in-selection restore feature
+    LaunchedEffect(textFieldValue.selection) {
+        if (textFieldValue.selection.collapsed && previousSelection.collapsed &&
+            previousSelection != textFieldValue.selection) {
+            previousSelection = textFieldValue.selection
+        }
+    }
+
     // Detect selection changes and handle:
     // 1. New selection created (from no selection) -> show menu (after gesture ends)
     // 2. Selection changed (from one selection to another) -> show menu (after gesture ends)
