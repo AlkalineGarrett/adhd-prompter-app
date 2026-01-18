@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import android.content.Context
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -49,6 +50,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
@@ -158,6 +160,7 @@ private fun MainContentTextField(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var textFieldValue by remember { mutableStateOf(TextFieldValue(content)) }
 
     // Sync external content changes (e.g., from ViewModel)
@@ -172,11 +175,15 @@ private fun MainContentTextField(
         onValueChange = { newValue ->
             // First check for checkbox tap (cursor moved to checkbox without text change)
             val tapped = handleCheckboxTap(textFieldValue, newValue)
-            val transformed = if (tapped != null) {
+            var transformed = if (tapped != null) {
                 tapped
             } else {
                 transformBulletText(textFieldValue, newValue)
             }
+
+            // Check if this looks like a paste and transform HTML lists to bullets
+            transformed = handlePasteTransformation(context, textFieldValue, transformed)
+
             textFieldValue = transformed
             if (transformed.text != content) {
                 onContentChange(transformed.text)
@@ -191,6 +198,44 @@ private fun MainContentTextField(
             disabledContainerColor = Color.Transparent
         )
     )
+}
+
+/**
+ * Detects paste operations and transforms HTML list content to bulleted text.
+ */
+private fun handlePasteTransformation(
+    context: Context,
+    oldValue: TextFieldValue,
+    newValue: TextFieldValue
+): TextFieldValue {
+    // Detect if this is a paste: text grew significantly and it's an insertion
+    val insertedLength = newValue.text.length - oldValue.text.length
+    if (insertedLength < 2) return newValue // Not a paste, too small
+
+    // Get the inserted text
+    val insertionStart = oldValue.selection.min
+    val insertionEnd = insertionStart + insertedLength
+    if (insertionEnd > newValue.text.length) return newValue
+
+    val insertedText = newValue.text.substring(insertionStart, insertionEnd)
+
+    // Check if clipboard has HTML lists that should be converted
+    val bulletedText = getClipboardAsBulletedText(context) ?: return newValue
+
+    // Verify the inserted text matches clipboard content (it's actually a paste)
+    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    val clipText = clipboardManager.primaryClip?.getItemAt(0)?.text?.toString() ?: return newValue
+
+    if (insertedText.trim() != clipText.trim()) return newValue // Not a clipboard paste
+
+    // Replace the pasted text with the bulleted version
+    val newText = newValue.text.substring(0, insertionStart) +
+            bulletedText +
+            newValue.text.substring(insertionEnd)
+
+    val newCursorPos = insertionStart + bulletedText.length
+
+    return TextFieldValue(newText, TextRange(newCursorPos))
 }
 
 @Composable
