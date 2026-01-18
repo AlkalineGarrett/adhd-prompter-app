@@ -117,6 +117,9 @@ fun CurrentNoteScreen(
         )
     }
 
+    // Monitor clipboard and add HTML formatting for bullets/checkboxes
+    ClipboardHtmlConverter()
+
     Column(modifier = Modifier.fillMaxSize()) {
         StatusBar(
             isSaved = isSaved,
