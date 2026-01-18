@@ -34,6 +34,8 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -153,9 +155,24 @@ private fun MainContentTextField(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
+    var textFieldValue by remember { mutableStateOf(TextFieldValue(content)) }
+
+    // Sync external content changes (e.g., from ViewModel)
+    LaunchedEffect(content) {
+        if (content != textFieldValue.text) {
+            textFieldValue = TextFieldValue(content, TextRange(content.length))
+        }
+    }
+
     TextField(
-        value = content,
-        onValueChange = onContentChange,
+        value = textFieldValue,
+        onValueChange = { newValue ->
+            val transformed = transformBulletText(textFieldValue, newValue)
+            textFieldValue = transformed
+            if (transformed.text != content) {
+                onContentChange(transformed.text)
+            }
+        },
         modifier = modifier
             .fillMaxWidth()
             .focusRequester(focusRequester),
