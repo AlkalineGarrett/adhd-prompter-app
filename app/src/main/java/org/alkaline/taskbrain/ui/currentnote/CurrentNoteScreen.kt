@@ -11,8 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +43,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -51,7 +52,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -69,6 +69,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
+import androidx.compose.ui.platform.TextToolbarStatus
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.ui.Dimens
@@ -78,6 +86,7 @@ import org.alkaline.taskbrain.ui.components.ErrorDialog
 @Composable
 fun CurrentNoteScreen(
     noteId: String? = null,
+    isFingerDownFlow: StateFlow<Boolean>? = null,
     currentNoteViewModel: CurrentNoteViewModel = viewModel()
 ) {
     val saveStatus by currentNoteViewModel.saveStatus.observeAsState()
@@ -92,6 +101,7 @@ fun CurrentNoteScreen(
     var isAgentSectionExpanded by remember { mutableStateOf(false) }
 
     val mainContentFocusRequester = remember { FocusRequester() }
+    var isMainContentFocused by remember { mutableStateOf(false) }
 
     // Handle initial data loading
     LaunchedEffect(noteId) {
@@ -158,6 +168,8 @@ fun CurrentNoteScreen(
                 }
             },
             focusRequester = mainContentFocusRequester,
+            onFocusChanged = { isFocused -> isMainContentFocused = isFocused },
+            isFingerDownFlow = isFingerDownFlow,
             modifier = Modifier.weight(1f)
         )
 
@@ -195,7 +207,20 @@ fun CurrentNoteScreen(
                         if (isSaved) isSaved = false
                     }
                 }
-            }
+            },
+            onPaste = { clipText ->
+                val cursorPos = textFieldValue.selection.start
+                val newText = textFieldValue.text.substring(0, cursorPos) +
+                        clipText +
+                        textFieldValue.text.substring(cursorPos)
+                val newCursor = cursorPos + clipText.length
+                textFieldValue = TextFieldValue(newText, TextRange(newCursor))
+                if (newText != userContent) {
+                    userContent = newText
+                    if (isSaved) isSaved = false
+                }
+            },
+            isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed
         )
 
         AgentCommandSection(
@@ -222,11 +247,15 @@ private fun MainContentTextField(
     textFieldValue: TextFieldValue,
     onTextFieldValueChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
+    onFocusChanged: (Boolean) -> Unit,
+    isFingerDownFlow: StateFlow<Boolean>? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
 
     // Track drag selection state
     var dragStartLine by remember { mutableIntStateOf(-1) }
@@ -234,6 +263,78 @@ private fun MainContentTextField(
 
     // Track last indent time for double-space to unindent
     var lastIndentTime by remember { mutableStateOf(0L) }
+
+    // Context menu state
+    var showContextMenu by remember { mutableStateOf(false) }
+    var contextMenuOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // Track previous selection to detect tap-in-selection and new selections
+    var previousSelection by remember { mutableStateOf(TextRange.Zero) }
+
+    // Flag to skip restore logic when unselect is intentional
+    var skipNextRestore by remember { mutableStateOf(false) }
+
+    // Detect selection changes and handle:
+    // 1. New selection created (from no selection) -> show menu (after gesture ends)
+    // 2. Selection changed (from one selection to another) -> show menu (after gesture ends)
+    // 3. Tap in existing selection (selection collapses to point within it) -> restore and show menu
+    LaunchedEffect(textFieldValue.selection, textLayoutResult) {
+        val currentSelection = textFieldValue.selection
+        val prevSel = previousSelection
+
+        // Case 1 & 2: Selection is non-collapsed and either:
+        // - was collapsed before (new selection from cursor)
+        // - was different selection before (new selection replacing old)
+        val isNewOrChangedSelection = !currentSelection.collapsed &&
+            (prevSel.collapsed || currentSelection != prevSel)
+
+        if (isNewOrChangedSelection && isFingerDownFlow != null) {
+            // If finger is already up, wait for next down->up cycle
+            // This handles selection handles which may bypass Activity's dispatchTouchEvent
+            if (!isFingerDownFlow.value) {
+                isFingerDownFlow.first { it }  // Wait for finger down
+            }
+
+            // Wait for finger to lift
+            isFingerDownFlow.first { !it }
+
+            // Finger is up - show menu if we still have a selection
+            if (!textFieldValue.selection.collapsed) {
+                textLayoutResult?.let { layout ->
+                    val selStart = textFieldValue.selection.min
+                    val startLine = layout.getLineForOffset(selStart)
+                    val lineRight = layout.getLineRight(startLine)
+                    val lineTop = layout.getLineTop(startLine)
+                    contextMenuOffset = Offset(lineRight + 16f, lineTop)
+                }
+                showContextMenu = true
+            }
+        } else if (currentSelection.collapsed && !prevSel.collapsed) {
+            // Case 3: Selection just collapsed - check if cursor is within the previous selection
+            // Skip if this was an intentional unselect action
+            if (skipNextRestore) {
+                skipNextRestore = false
+            } else {
+                val cursorPos = currentSelection.start
+                if (cursorPos >= prevSel.min && cursorPos <= prevSel.max) {
+                    // Tap was inside the selection - restore selection and show menu
+                    textLayoutResult?.let { layout ->
+                        val startLine = layout.getLineForOffset(prevSel.min)
+                        val lineRight = layout.getLineRight(startLine)
+                        val lineTop = layout.getLineTop(startLine)
+                        contextMenuOffset = Offset(lineRight + 16f, lineTop)
+                    }
+                    // Restore the previous selection
+                    onTextFieldValueChange(textFieldValue.copy(selection = prevSel))
+                    showContextMenu = true
+                    // Don't update previousSelection here - we're restoring it
+                    return@LaunchedEffect
+                }
+            }
+        }
+
+        previousSelection = currentSelection
+    }
 
     Row(modifier = modifier.fillMaxWidth()) {
         // Gutter
@@ -266,69 +367,200 @@ private fun MainContentTextField(
             modifier = Modifier.fillMaxHeight()
         )
 
-        // Text field
+        // Text field with selection tap handling
         Box(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(scrollState)
         ) {
-            BasicTextField(
-                value = textFieldValue,
-                onValueChange = { newValue ->
-                    // Check if this is space with selection -> indent/unindent
-                    if (isSpaceReplacingSelection(textFieldValue, newValue)) {
-                        val currentTime = System.currentTimeMillis()
-                        val isDoubleSpace = currentTime - lastIndentTime < 250
-                        lastIndentTime = currentTime
+            // Disable the system text toolbar by providing a no-op implementation
+            val emptyTextToolbar = remember {
+                object : TextToolbar {
+                    override val status: TextToolbarStatus = TextToolbarStatus.Hidden
+                    override fun hide() {}
+                    override fun showMenu(
+                        rect: Rect,
+                        onCopyRequested: (() -> Unit)?,
+                        onPasteRequested: (() -> Unit)?,
+                        onCutRequested: (() -> Unit)?,
+                        onSelectAllRequested: (() -> Unit)?
+                    ) {}
+                }
+            }
 
-                        val result = if (isDoubleSpace) {
-                            // Double-space: unindent from original state
-                            // First unindent undoes the indent we just did, second actually unindents
-                            val firstUnindent = handleSelectionUnindent(textFieldValue)
-                            if (firstUnindent != null) {
-                                handleSelectionUnindent(firstUnindent) ?: firstUnindent
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalTextToolbar provides emptyTextToolbar
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    BasicTextField(
+                    value = textFieldValue,
+                    onValueChange = { newValue ->
+                        // Check if this is space with selection -> indent/unindent
+                        if (isSpaceReplacingSelection(textFieldValue, newValue)) {
+                            val currentTime = System.currentTimeMillis()
+                            val isDoubleSpace = currentTime - lastIndentTime < 250
+                            lastIndentTime = currentTime
+
+                            val result = if (isDoubleSpace) {
+                                // Double-space: unindent from original state
+                                // First unindent undoes the indent we just did, second actually unindents
+                                val firstUnindent = handleSelectionUnindent(textFieldValue)
+                                if (firstUnindent != null) {
+                                    handleSelectionUnindent(firstUnindent) ?: firstUnindent
+                                } else {
+                                    // Can't unindent - keep current state
+                                    textFieldValue
+                                }
                             } else {
-                                // Can't unindent - keep current state
-                                textFieldValue
+                                // Single space - indent
+                                handleSelectionIndent(textFieldValue)
                             }
-                        } else {
-                            // Single space - indent
-                            handleSelectionIndent(textFieldValue)
+
+                            onTextFieldValueChange(result)
+                            // Always return early to prevent space from replacing selection
+                            return@BasicTextField
                         }
 
-                        onTextFieldValueChange(result)
-                        // Always return early to prevent space from replacing selection
-                        return@BasicTextField
+                        // Check if this is a deletion of fully selected line(s)
+                        val lineDeleteResult = handleFullLineDelete(textFieldValue, newValue)
+                        if (lineDeleteResult != null) {
+                            onTextFieldValueChange(lineDeleteResult)
+                            return@BasicTextField
+                        }
+
+                        val tapped = handleCheckboxTap(textFieldValue, newValue)
+                        var transformed = if (tapped != null) {
+                            tapped
+                        } else {
+                            transformBulletText(textFieldValue, newValue)
+                        }
+
+                        transformed = handlePasteTransformation(context, textFieldValue, transformed)
+
+                        onTextFieldValueChange(transformed)
+                    },
+                    onTextLayout = { result ->
+                        textLayoutResult = result
+                    },
+                    textStyle = TextStyle(fontSize = 16.sp, color = Color.Black),
+                    cursorBrush = SolidColor(Color.Black),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .focusRequester(focusRequester)
+                        .onFocusChanged { focusState ->
+                            onFocusChanged(focusState.isFocused)
+                        }
+                )
+
+                // Context menu for selection
+                DropdownMenu(
+                    expanded = showContextMenu,
+                    onDismissRequest = { showContextMenu = false },
+                    offset = with(density) {
+                        androidx.compose.ui.unit.DpOffset(
+                            contextMenuOffset.x.toDp(),
+                            contextMenuOffset.y.toDp() - 48.dp
+                        )
                     }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Copy") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_copy),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            val selectedText = textFieldValue.text.substring(
+                                textFieldValue.selection.min,
+                                textFieldValue.selection.max
+                            )
+                            clipboardManager.setText(AnnotatedString(selectedText))
+                            showContextMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Cut") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_cut),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            skipNextRestore = true
+                            val selectedText = textFieldValue.text.substring(
+                                textFieldValue.selection.min,
+                                textFieldValue.selection.max
+                            )
+                            clipboardManager.setText(AnnotatedString(selectedText))
+                            val newText = textFieldValue.text.removeRange(
+                                textFieldValue.selection.min,
+                                textFieldValue.selection.max
+                            )
+                            onTextFieldValueChange(TextFieldValue(newText, TextRange(textFieldValue.selection.min)))
+                            showContextMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Select All") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_select_all),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            onTextFieldValueChange(textFieldValue.copy(selection = TextRange(0, textFieldValue.text.length)))
+                            showContextMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Unselect") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_deselect),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            // Collapse selection to cursor at end of selection
+                            skipNextRestore = true
+                            onTextFieldValueChange(textFieldValue.copy(selection = TextRange(textFieldValue.selection.max)))
+                            showContextMenu = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete") },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_delete),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            skipNextRestore = true
+                            val newText = textFieldValue.text.removeRange(
+                                textFieldValue.selection.min,
+                                textFieldValue.selection.max
+                            )
+                            onTextFieldValueChange(TextFieldValue(newText, TextRange(textFieldValue.selection.min)))
+                            showContextMenu = false
+                        }
+                    )
+                }
 
-                    // Check if this is a deletion of fully selected line(s)
-                    val lineDeleteResult = handleFullLineDelete(textFieldValue, newValue)
-                    if (lineDeleteResult != null) {
-                        onTextFieldValueChange(lineDeleteResult)
-                        return@BasicTextField
-                    }
-
-                    val tapped = handleCheckboxTap(textFieldValue, newValue)
-                    var transformed = if (tapped != null) {
-                        tapped
-                    } else {
-                        transformBulletText(textFieldValue, newValue)
-                    }
-
-                    transformed = handlePasteTransformation(context, textFieldValue, transformed)
-
-                    onTextFieldValueChange(transformed)
-                },
-                onTextLayout = { result ->
-                    textLayoutResult = result
-                },
-                textStyle = TextStyle(fontSize = 16.sp, color = Color.Black),
-                cursorBrush = SolidColor(Color.Black),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-                    .focusRequester(focusRequester)
-            )
+            }
+            }
         }
     }
 }
@@ -725,8 +957,12 @@ private fun CommandBar(
     onToggleCheckbox: () -> Unit,
     onIndent: () -> Unit,
     onUnindent: () -> Unit,
+    onPaste: (String) -> Unit,
+    isPasteEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val clipboardManager = LocalClipboardManager.current
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -782,6 +1018,25 @@ private fun CommandBar(
                 painter = painterResource(id = R.drawable.ic_format_indent_increase),
                 contentDescription = "Indent",
                 tint = Color(0xFF616161),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Paste button
+        IconButton(
+            onClick = {
+                val clipText = clipboardManager.getText()?.text ?: ""
+                if (clipText.isNotEmpty()) {
+                    onPaste(clipText)
+                }
+            },
+            enabled = isPasteEnabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_paste),
+                contentDescription = "Paste",
+                tint = if (isPasteEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
                 modifier = Modifier.size(24.dp)
             )
         }

@@ -44,6 +44,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
@@ -62,7 +63,8 @@ sealed class Screen(val route: String, val titleResourceId: Int, val icon: Image
 fun MainScreen(
     onSignInClick: () -> Unit,
     isUserSignedIn: Boolean,
-    onSignOutClick: () -> Unit
+    onSignOutClick: () -> Unit,
+    isFingerDown: StateFlow<Boolean>
 ) {
     val navController = rememberNavController()
     
@@ -186,11 +188,11 @@ fun MainScreen(
                 })
             ) { backStackEntry ->
                 val noteId = backStackEntry.arguments?.getString("noteId")
-                CurrentNoteScreen(noteId = noteId)
+                CurrentNoteScreen(noteId = noteId, isFingerDownFlow = isFingerDown)
             }
             // Keep the basic route for direct navigation (tab clicks)
             composable(Screen.CurrentNote.route) {
-                CurrentNoteScreen()
+                CurrentNoteScreen(isFingerDownFlow = isFingerDown)
             }
             composable(Screen.NoteList.route) {
                 NoteListScreen(

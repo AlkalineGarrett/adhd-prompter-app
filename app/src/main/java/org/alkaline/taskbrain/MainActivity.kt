@@ -2,6 +2,7 @@ package org.alkaline.taskbrain
 
 import android.os.Bundle
 import android.util.Log
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -24,6 +25,9 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.GoogleAuthProvider
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -31,10 +35,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private lateinit var credentialManager: CredentialManager
 
+    // Global finger state tracking - receives ALL touch events before Compose
+    private val _isFingerDown = MutableStateFlow(false)
+    val isFingerDown: StateFlow<Boolean> = _isFingerDown.asStateFlow()
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> _isFingerDown.value = true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> _isFingerDown.value = false
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        
+
         auth = FirebaseAuth.getInstance()
         credentialManager = CredentialManager.create(this)
 
@@ -56,7 +72,8 @@ class MainActivity : AppCompatActivity() {
                 isUserSignedIn = user != null,
                 onSignOutClick = {
                     auth.signOut()
-                }
+                },
+                isFingerDown = isFingerDown
             )
         }
     }
