@@ -86,6 +86,7 @@ fun CurrentNoteScreen(
     val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
 
     var userContent by remember { mutableStateOf("") }
+    var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
     var isSaved by remember { mutableStateOf(true) }
     var agentCommand by remember { mutableStateOf("") }
     var isAgentSectionExpanded by remember { mutableStateOf(false) }
@@ -100,7 +101,9 @@ fun CurrentNoteScreen(
     // Update content when loaded from VM
     LaunchedEffect(loadStatus) {
         if (loadStatus is LoadStatus.Success) {
-            userContent = (loadStatus as LoadStatus.Success).content
+            val loadedContent = (loadStatus as LoadStatus.Success).content
+            userContent = loadedContent
+            textFieldValue = TextFieldValue(loadedContent, TextRange(loadedContent.length))
         }
     }
 
@@ -146,13 +149,53 @@ fun CurrentNoteScreen(
         )
 
         MainContentTextField(
-            content = userContent,
-            onContentChange = {
-                userContent = it
-                if (isSaved) isSaved = false
+            textFieldValue = textFieldValue,
+            onTextFieldValueChange = { newValue ->
+                textFieldValue = newValue
+                if (newValue.text != userContent) {
+                    userContent = newValue.text
+                    if (isSaved) isSaved = false
+                }
             },
             focusRequester = mainContentFocusRequester,
             modifier = Modifier.weight(1f)
+        )
+
+        CommandBar(
+            onToggleBullet = {
+                val newValue = toggleBulletOnCurrentLine(textFieldValue)
+                textFieldValue = newValue
+                if (newValue.text != userContent) {
+                    userContent = newValue.text
+                    if (isSaved) isSaved = false
+                }
+            },
+            onToggleCheckbox = {
+                val newValue = toggleCheckboxOnCurrentLine(textFieldValue)
+                textFieldValue = newValue
+                if (newValue.text != userContent) {
+                    userContent = newValue.text
+                    if (isSaved) isSaved = false
+                }
+            },
+            onIndent = {
+                val newValue = handleSelectionIndent(textFieldValue)
+                textFieldValue = newValue
+                if (newValue.text != userContent) {
+                    userContent = newValue.text
+                    if (isSaved) isSaved = false
+                }
+            },
+            onUnindent = {
+                val newValue = handleSelectionUnindent(textFieldValue)
+                if (newValue != null) {
+                    textFieldValue = newValue
+                    if (newValue.text != userContent) {
+                        userContent = newValue.text
+                        if (isSaved) isSaved = false
+                    }
+                }
+            }
         )
 
         AgentCommandSection(
@@ -176,13 +219,12 @@ private val GutterLineColor = Color(0xFF9E9E9E) // Dark gray
 
 @Composable
 private fun MainContentTextField(
-    content: String,
-    onContentChange: (String) -> Unit,
+    textFieldValue: TextFieldValue,
+    onTextFieldValueChange: (TextFieldValue) -> Unit,
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var textFieldValue by remember { mutableStateOf(TextFieldValue(content)) }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val scrollState = rememberScrollState()
 
@@ -193,13 +235,6 @@ private fun MainContentTextField(
     // Track last indent time for double-space to unindent
     var lastIndentTime by remember { mutableStateOf(0L) }
 
-    // Sync external content changes (e.g., from ViewModel)
-    LaunchedEffect(content) {
-        if (content != textFieldValue.text) {
-            textFieldValue = TextFieldValue(content, TextRange(content.length))
-        }
-    }
-
     Row(modifier = modifier.fillMaxWidth()) {
         // Gutter
         LineGutter(
@@ -207,13 +242,13 @@ private fun MainContentTextField(
             scrollState = scrollState,
             onLineSelected = { lineIndex ->
                 val selection = getLineSelection(textFieldValue.text, lineIndex)
-                textFieldValue = textFieldValue.copy(selection = selection)
+                onTextFieldValueChange(textFieldValue.copy(selection = selection))
             },
             onDragStart = { lineIndex ->
                 dragStartLine = lineIndex
                 dragEndLine = lineIndex
                 val selection = getLineSelection(textFieldValue.text, lineIndex)
-                textFieldValue = textFieldValue.copy(selection = selection)
+                onTextFieldValueChange(textFieldValue.copy(selection = selection))
             },
             onDragUpdate = { lineIndex ->
                 if (dragStartLine >= 0 && lineIndex != dragEndLine) {
@@ -221,7 +256,7 @@ private fun MainContentTextField(
                     val startLine = minOf(dragStartLine, dragEndLine)
                     val endLine = maxOf(dragStartLine, dragEndLine)
                     val selection = getMultiLineSelection(textFieldValue.text, startLine, endLine)
-                    textFieldValue = textFieldValue.copy(selection = selection)
+                    onTextFieldValueChange(textFieldValue.copy(selection = selection))
                 }
             },
             onDragEnd = {
@@ -261,12 +296,7 @@ private fun MainContentTextField(
                             handleSelectionIndent(textFieldValue)
                         }
 
-                        if (result != null) {
-                            textFieldValue = result
-                            if (result.text != content) {
-                                onContentChange(result.text)
-                            }
-                        }
+                        onTextFieldValueChange(result)
                         // Always return early to prevent space from replacing selection
                         return@BasicTextField
                     }
@@ -274,10 +304,7 @@ private fun MainContentTextField(
                     // Check if this is a deletion of fully selected line(s)
                     val lineDeleteResult = handleFullLineDelete(textFieldValue, newValue)
                     if (lineDeleteResult != null) {
-                        textFieldValue = lineDeleteResult
-                        if (lineDeleteResult.text != content) {
-                            onContentChange(lineDeleteResult.text)
-                        }
+                        onTextFieldValueChange(lineDeleteResult)
                         return@BasicTextField
                     }
 
@@ -290,10 +317,7 @@ private fun MainContentTextField(
 
                     transformed = handlePasteTransformation(context, textFieldValue, transformed)
 
-                    textFieldValue = transformed
-                    if (transformed.text != content) {
-                        onContentChange(transformed.text)
-                    }
+                    onTextFieldValueChange(transformed)
                 },
                 onTextLayout = { result ->
                     textLayoutResult = result
@@ -692,6 +716,75 @@ fun StatusBar(
             tint = if (isSaved) Color(0xFF4CAF50) else Color(0xFFFFC107),
             modifier = Modifier.size(Dimens.StatusIconSize)
         )
+    }
+}
+
+@Composable
+private fun CommandBar(
+    onToggleBullet: () -> Unit,
+    onToggleCheckbox: () -> Unit,
+    onIndent: () -> Unit,
+    onUnindent: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF5F5F5))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        // Bullet toggle button
+        IconButton(
+            onClick = onToggleBullet,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_format_list_bulleted),
+                contentDescription = "Toggle bullet",
+                tint = Color(0xFF616161),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Checkbox toggle button
+        IconButton(
+            onClick = onToggleCheckbox,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_check_box_outline),
+                contentDescription = "Toggle checkbox",
+                tint = Color(0xFF616161),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Unindent button
+        IconButton(
+            onClick = onUnindent,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_format_indent_decrease),
+                contentDescription = "Unindent",
+                tint = Color(0xFF616161),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Indent button
+        IconButton(
+            onClick = onIndent,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_format_indent_increase),
+                contentDescription = "Indent",
+                tint = Color(0xFF616161),
+                modifier = Modifier.size(24.dp)
+            )
+        }
     }
 }
 
