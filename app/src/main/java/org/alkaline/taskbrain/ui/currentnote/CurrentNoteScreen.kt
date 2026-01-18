@@ -9,17 +9,25 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -32,26 +40,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.ui.Dimens
@@ -153,6 +170,10 @@ fun CurrentNoteScreen(
     }
 }
 
+private val GutterWidth = 21.dp
+private val GutterBackgroundColor = Color(0xFFE0E0E0) // Light gray
+private val GutterLineColor = Color(0xFF9E9E9E) // Dark gray
+
 @Composable
 private fun MainContentTextField(
     content: String,
@@ -162,6 +183,15 @@ private fun MainContentTextField(
 ) {
     val context = LocalContext.current
     var textFieldValue by remember { mutableStateOf(TextFieldValue(content)) }
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val scrollState = rememberScrollState()
+
+    // Track drag selection state
+    var dragStartLine by remember { mutableIntStateOf(-1) }
+    var dragEndLine by remember { mutableIntStateOf(-1) }
+
+    // Track last indent time for double-space to unindent
+    var lastIndentTime by remember { mutableStateOf(0L) }
 
     // Sync external content changes (e.g., from ViewModel)
     LaunchedEffect(content) {
@@ -170,35 +200,250 @@ private fun MainContentTextField(
         }
     }
 
-    TextField(
-        value = textFieldValue,
-        onValueChange = { newValue ->
-            // First check for checkbox tap (cursor moved to checkbox without text change)
-            val tapped = handleCheckboxTap(textFieldValue, newValue)
-            var transformed = if (tapped != null) {
-                tapped
-            } else {
-                transformBulletText(textFieldValue, newValue)
-            }
-
-            // Check if this looks like a paste and transform HTML lists to bullets
-            transformed = handlePasteTransformation(context, textFieldValue, transformed)
-
-            textFieldValue = transformed
-            if (transformed.text != content) {
-                onContentChange(transformed.text)
-            }
-        },
-        modifier = modifier
-            .fillMaxWidth()
-            .focusRequester(focusRequester),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color.Transparent,
-            unfocusedContainerColor = Color.Transparent,
-            disabledContainerColor = Color.Transparent
+    Row(modifier = modifier.fillMaxWidth()) {
+        // Gutter
+        LineGutter(
+            textLayoutResult = textLayoutResult,
+            scrollState = scrollState,
+            onLineSelected = { lineIndex ->
+                val selection = getLineSelection(textFieldValue.text, lineIndex)
+                textFieldValue = textFieldValue.copy(selection = selection)
+            },
+            onDragStart = { lineIndex ->
+                dragStartLine = lineIndex
+                dragEndLine = lineIndex
+                val selection = getLineSelection(textFieldValue.text, lineIndex)
+                textFieldValue = textFieldValue.copy(selection = selection)
+            },
+            onDragUpdate = { lineIndex ->
+                if (dragStartLine >= 0 && lineIndex != dragEndLine) {
+                    dragEndLine = lineIndex
+                    val startLine = minOf(dragStartLine, dragEndLine)
+                    val endLine = maxOf(dragStartLine, dragEndLine)
+                    val selection = getMultiLineSelection(textFieldValue.text, startLine, endLine)
+                    textFieldValue = textFieldValue.copy(selection = selection)
+                }
+            },
+            onDragEnd = {
+                dragStartLine = -1
+                dragEndLine = -1
+            },
+            modifier = Modifier.fillMaxHeight()
         )
-    )
+
+        // Text field
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(scrollState)
+        ) {
+            BasicTextField(
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    // Check if this is space with selection -> indent/unindent
+                    if (isSpaceReplacingSelection(textFieldValue, newValue)) {
+                        val currentTime = System.currentTimeMillis()
+                        val isDoubleSpace = currentTime - lastIndentTime < 250
+                        lastIndentTime = currentTime
+
+                        val result = if (isDoubleSpace) {
+                            // Double-space: unindent from original state
+                            // First unindent undoes the indent we just did, second actually unindents
+                            val firstUnindent = handleSelectionUnindent(textFieldValue)
+                            if (firstUnindent != null) {
+                                handleSelectionUnindent(firstUnindent) ?: firstUnindent
+                            } else {
+                                // Can't unindent - keep current state
+                                textFieldValue
+                            }
+                        } else {
+                            // Single space - indent
+                            handleSelectionIndent(textFieldValue)
+                        }
+
+                        if (result != null) {
+                            textFieldValue = result
+                            if (result.text != content) {
+                                onContentChange(result.text)
+                            }
+                        }
+                        // Always return early to prevent space from replacing selection
+                        return@BasicTextField
+                    }
+
+                    // Check if this is a deletion of fully selected line(s)
+                    val lineDeleteResult = handleFullLineDelete(textFieldValue, newValue)
+                    if (lineDeleteResult != null) {
+                        textFieldValue = lineDeleteResult
+                        if (lineDeleteResult.text != content) {
+                            onContentChange(lineDeleteResult.text)
+                        }
+                        return@BasicTextField
+                    }
+
+                    val tapped = handleCheckboxTap(textFieldValue, newValue)
+                    var transformed = if (tapped != null) {
+                        tapped
+                    } else {
+                        transformBulletText(textFieldValue, newValue)
+                    }
+
+                    transformed = handlePasteTransformation(context, textFieldValue, transformed)
+
+                    textFieldValue = transformed
+                    if (transformed.text != content) {
+                        onContentChange(transformed.text)
+                    }
+                },
+                onTextLayout = { result ->
+                    textLayoutResult = result
+                },
+                textStyle = TextStyle(fontSize = 16.sp, color = Color.Black),
+                cursorBrush = SolidColor(Color.Black),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
+                    .focusRequester(focusRequester)
+            )
+        }
+    }
 }
+
+@Composable
+private fun LineGutter(
+    textLayoutResult: TextLayoutResult?,
+    scrollState: androidx.compose.foundation.ScrollState,
+    onLineSelected: (Int) -> Unit,
+    onDragStart: (Int) -> Unit,
+    onDragUpdate: (Int) -> Unit,
+    onDragEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    val lineCount = textLayoutResult?.lineCount ?: 1
+    val lineHeight = textLayoutResult?.let {
+        if (it.lineCount > 0) it.getLineBottom(0) - it.getLineTop(0) else 0f
+    } ?: with(density) { 20.dp.toPx() }
+
+    // Calculate total height based on text layout
+    val totalHeight = textLayoutResult?.let {
+        if (it.lineCount > 0) it.getLineBottom(it.lineCount - 1) else lineHeight
+    } ?: lineHeight
+
+    val gutterWidthPx = with(density) { GutterWidth.toPx() }
+
+    Box(
+        modifier = modifier
+            .width(GutterWidth)
+            .verticalScroll(scrollState)
+            .drawBehind {
+                // Draw background
+                drawRect(
+                    color = GutterBackgroundColor,
+                    size = Size(gutterWidthPx, totalHeight + with(density) { 16.dp.toPx() })
+                )
+
+                // Draw horizontal lines between each row
+                for (i in 0..lineCount) {
+                    val y = if (textLayoutResult != null && i < textLayoutResult.lineCount) {
+                        textLayoutResult.getLineTop(i)
+                    } else if (textLayoutResult != null && i == textLayoutResult.lineCount) {
+                        textLayoutResult.getLineBottom(i - 1)
+                    } else {
+                        i * lineHeight
+                    }
+                    // Add padding offset to match text field
+                    val yWithPadding = y + with(density) { 8.dp.toPx() }
+                    drawLine(
+                        color = GutterLineColor,
+                        start = Offset(0f, yWithPadding),
+                        end = Offset(gutterWidthPx, yWithPadding),
+                        strokeWidth = 1f
+                    )
+                }
+            }
+            .pointerInput(textLayoutResult) {
+                val paddingPx = with(density) { 8.dp.toPx() }
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val startOffset = down.position
+                    val startLineIndex = getLineIndexFromOffset(textLayoutResult, startOffset.y - paddingPx, lineHeight)
+
+                    if (startLineIndex !in 0 until lineCount) {
+                        return@awaitEachGesture
+                    }
+
+                    var isDragging = false
+                    var currentLineIndex = startLineIndex
+
+                    // Select the initial line immediately
+                    onDragStart(startLineIndex)
+
+                    // Track drag
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+
+                        if (change.pressed) {
+                            val newLineIndex = getLineIndexFromOffset(
+                                textLayoutResult,
+                                change.position.y - paddingPx,
+                                lineHeight
+                            ).coerceIn(0, lineCount - 1)
+
+                            if (newLineIndex != currentLineIndex) {
+                                isDragging = true
+                                currentLineIndex = newLineIndex
+                                onDragUpdate(currentLineIndex)
+                            }
+                            change.consume()
+                        }
+                    } while (event.changes.any { it.pressed })
+
+                    // Gesture ended
+                    if (!isDragging) {
+                        // It was a tap
+                        onLineSelected(startLineIndex)
+                    }
+                    onDragEnd()
+                }
+            }
+    ) {
+        // Empty box with calculated height to enable scrolling
+        Box(
+            modifier = Modifier
+                .width(GutterWidth)
+                .height(with(density) { (totalHeight + 16.dp.toPx()).toDp() })
+        )
+    }
+}
+
+private fun getLineIndexFromOffset(
+    textLayoutResult: TextLayoutResult?,
+    yOffset: Float,
+    defaultLineHeight: Float
+): Int {
+    if (textLayoutResult == null || textLayoutResult.lineCount == 0) {
+        return (yOffset / defaultLineHeight).toInt()
+    }
+
+    // Binary search or linear search for the line
+    for (i in 0 until textLayoutResult.lineCount) {
+        val top = textLayoutResult.getLineTop(i)
+        val bottom = textLayoutResult.getLineBottom(i)
+        if (yOffset >= top && yOffset < bottom) {
+            return i
+        }
+    }
+
+    // If below all lines, return last line
+    if (yOffset >= textLayoutResult.getLineBottom(textLayoutResult.lineCount - 1)) {
+        return textLayoutResult.lineCount - 1
+    }
+
+    return 0
+}
+
 
 /**
  * Detects paste operations and transforms HTML list content to bulleted text.
