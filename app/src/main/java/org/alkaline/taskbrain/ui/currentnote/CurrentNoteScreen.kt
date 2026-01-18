@@ -63,43 +63,26 @@ fun CurrentNoteScreen(
     val loadStatus by currentNoteViewModel.loadStatus.observeAsState()
     val contentModified by currentNoteViewModel.contentModified.observeAsState(false)
     val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
-    
-    // State to hold the user content
-    var userContent by remember { mutableStateOf("") }
-    // State to track if the content is saved
-    var isSaved by remember { mutableStateOf(true) }
-    
-    // State for agent command (placeholder for now)
-    var agentCommand by remember { mutableStateOf("") }
 
-    // State for agent section expansion (collapsed by default)
+    var userContent by remember { mutableStateOf("") }
+    var isSaved by remember { mutableStateOf(true) }
+    var agentCommand by remember { mutableStateOf("") }
     var isAgentSectionExpanded by remember { mutableStateOf(false) }
 
-    // Track if agent text field has ever been focused (to avoid collapsing on initial render)
-    var agentFieldHasBeenFocused by remember { mutableStateOf(false) }
-
-    // Focus requester for main content text field
     val mainContentFocusRequester = remember { FocusRequester() }
-
-    // Reset focus tracking when section collapses
-    LaunchedEffect(isAgentSectionExpanded) {
-        if (!isAgentSectionExpanded) {
-            agentFieldHasBeenFocused = false
-        }
-    }
 
     // Handle initial data loading
     LaunchedEffect(noteId) {
         currentNoteViewModel.loadContent(noteId)
     }
-    
+
     // Update content when loaded from VM
     LaunchedEffect(loadStatus) {
         if (loadStatus is LoadStatus.Success) {
             userContent = (loadStatus as LoadStatus.Success).content
         }
     }
-    
+
     // React to content modification signal (e.g. from Agent)
     LaunchedEffect(contentModified) {
         if (contentModified) {
@@ -133,116 +116,188 @@ fun CurrentNoteScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Status Bar
         StatusBar(
             isSaved = isSaved,
-            onSaveClick = {
-                currentNoteViewModel.saveContent(userContent)
-            }
+            onSaveClick = { currentNoteViewModel.saveContent(userContent) }
         )
 
-        // User Content Area
-        TextField(
-            value = userContent,
-            onValueChange = {
+        MainContentTextField(
+            content = userContent,
+            onContentChange = {
                 userContent = it
                 if (isSaved) isSaved = false
             },
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .focusRequester(mainContentFocusRequester),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent
-            )
+            focusRequester = mainContentFocusRequester,
+            modifier = Modifier.weight(1f)
         )
 
-        // Agent Chat Label Bar (clickable to expand)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(colorResource(R.color.brand_color))
-                .clickable { isAgentSectionExpanded = true }
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(id = R.string.agent_chat_label),
-                color = colorResource(R.color.brand_text_color),
-                fontSize = 18.sp
-            )
-            // Down arrow to manually collapse
-            if (isAgentSectionExpanded) {
-                Icon(
-                    imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Collapse",
-                    tint = colorResource(R.color.brand_text_color),
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            // Transfer focus to main content to keep keyboard open
-                            mainContentFocusRequester.requestFocus()
-                            isAgentSectionExpanded = false
-                        }
-                )
+        AgentCommandSection(
+            isExpanded = isAgentSectionExpanded,
+            onExpandedChange = { isAgentSectionExpanded = it },
+            agentCommand = agentCommand,
+            onAgentCommandChange = { agentCommand = it },
+            isProcessing = isAgentProcessing,
+            onSendCommand = {
+                currentNoteViewModel.processAgentCommand(userContent, agentCommand)
+                agentCommand = ""
+            },
+            mainContentFocusRequester = mainContentFocusRequester
+        )
+    }
+}
+
+@Composable
+private fun MainContentTextField(
+    content: String,
+    onContentChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier
+) {
+    TextField(
+        value = content,
+        onValueChange = onContentChange,
+        modifier = modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent
+        )
+    )
+}
+
+@Composable
+private fun AgentCommandSection(
+    isExpanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    agentCommand: String,
+    onAgentCommandChange: (String) -> Unit,
+    isProcessing: Boolean,
+    onSendCommand: () -> Unit,
+    mainContentFocusRequester: FocusRequester
+) {
+    var hasBeenFocused by remember { mutableStateOf(false) }
+
+    // Reset focus tracking when section collapses
+    LaunchedEffect(isExpanded) {
+        if (!isExpanded) {
+            hasBeenFocused = false
+        }
+    }
+
+    AgentSectionHeader(
+        isExpanded = isExpanded,
+        onExpand = { onExpandedChange(true) },
+        onCollapse = {
+            mainContentFocusRequester.requestFocus()
+            onExpandedChange(false)
+        }
+    )
+
+    if (isProcessing) {
+        ProcessingIndicatorBar()
+    }
+
+    if (isExpanded) {
+        AgentCommandTextField(
+            command = agentCommand,
+            onCommandChange = onAgentCommandChange,
+            isProcessing = isProcessing,
+            onSendCommand = onSendCommand,
+            onFocusGained = { hasBeenFocused = true },
+            onFocusLost = {
+                if (hasBeenFocused && agentCommand.isBlank()) {
+                    onExpandedChange(false)
+                }
             }
-        }
+        )
+    }
+}
 
-        // Processing Indicator Bar
-        if (isAgentProcessing) {
-            ProcessingIndicatorBar()
-        }
-
-        // Agent Command Text Area (collapsible)
-        if (isAgentSectionExpanded) {
-            TextField(
-                value = agentCommand,
-                onValueChange = { agentCommand = it },
-                enabled = !isAgentProcessing,
+@Composable
+private fun AgentSectionHeader(
+    isExpanded: Boolean,
+    onExpand: () -> Unit,
+    onCollapse: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(colorResource(R.color.brand_color))
+            .clickable { onExpand() }
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(id = R.string.agent_chat_label),
+            color = colorResource(R.color.brand_text_color),
+            fontSize = 18.sp
+        )
+        if (isExpanded) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = "Collapse",
+                tint = colorResource(R.color.brand_text_color),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp) // Approx 5 lines
-                    .onFocusChanged { focusState ->
-                        if (focusState.isFocused) {
-                            agentFieldHasBeenFocused = true
-                        } else if (agentFieldHasBeenFocused && agentCommand.isBlank()) {
-                            // Only collapse when losing focus if it was previously focused
-                            isAgentSectionExpanded = false
-                        }
-                    },
-                trailingIcon = {
-                     IconButton(
-                         enabled = !isAgentProcessing && agentCommand.isNotBlank(),
-                         onClick = {
-                             if (agentCommand.isNotBlank()) {
-                                 currentNoteViewModel.processAgentCommand(userContent, agentCommand)
-                                 agentCommand = ""
-                             }
-                         }
-                     ) {
-                         Icon(
-                             imageVector = Icons.AutoMirrored.Filled.Send,
-                             contentDescription = "Send",
-                             tint = if (isAgentProcessing || agentCommand.isBlank()) Color.Gray else colorResource(R.color.brand_color)
-                         )
-                     }
-                },
-                 colors = TextFieldDefaults.colors(
-                    focusedContainerColor = if (isAgentProcessing) Color.LightGray.copy(alpha = 0.3f) else Color.Transparent,
-                    unfocusedContainerColor = if (isAgentProcessing) Color.LightGray.copy(alpha = 0.3f) else Color.Transparent,
-                    disabledContainerColor = Color.LightGray.copy(alpha = 0.3f)
-                ),
-                maxLines = 5,
-                minLines = 5
+                    .size(24.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onCollapse() }
             )
         }
     }
+}
+
+@Composable
+private fun AgentCommandTextField(
+    command: String,
+    onCommandChange: (String) -> Unit,
+    isProcessing: Boolean,
+    onSendCommand: () -> Unit,
+    onFocusGained: () -> Unit,
+    onFocusLost: () -> Unit
+) {
+    TextField(
+        value = command,
+        onValueChange = onCommandChange,
+        enabled = !isProcessing,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp)
+            .onFocusChanged { focusState ->
+                if (focusState.isFocused) {
+                    onFocusGained()
+                } else {
+                    onFocusLost()
+                }
+            },
+        trailingIcon = {
+            IconButton(
+                enabled = !isProcessing && command.isNotBlank(),
+                onClick = {
+                    if (command.isNotBlank()) {
+                        onSendCommand()
+                    }
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send",
+                    tint = if (isProcessing || command.isBlank()) Color.Gray else colorResource(R.color.brand_color)
+                )
+            }
+        },
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = if (isProcessing) Color.LightGray.copy(alpha = 0.3f) else Color.Transparent,
+            unfocusedContainerColor = if (isProcessing) Color.LightGray.copy(alpha = 0.3f) else Color.Transparent,
+            disabledContainerColor = Color.LightGray.copy(alpha = 0.3f)
+        ),
+        maxLines = 5,
+        minLines = 5
+    )
 }
 
 @Composable
@@ -257,7 +312,7 @@ fun ProcessingIndicatorBar() {
         ),
         label = "gradient_offset"
     )
-    
+
     val brush = Brush.linearGradient(
         colors = listOf(
             colorResource(R.color.brand_color),
@@ -282,7 +337,6 @@ fun StatusBar(
     onSaveClick: () -> Unit
 ) {
     ActionButtonBar {
-        // Save Button (custom ActionButton instead of IconButton)
         androidx.compose.material3.Button(
             onClick = onSaveClick,
             colors = androidx.compose.material3.ButtonDefaults.buttonColors(
