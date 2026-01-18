@@ -420,4 +420,95 @@ class BulletTextTransformerTest {
         val result = handleCheckboxTap(oldValue, newValue)
         assertNull(result)
     }
+
+    // ==================== Indentation: Space to tab ====================
+
+    @Test
+    fun `space before bullet converts to tab`() {
+        // Cursor at position 1, space was just typed before bullet
+        val result = transform("• Item", 0, " • Item", 1)
+        assertEquals("\t• Item", result.text)
+        assertEquals(1, result.selection.start)
+    }
+
+    @Test
+    fun `space before checkbox converts to tab`() {
+        val result = transform("☐ Task", 0, " ☐ Task", 1)
+        assertEquals("\t☐ Task", result.text)
+        assertEquals(1, result.selection.start)
+    }
+
+    @Test
+    fun `space after tab before bullet converts to tab`() {
+        val result = transform("\t• Item", 1, "\t • Item", 2)
+        assertEquals("\t\t• Item", result.text)
+        assertEquals(2, result.selection.start)
+    }
+
+    @Test
+    fun `space in middle of text does not convert to tab`() {
+        val result = transform("• Item", 6, "• Item ", 7)
+        assertEquals("• Item ", result.text)
+        assertEquals(7, result.selection.start)
+    }
+
+    @Test
+    fun `space before regular text does not convert to tab`() {
+        val result = transform("Hello", 0, " Hello", 1)
+        assertEquals(" Hello", result.text)
+        assertEquals(1, result.selection.start)
+    }
+
+    // ==================== Indentation: Enter preserves indentation ====================
+
+    @Test
+    fun `enter after indented bullet preserves indentation`() {
+        val result = transform("\t• Item", 7, "\t• Item\n", 8)
+        assertEquals("\t• Item\n\t• ", result.text)
+        assertEquals(11, result.selection.start)
+    }
+
+    @Test
+    fun `enter after double indented bullet preserves indentation`() {
+        val result = transform("\t\t• Item", 8, "\t\t• Item\n", 9)
+        assertEquals("\t\t• Item\n\t\t• ", result.text)
+        assertEquals(13, result.selection.start)
+    }
+
+    @Test
+    fun `enter on empty indented bullet unindents`() {
+        val result = transform("\t• ", 3, "\t• \n", 4)
+        assertEquals("• ", result.text)
+        assertEquals(2, result.selection.start)
+    }
+
+    @Test
+    fun `enter on empty double indented bullet unindents one level`() {
+        val result = transform("\t\t• ", 4, "\t\t• \n", 5)
+        assertEquals("\t• ", result.text)
+        assertEquals(3, result.selection.start)
+    }
+
+    @Test
+    fun `enter on empty non-indented bullet exits list`() {
+        val result = transform("• ", 2, "• \n", 3)
+        assertEquals("", result.text)
+        assertEquals(0, result.selection.start)
+    }
+
+    // ==================== Indentation: Tab deletion (unindent) ====================
+
+    @Test
+    fun `backspace on tab before bullet removes tab`() {
+        val result = transform("\t• Item", 1, "• Item", 0)
+        assertEquals("• Item", result.text)
+        assertEquals(0, result.selection.start)
+    }
+
+    @Test
+    fun `backspace on first tab of double indented bullet removes one tab`() {
+        val result = transform("\t\t• Item", 1, "\t• Item", 0)
+        assertEquals("\t• Item", result.text)
+        assertEquals(0, result.selection.start)
+    }
 }

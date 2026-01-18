@@ -11,6 +11,8 @@ private const val CHECKBOX_CHECKED = "☑ "
 private const val BRACKETS_EMPTY = "[]"
 private const val BRACKETS_CHECKED = "[x]"
 
+private const val TAB = "\t"
+
 // All line prefixes that trigger continuation on Enter
 private val LINE_PREFIXES = listOf(BULLET, CHECKBOX_UNCHECKED, CHECKBOX_CHECKED)
 
@@ -29,6 +31,10 @@ private val LINE_PREFIXES = listOf(BULLET, CHECKBOX_UNCHECKED, CHECKBOX_CHECKED)
  * - Enter after a checkbox line adds an unchecked checkbox to the new line
  * - Enter on an empty checkbox line exits checkbox mode
  * - Backspace at a checkbox converts back to "[]" or "[x]"
+ *
+ * Indentation:
+ * - Space after tabs at line start (before bullet/checkbox) converts to tab (indent)
+ * - Backspace on tab at line start (before bullet/checkbox) removes tab (unindent)
  */
 fun transformBulletText(oldValue: TextFieldValue, newValue: TextFieldValue): TextFieldValue {
     var text = newValue.text
@@ -75,6 +81,26 @@ fun transformBulletText(oldValue: TextFieldValue, newValue: TextFieldValue): Tex
 
     if (isCharDeleted) {
         val result = handleBackspaceOnPrefix(text, cursor)
+        if (result.first != text) wasTransformed = true
+        text = result.first
+        cursor = result.second
+    }
+
+    // Case 4: Space to tab for indentation (space typed at start of line before bullet/checkbox)
+    val isSpaceInserted = text.length == oldValue.text.length + 1 &&
+            cursor > 0 &&
+            text.getOrNull(cursor - 1) == ' '
+
+    if (isSpaceInserted) {
+        val result = handleSpaceToTabIndent(text, cursor)
+        if (result.first != text) wasTransformed = true
+        text = result.first
+        cursor = result.second
+    }
+
+    // Case 5: Tab deletion for unindent
+    if (isCharDeleted && !wasTransformed) {
+        val result = handleTabUnindent(oldValue.text, text, cursor)
         if (result.first != text) wasTransformed = true
         text = result.first
         cursor = result.second
@@ -131,22 +157,37 @@ private fun handleEnterOnPrefixedLine(text: String, cursor: Int): Pair<String, I
     val prevLineStart = if (newlinePos == 0) 0 else text.lastIndexOf('\n', newlinePos - 1) + 1
     val prevLine = text.substring(prevLineStart, newlinePos)
 
-    // Find which prefix the previous line has
-    val matchedPrefix = LINE_PREFIXES.find { prevLine.startsWith(it) || prevLine == it.trimEnd() }
+    // Extract leading tabs (indentation)
+    val leadingTabs = prevLine.takeWhile { it == '\t' }
+    val lineWithoutTabs = prevLine.removePrefix(leadingTabs)
+
+    // Find which prefix the line has (after tabs)
+    val matchedPrefix = LINE_PREFIXES.find { lineWithoutTabs.startsWith(it) || lineWithoutTabs == it.trimEnd() }
         ?: return Pair(text, cursor)
 
-    val isEmpty = prevLine == matchedPrefix.trimEnd() || prevLine == matchedPrefix
+    val contentAfterPrefix = lineWithoutTabs.removePrefix(matchedPrefix)
+    val isEmpty = contentAfterPrefix.isBlank()
 
     return if (isEmpty) {
-        // Empty prefixed line - exit list mode (remove prefix and newline)
-        val newText = text.substring(0, prevLineStart) + text.substring(cursor)
-        Pair(newText, prevLineStart)
+        // Empty prefixed line - exit list mode or unindent
+        if (leadingTabs.isNotEmpty()) {
+            // Has indentation - unindent by one level instead of exiting
+            val unindentedTabs = leadingTabs.dropLast(1)
+            val newLineContent = unindentedTabs + matchedPrefix
+            val newText = text.substring(0, prevLineStart) + newLineContent + text.substring(cursor)
+            Pair(newText, prevLineStart + newLineContent.length)
+        } else {
+            // No indentation - exit list mode (remove prefix and newline)
+            val newText = text.substring(0, prevLineStart) + text.substring(cursor)
+            Pair(newText, prevLineStart)
+        }
     } else {
-        // Line with content - add prefix to new line
+        // Line with content - add prefix to new line with same indentation
         // For checkboxes, always add unchecked checkbox
         val newPrefix = if (matchedPrefix == CHECKBOX_CHECKED) CHECKBOX_UNCHECKED else matchedPrefix
-        val newText = text.substring(0, cursor) + newPrefix + text.substring(cursor)
-        Pair(newText, cursor + newPrefix.length)
+        val newLinePrefix = leadingTabs + newPrefix
+        val newText = text.substring(0, cursor) + newLinePrefix + text.substring(cursor)
+        Pair(newText, cursor + newLinePrefix.length)
     }
 }
 
@@ -248,4 +289,67 @@ fun handleCheckboxTap(oldValue: TextFieldValue, newValue: TextFieldValue): TextF
         }
         else -> null
     }
+}
+
+/**
+ * Handles space-to-tab conversion for indentation.
+ * When a space is typed at the start of a line (after any existing tabs but before a bullet/checkbox),
+ * convert it to a tab character.
+ */
+private fun handleSpaceToTabIndent(text: String, cursor: Int): Pair<String, Int> {
+    if (cursor == 0) return Pair(text, cursor)
+
+    // Find the start of the current line
+    val lineStart = text.lastIndexOf('\n', cursor - 1) + 1
+
+    // Get the content from line start to cursor
+    val beforeCursor = text.substring(lineStart, cursor)
+
+    // Check if the space was typed in the indentation area (only tabs and the new space before bullet/checkbox)
+    // Pattern: tabs followed by a space, then a bullet/checkbox should follow
+    if (!beforeCursor.matches(Regex("\\t* "))) return Pair(text, cursor)
+
+    // Check what comes after the cursor - should be a bullet or checkbox
+    val afterCursor = text.substring(cursor)
+    val hasBulletOrCheckbox = afterCursor.startsWith(BULLET.trimEnd()) ||
+            afterCursor.startsWith(CHECKBOX_UNCHECKED.trimEnd()) ||
+            afterCursor.startsWith(CHECKBOX_CHECKED.trimEnd())
+
+    if (!hasBulletOrCheckbox) return Pair(text, cursor)
+
+    // Replace the space with a tab
+    val newText = text.substring(0, cursor - 1) + TAB + text.substring(cursor)
+    return Pair(newText, cursor)
+}
+
+/**
+ * Handles tab deletion for unindentation.
+ * When backspace deletes a tab at the start of a line (before a bullet/checkbox), that's an unindent.
+ */
+private fun handleTabUnindent(oldText: String, newText: String, cursor: Int): Pair<String, Int> {
+    // Check if a tab was deleted (compare old and new text at cursor position)
+    if (cursor >= oldText.length) return Pair(newText, cursor)
+
+    val deletedChar = oldText.getOrNull(cursor)
+    if (deletedChar != '\t') return Pair(newText, cursor)
+
+    // Find the start of the current line in the new text
+    val lineStart = if (cursor == 0) 0 else newText.lastIndexOf('\n', cursor - 1) + 1
+
+    // Verify the tab was in the indentation area (before bullet/checkbox)
+    val afterCursor = newText.substring(cursor)
+    val indentArea = newText.substring(lineStart, cursor)
+
+    // The area before cursor should be only tabs, and after should start with bullet/checkbox
+    val isIndentArea = indentArea.all { it == '\t' }
+    val hasBulletOrCheckbox = afterCursor.startsWith(BULLET.trimEnd()) ||
+            afterCursor.startsWith(CHECKBOX_UNCHECKED.trimEnd()) ||
+            afterCursor.startsWith(CHECKBOX_CHECKED.trimEnd())
+
+    if (isIndentArea && hasBulletOrCheckbox) {
+        // This is a valid unindent - the deletion already happened, just return as-is
+        return Pair(newText, cursor)
+    }
+
+    return Pair(newText, cursor)
 }

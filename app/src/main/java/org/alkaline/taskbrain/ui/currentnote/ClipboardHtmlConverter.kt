@@ -100,28 +100,75 @@ private fun containsHtmlList(html: String): Boolean {
 
 /**
  * Converts HTML with list items to plain text with bullet prefixes.
+ * Handles nested lists by tracking indentation level.
  */
 private fun convertHtmlToBulletedText(html: String): String {
     val result = StringBuilder()
-    val liPattern = Regex("<li[^>]*>(.*?)</li>", RegexOption.IGNORE_CASE)
     var foundListItems = false
 
-    for (match in liPattern.findAll(html)) {
-        foundListItems = true
-        val content = match.groupValues[1]
-            .replace(Regex("<[^>]+>"), "")
-            .replace("&nbsp;", " ")
-            .replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&quot;", "\"")
-            .trim()
+    // Process the HTML character by character to track nesting
+    var pos = 0
+    var indentLevel = 0
+    val tagPattern = Regex("<(/?)([a-zA-Z]+)[^>]*>", RegexOption.IGNORE_CASE)
 
-        if (content.isNotEmpty()) {
-            result.append(BULLET_PREFIX)
-            result.append(content)
-            result.append("\n")
+    while (pos < html.length) {
+        val tagMatch = tagPattern.find(html, pos)
+
+        if (tagMatch == null || tagMatch.range.first > pos) {
+            // Skip text outside of tags
+            pos = tagMatch?.range?.first ?: html.length
+            continue
         }
+
+        val isClosing = tagMatch.groupValues[1] == "/"
+        val tagName = tagMatch.groupValues[2].lowercase()
+
+        when (tagName) {
+            "ul", "ol" -> {
+                if (isClosing) {
+                    indentLevel = maxOf(0, indentLevel - 1)
+                } else {
+                    indentLevel++
+                }
+            }
+            "li" -> {
+                if (!isClosing) {
+                    foundListItems = true
+                    // Find the content of this li element
+                    val liStart = tagMatch.range.last + 1
+                    val liEndPattern = Regex("</li>", RegexOption.IGNORE_CASE)
+                    val liEndMatch = liEndPattern.find(html, liStart)
+
+                    if (liEndMatch != null) {
+                        var content = html.substring(liStart, liEndMatch.range.first)
+                        // Remove nested ul/ol tags and their contents for this level
+                        content = content.replace(Regex("<ul[^>]*>.*?</ul>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                        content = content.replace(Regex("<ol[^>]*>.*?</ol>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
+                        // Remove remaining HTML tags
+                        content = content.replace(Regex("<[^>]+>"), "")
+                        // Decode HTML entities
+                        content = content
+                            .replace("&nbsp;", " ")
+                            .replace("&amp;", "&")
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">")
+                            .replace("&quot;", "\"")
+                            .trim()
+
+                        if (content.isNotEmpty()) {
+                            // Add tabs for indentation (indentLevel - 1 because we're inside the ul)
+                            val tabs = "\t".repeat(maxOf(0, indentLevel - 1))
+                            result.append(tabs)
+                            result.append(BULLET_PREFIX)
+                            result.append(content)
+                            result.append("\n")
+                        }
+                    }
+                }
+            }
+        }
+
+        pos = tagMatch.range.last + 1
     }
 
     if (!foundListItems) {
@@ -133,57 +180,69 @@ private fun convertHtmlToBulletedText(html: String): String {
 
 private fun containsFormattedContent(text: String): Boolean {
     return text.lines().any { line ->
-        line.startsWith(BULLET_PREFIX) ||
-        line.startsWith(CHECKBOX_UNCHECKED_PREFIX) ||
-        line.startsWith(CHECKBOX_CHECKED_PREFIX)
+        val trimmedLine = line.trimStart('\t')
+        trimmedLine.startsWith(BULLET_PREFIX) ||
+        trimmedLine.startsWith(CHECKBOX_UNCHECKED_PREFIX) ||
+        trimmedLine.startsWith(CHECKBOX_CHECKED_PREFIX)
     }
 }
 
 /**
  * Converts text with bullets and checkboxes to HTML.
  * Bullets (•) and checkboxes (☐/☑) become list items.
+ * Indented items (with leading tabs) become nested sublists.
  */
 fun convertToHtml(text: String): String {
     val lines = text.lines()
     val body = StringBuilder()
-    var inList = false
+    var currentIndentLevel = -1 // -1 means not in a list
 
     for (line in lines) {
-        when {
-            line.startsWith(BULLET_PREFIX) -> {
-                if (!inList) {
-                    body.append("<ul>")
-                    inList = true
-                }
-                val content = escapeHtml(line.removePrefix(BULLET_PREFIX))
-                body.append("<li>$content</li>")
-            }
-            line.startsWith(CHECKBOX_UNCHECKED_PREFIX) || line.startsWith(CHECKBOX_CHECKED_PREFIX) -> {
-                if (!inList) {
-                    body.append("<ul>")
-                    inList = true
-                }
-                val prefix = if (line.startsWith(CHECKBOX_CHECKED_PREFIX)) CHECKBOX_CHECKED_PREFIX else CHECKBOX_UNCHECKED_PREFIX
-                val content = escapeHtml(line.removePrefix(prefix))
-                body.append("<li>$content</li>")
-            }
-            else -> {
-                if (inList) {
-                    body.append("</ul>")
-                    inList = false
-                }
+        // Count leading tabs for indentation level
+        val leadingTabs = line.takeWhile { it == '\t' }
+        val indentLevel = leadingTabs.length
+        val lineContent = line.removePrefix(leadingTabs)
 
-                if (line.isEmpty()) {
-                    body.append("<br>")
-                } else {
-                    body.append("<p>${escapeHtml(line)}</p>")
-                }
+        val isBullet = lineContent.startsWith(BULLET_PREFIX)
+        val isCheckbox = lineContent.startsWith(CHECKBOX_UNCHECKED_PREFIX) || lineContent.startsWith(CHECKBOX_CHECKED_PREFIX)
+
+        if (isBullet || isCheckbox) {
+            // Adjust nesting level
+            while (currentIndentLevel < indentLevel) {
+                body.append("<ul>")
+                currentIndentLevel++
+            }
+            while (currentIndentLevel > indentLevel) {
+                body.append("</ul>")
+                currentIndentLevel--
+            }
+
+            val prefix = when {
+                lineContent.startsWith(BULLET_PREFIX) -> BULLET_PREFIX
+                lineContent.startsWith(CHECKBOX_CHECKED_PREFIX) -> CHECKBOX_CHECKED_PREFIX
+                else -> CHECKBOX_UNCHECKED_PREFIX
+            }
+            val content = escapeHtml(lineContent.removePrefix(prefix))
+            body.append("<li>$content</li>")
+        } else {
+            // Close all open lists
+            while (currentIndentLevel >= 0) {
+                body.append("</ul>")
+                currentIndentLevel--
+            }
+
+            if (line.isEmpty()) {
+                body.append("<br>")
+            } else {
+                body.append("<p>${escapeHtml(line)}</p>")
             }
         }
     }
 
-    if (inList) {
+    // Close any remaining open lists
+    while (currentIndentLevel >= 0) {
         body.append("</ul>")
+        currentIndentLevel--
     }
 
     return body.toString()
