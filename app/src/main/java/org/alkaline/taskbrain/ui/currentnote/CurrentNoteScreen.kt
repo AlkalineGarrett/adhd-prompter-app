@@ -167,7 +167,13 @@ private fun MainContentTextField(
     TextField(
         value = textFieldValue,
         onValueChange = { newValue ->
-            val transformed = transformBulletText(textFieldValue, newValue)
+            // First check for checkbox tap (cursor moved to checkbox without text change)
+            val tapped = handleCheckboxTap(textFieldValue, newValue)
+            val transformed = if (tapped != null) {
+                tapped
+            } else {
+                transformBulletText(textFieldValue, newValue)
+            }
             textFieldValue = transformed
             if (transformed.text != content) {
                 onContentChange(transformed.text)
