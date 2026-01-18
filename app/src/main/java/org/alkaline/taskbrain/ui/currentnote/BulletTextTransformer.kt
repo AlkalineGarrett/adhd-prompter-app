@@ -3,18 +3,19 @@ package org.alkaline.taskbrain.ui.currentnote
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 
-private const val BULLET = "• "
-private const val ASTERISK_SPACE = "* "
+// Use constants from LinePrefixes
+private const val BULLET = LinePrefixes.BULLET
+private const val ASTERISK_SPACE = LinePrefixes.ASTERISK_SPACE
 
-private const val CHECKBOX_UNCHECKED = "☐ "
-private const val CHECKBOX_CHECKED = "☑ "
-private const val BRACKETS_EMPTY = "[]"
-private const val BRACKETS_CHECKED = "[x]"
+private const val CHECKBOX_UNCHECKED = LinePrefixes.CHECKBOX_UNCHECKED
+private const val CHECKBOX_CHECKED = LinePrefixes.CHECKBOX_CHECKED
+private const val BRACKETS_EMPTY = LinePrefixes.BRACKETS_EMPTY
+private const val BRACKETS_CHECKED = LinePrefixes.BRACKETS_CHECKED
 
-private const val TAB = "\t"
+private const val TAB = LinePrefixes.TAB
 
 // All line prefixes that trigger continuation on Enter
-private val LINE_PREFIXES = listOf(BULLET, CHECKBOX_UNCHECKED, CHECKBOX_CHECKED)
+private val LINE_PREFIXES = LinePrefixes.LINE_PREFIXES
 
 /**
  * Transforms text to handle bullet list and checkbox formatting:

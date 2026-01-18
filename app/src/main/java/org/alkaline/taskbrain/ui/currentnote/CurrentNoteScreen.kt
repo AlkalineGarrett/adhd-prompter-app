@@ -209,14 +209,10 @@ fun CurrentNoteScreen(
                 }
             },
             onPaste = { clipText ->
-                val cursorPos = textFieldValue.selection.start
-                val newText = textFieldValue.text.substring(0, cursorPos) +
-                        clipText +
-                        textFieldValue.text.substring(cursorPos)
-                val newCursor = cursorPos + clipText.length
-                textFieldValue = TextFieldValue(newText, TextRange(newCursor))
-                if (newText != userContent) {
-                    userContent = newText
+                val newValue = SelectionActions.insertText(textFieldValue, clipText)
+                textFieldValue = newValue
+                if (newValue.text != userContent) {
+                    userContent = newValue.text
                     if (isSaved) isSaved = false
                 }
             },
@@ -237,10 +233,6 @@ fun CurrentNoteScreen(
         )
     }
 }
-
-private val GutterWidth = 21.dp
-private val GutterBackgroundColor = Color(0xFFE0E0E0) // Light gray
-private val GutterLineColor = Color(0xFF9E9E9E) // Dark gray
 
 @Composable
 private fun MainContentTextField(
@@ -397,49 +389,14 @@ private fun MainContentTextField(
                     BasicTextField(
                     value = textFieldValue,
                     onValueChange = { newValue ->
-                        // Check if this is space with selection -> indent/unindent
-                        if (isSpaceReplacingSelection(textFieldValue, newValue)) {
-                            val currentTime = System.currentTimeMillis()
-                            val isDoubleSpace = currentTime - lastIndentTime < 250
-                            lastIndentTime = currentTime
-
-                            val result = if (isDoubleSpace) {
-                                // Double-space: unindent from original state
-                                // First unindent undoes the indent we just did, second actually unindents
-                                val firstUnindent = handleSelectionUnindent(textFieldValue)
-                                if (firstUnindent != null) {
-                                    handleSelectionUnindent(firstUnindent) ?: firstUnindent
-                                } else {
-                                    // Can't unindent - keep current state
-                                    textFieldValue
-                                }
-                            } else {
-                                // Single space - indent
-                                handleSelectionIndent(textFieldValue)
-                            }
-
-                            onTextFieldValueChange(result)
-                            // Always return early to prevent space from replacing selection
-                            return@BasicTextField
-                        }
-
-                        // Check if this is a deletion of fully selected line(s)
-                        val lineDeleteResult = handleFullLineDelete(textFieldValue, newValue)
-                        if (lineDeleteResult != null) {
-                            onTextFieldValueChange(lineDeleteResult)
-                            return@BasicTextField
-                        }
-
-                        val tapped = handleCheckboxTap(textFieldValue, newValue)
-                        var transformed = if (tapped != null) {
-                            tapped
-                        } else {
-                            transformBulletText(textFieldValue, newValue)
-                        }
-
-                        transformed = handlePasteTransformation(context, textFieldValue, transformed)
-
-                        onTextFieldValueChange(transformed)
+                        val result = TextFieldInputHandler.processValueChange(
+                            context = context,
+                            oldValue = textFieldValue,
+                            newValue = newValue,
+                            lastIndentTime = lastIndentTime,
+                            onIndentTimeUpdate = { lastIndentTime = it }
+                        )
+                        onTextFieldValueChange(result.value)
                     },
                     onTextLayout = { result ->
                         textLayoutResult = result
@@ -476,11 +433,7 @@ private fun MainContentTextField(
                             )
                         },
                         onClick = {
-                            val selectedText = textFieldValue.text.substring(
-                                textFieldValue.selection.min,
-                                textFieldValue.selection.max
-                            )
-                            clipboardManager.setText(AnnotatedString(selectedText))
+                            clipboardManager.setText(AnnotatedString(SelectionActions.copy(textFieldValue)))
                             showContextMenu = false
                         }
                     )
@@ -495,16 +448,9 @@ private fun MainContentTextField(
                         },
                         onClick = {
                             skipNextRestore = true
-                            val selectedText = textFieldValue.text.substring(
-                                textFieldValue.selection.min,
-                                textFieldValue.selection.max
-                            )
-                            clipboardManager.setText(AnnotatedString(selectedText))
-                            val newText = textFieldValue.text.removeRange(
-                                textFieldValue.selection.min,
-                                textFieldValue.selection.max
-                            )
-                            onTextFieldValueChange(TextFieldValue(newText, TextRange(textFieldValue.selection.min)))
+                            val result = SelectionActions.cut(textFieldValue)
+                            result.copiedText?.let { clipboardManager.setText(AnnotatedString(it)) }
+                            onTextFieldValueChange(result.newValue)
                             showContextMenu = false
                         }
                     )
@@ -518,7 +464,7 @@ private fun MainContentTextField(
                             )
                         },
                         onClick = {
-                            onTextFieldValueChange(textFieldValue.copy(selection = TextRange(0, textFieldValue.text.length)))
+                            onTextFieldValueChange(SelectionActions.selectAll(textFieldValue))
                             showContextMenu = false
                         }
                     )
@@ -532,9 +478,8 @@ private fun MainContentTextField(
                             )
                         },
                         onClick = {
-                            // Collapse selection to cursor at end of selection
                             skipNextRestore = true
-                            onTextFieldValueChange(textFieldValue.copy(selection = TextRange(textFieldValue.selection.max)))
+                            onTextFieldValueChange(SelectionActions.unselect(textFieldValue))
                             showContextMenu = false
                         }
                     )
@@ -549,11 +494,7 @@ private fun MainContentTextField(
                         },
                         onClick = {
                             skipNextRestore = true
-                            val newText = textFieldValue.text.removeRange(
-                                textFieldValue.selection.min,
-                                textFieldValue.selection.max
-                            )
-                            onTextFieldValueChange(TextFieldValue(newText, TextRange(textFieldValue.selection.min)))
+                            onTextFieldValueChange(SelectionActions.delete(textFieldValue))
                             showContextMenu = false
                         }
                     )
@@ -563,180 +504,6 @@ private fun MainContentTextField(
             }
         }
     }
-}
-
-@Composable
-private fun LineGutter(
-    textLayoutResult: TextLayoutResult?,
-    scrollState: androidx.compose.foundation.ScrollState,
-    onLineSelected: (Int) -> Unit,
-    onDragStart: (Int) -> Unit,
-    onDragUpdate: (Int) -> Unit,
-    onDragEnd: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val density = LocalDensity.current
-    val lineCount = textLayoutResult?.lineCount ?: 1
-    val lineHeight = textLayoutResult?.let {
-        if (it.lineCount > 0) it.getLineBottom(0) - it.getLineTop(0) else 0f
-    } ?: with(density) { 20.dp.toPx() }
-
-    // Calculate total height based on text layout
-    val totalHeight = textLayoutResult?.let {
-        if (it.lineCount > 0) it.getLineBottom(it.lineCount - 1) else lineHeight
-    } ?: lineHeight
-
-    val gutterWidthPx = with(density) { GutterWidth.toPx() }
-
-    Box(
-        modifier = modifier
-            .width(GutterWidth)
-            .verticalScroll(scrollState)
-            .drawBehind {
-                // Draw background
-                drawRect(
-                    color = GutterBackgroundColor,
-                    size = Size(gutterWidthPx, totalHeight + with(density) { 16.dp.toPx() })
-                )
-
-                // Draw horizontal lines between each row
-                for (i in 0..lineCount) {
-                    val y = if (textLayoutResult != null && i < textLayoutResult.lineCount) {
-                        textLayoutResult.getLineTop(i)
-                    } else if (textLayoutResult != null && i == textLayoutResult.lineCount) {
-                        textLayoutResult.getLineBottom(i - 1)
-                    } else {
-                        i * lineHeight
-                    }
-                    // Add padding offset to match text field
-                    val yWithPadding = y + with(density) { 8.dp.toPx() }
-                    drawLine(
-                        color = GutterLineColor,
-                        start = Offset(0f, yWithPadding),
-                        end = Offset(gutterWidthPx, yWithPadding),
-                        strokeWidth = 1f
-                    )
-                }
-            }
-            .pointerInput(textLayoutResult) {
-                val paddingPx = with(density) { 8.dp.toPx() }
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    val startOffset = down.position
-                    val startLineIndex = getLineIndexFromOffset(textLayoutResult, startOffset.y - paddingPx, lineHeight)
-
-                    if (startLineIndex !in 0 until lineCount) {
-                        return@awaitEachGesture
-                    }
-
-                    var isDragging = false
-                    var currentLineIndex = startLineIndex
-
-                    // Select the initial line immediately
-                    onDragStart(startLineIndex)
-
-                    // Track drag
-                    do {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: break
-
-                        if (change.pressed) {
-                            val newLineIndex = getLineIndexFromOffset(
-                                textLayoutResult,
-                                change.position.y - paddingPx,
-                                lineHeight
-                            ).coerceIn(0, lineCount - 1)
-
-                            if (newLineIndex != currentLineIndex) {
-                                isDragging = true
-                                currentLineIndex = newLineIndex
-                                onDragUpdate(currentLineIndex)
-                            }
-                            change.consume()
-                        }
-                    } while (event.changes.any { it.pressed })
-
-                    // Gesture ended
-                    if (!isDragging) {
-                        // It was a tap
-                        onLineSelected(startLineIndex)
-                    }
-                    onDragEnd()
-                }
-            }
-    ) {
-        // Empty box with calculated height to enable scrolling
-        Box(
-            modifier = Modifier
-                .width(GutterWidth)
-                .height(with(density) { (totalHeight + 16.dp.toPx()).toDp() })
-        )
-    }
-}
-
-private fun getLineIndexFromOffset(
-    textLayoutResult: TextLayoutResult?,
-    yOffset: Float,
-    defaultLineHeight: Float
-): Int {
-    if (textLayoutResult == null || textLayoutResult.lineCount == 0) {
-        return (yOffset / defaultLineHeight).toInt()
-    }
-
-    // Binary search or linear search for the line
-    for (i in 0 until textLayoutResult.lineCount) {
-        val top = textLayoutResult.getLineTop(i)
-        val bottom = textLayoutResult.getLineBottom(i)
-        if (yOffset >= top && yOffset < bottom) {
-            return i
-        }
-    }
-
-    // If below all lines, return last line
-    if (yOffset >= textLayoutResult.getLineBottom(textLayoutResult.lineCount - 1)) {
-        return textLayoutResult.lineCount - 1
-    }
-
-    return 0
-}
-
-
-/**
- * Detects paste operations and transforms HTML list content to bulleted text.
- */
-private fun handlePasteTransformation(
-    context: Context,
-    oldValue: TextFieldValue,
-    newValue: TextFieldValue
-): TextFieldValue {
-    // Detect if this is a paste: text grew significantly and it's an insertion
-    val insertedLength = newValue.text.length - oldValue.text.length
-    if (insertedLength < 2) return newValue // Not a paste, too small
-
-    // Get the inserted text
-    val insertionStart = oldValue.selection.min
-    val insertionEnd = insertionStart + insertedLength
-    if (insertionEnd > newValue.text.length) return newValue
-
-    val insertedText = newValue.text.substring(insertionStart, insertionEnd)
-
-    // Check if clipboard has HTML lists that should be converted
-    val bulletedText = getClipboardAsBulletedText(context) ?: return newValue
-
-    // Verify the inserted text matches clipboard content (it's actually a paste)
-    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-    val clipText = clipboardManager.primaryClip?.getItemAt(0)?.text?.toString() ?: return newValue
-
-    if (insertedText.trim() != clipText.trim()) return newValue // Not a clipboard paste
-
-    // Replace the pasted text with the bulleted version
-    val newText = newValue.text.substring(0, insertionStart) +
-            bulletedText +
-            newValue.text.substring(insertionEnd)
-
-    val newCursorPos = insertionStart + bulletedText.length
-
-    return TextFieldValue(newText, TextRange(newCursorPos))
 }
 
 @Composable
@@ -901,146 +668,6 @@ fun ProcessingIndicatorBar() {
             .height(4.dp)
             .background(brush)
     )
-}
-
-@Composable
-fun StatusBar(
-    isSaved: Boolean,
-    onSaveClick: () -> Unit
-) {
-    ActionButtonBar {
-        androidx.compose.material3.Button(
-            onClick = onSaveClick,
-            colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                containerColor = colorResource(R.color.action_button_background),
-                contentColor = Color.White
-            ),
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(Dimens.StatusBarButtonCornerRadius),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Dimens.StatusBarButtonHorizontalPadding, vertical = 0.dp),
-            modifier = Modifier.height(Dimens.StatusBarButtonHeight)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_save),
-                contentDescription = stringResource(id = R.string.action_save),
-                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
-                tint = Color.White
-            )
-            androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusBarButtonIconTextSpacing))
-            Text(
-                text = stringResource(id = R.string.action_save),
-                fontSize = Dimens.StatusBarButtonTextSize
-            )
-        }
-
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusBarItemSpacing))
-
-        Text(
-            text = if (isSaved) stringResource(id = R.string.status_saved) else stringResource(id = R.string.status_unsaved),
-            color = Color.Black,
-            fontSize = Dimens.StatusTextSize
-        )
-
-        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(Dimens.StatusTextIconSpacing))
-
-        Icon(
-            painter = if (isSaved) painterResource(id = R.drawable.ic_check_circle) else painterResource(id = R.drawable.ic_warning),
-            contentDescription = null,
-            tint = if (isSaved) Color(0xFF4CAF50) else Color(0xFFFFC107),
-            modifier = Modifier.size(Dimens.StatusIconSize)
-        )
-    }
-}
-
-@Composable
-private fun CommandBar(
-    onToggleBullet: () -> Unit,
-    onToggleCheckbox: () -> Unit,
-    onIndent: () -> Unit,
-    onUnindent: () -> Unit,
-    onPaste: (String) -> Unit,
-    isPasteEnabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val clipboardManager = LocalClipboardManager.current
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF5F5F5))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        // Bullet toggle button
-        IconButton(
-            onClick = onToggleBullet,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_format_list_bulleted),
-                contentDescription = "Toggle bullet",
-                tint = Color(0xFF616161),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        // Checkbox toggle button
-        IconButton(
-            onClick = onToggleCheckbox,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_check_box_outline),
-                contentDescription = "Toggle checkbox",
-                tint = Color(0xFF616161),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        // Unindent button
-        IconButton(
-            onClick = onUnindent,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_format_indent_decrease),
-                contentDescription = "Unindent",
-                tint = Color(0xFF616161),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        // Indent button
-        IconButton(
-            onClick = onIndent,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_format_indent_increase),
-                contentDescription = "Indent",
-                tint = Color(0xFF616161),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        // Paste button
-        IconButton(
-            onClick = {
-                val clipText = clipboardManager.getText()?.text ?: ""
-                if (clipText.isNotEmpty()) {
-                    onPaste(clipText)
-                }
-            },
-            enabled = isPasteEnabled,
-            modifier = Modifier.size(40.dp)
-        ) {
-            Icon(
-                painter = painterResource(id = R.drawable.ic_paste),
-                contentDescription = "Paste",
-                tint = if (isPasteEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
 }
 
 @Preview(showBackground = true)

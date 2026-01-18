@@ -668,4 +668,61 @@ class LineSelectionUtilsTest {
         assertEquals("☐ Task1\n☐ Task2\n☐ Task3", result.text)
     }
 
+    // ==================== removeEmptyLineAfterDeletion ====================
+
+    @Test
+    fun `removeEmptyLineAfterDeletion removes empty line when cursor at empty line start`() {
+        // "Line1\n\nLine2" with cursor at position 6 (start of empty line)
+        val value = TextFieldValue("Line1\n\nLine2", TextRange(6))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNotNull(result)
+        assertEquals("Line1\nLine2", result!!.text)
+        assertEquals(5, result.selection.start)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion returns null when cursor not at line start`() {
+        val value = TextFieldValue("Line1\nLine2", TextRange(8))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNull(result)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion returns null when line not empty`() {
+        val value = TextFieldValue("Line1\nLine2", TextRange(6)) // cursor at start of "Line2"
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNull(result)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion returns null when selection not collapsed`() {
+        val value = TextFieldValue("Line1\n\nLine2", TextRange(6, 7))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNull(result)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion returns null at text start`() {
+        val value = TextFieldValue("\nLine2", TextRange(0))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNull(result)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion returns null at text end`() {
+        val value = TextFieldValue("Line1\n", TextRange(6))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNull(result)
+    }
+
+    @Test
+    fun `removeEmptyLineAfterDeletion handles multiple consecutive empty lines`() {
+        // "Line1\n\n\nLine2" with cursor at position 7 (second empty line)
+        val value = TextFieldValue("Line1\n\n\nLine2", TextRange(7))
+        val result = removeEmptyLineAfterDeletion(value)
+        assertNotNull(result)
+        assertEquals("Line1\n\nLine2", result!!.text)
+        assertEquals(6, result.selection.start)
+    }
+
 }

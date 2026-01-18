@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.text.Html
 import androidx.compose.runtime.Composable
+
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,9 +15,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalWindowInfo
 
-private const val BULLET_PREFIX = "• "
-private const val CHECKBOX_UNCHECKED_PREFIX = "☐ "
-private const val CHECKBOX_CHECKED_PREFIX = "☑ "
+// Use constants from LinePrefixes
+private val BULLET_PREFIX = LinePrefixes.BULLET
+private val CHECKBOX_UNCHECKED_PREFIX = LinePrefixes.CHECKBOX_UNCHECKED
+private val CHECKBOX_CHECKED_PREFIX = LinePrefixes.CHECKBOX_CHECKED
 
 /**
  * Composable that monitors the clipboard and converts plain text with bullets/checkboxes
@@ -144,16 +146,9 @@ private fun convertHtmlToBulletedText(html: String): String {
                         // Remove nested ul/ol tags and their contents for this level
                         content = content.replace(Regex("<ul[^>]*>.*?</ul>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
                         content = content.replace(Regex("<ol[^>]*>.*?</ol>", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)), "")
-                        // Remove remaining HTML tags
-                        content = content.replace(Regex("<[^>]+>"), "")
-                        // Decode HTML entities
-                        content = content
-                            .replace("&nbsp;", " ")
-                            .replace("&amp;", "&")
-                            .replace("&lt;", "<")
-                            .replace("&gt;", ">")
-                            .replace("&quot;", "\"")
-                            .trim()
+                        // Remove remaining HTML tags and decode entities
+                        content = HtmlEntities.stripTags(content)
+                        content = HtmlEntities.unescape(content).trim()
 
                         if (content.isNotEmpty()) {
                             // Add tabs for indentation (indentLevel - 1 because we're inside the ul)
@@ -180,10 +175,7 @@ private fun convertHtmlToBulletedText(html: String): String {
 
 private fun containsFormattedContent(text: String): Boolean {
     return text.lines().any { line ->
-        val trimmedLine = line.trimStart('\t')
-        trimmedLine.startsWith(BULLET_PREFIX) ||
-        trimmedLine.startsWith(CHECKBOX_UNCHECKED_PREFIX) ||
-        trimmedLine.startsWith(CHECKBOX_CHECKED_PREFIX)
+        LinePrefixes.hasAnyPrefix(line)
     }
 }
 
@@ -198,15 +190,10 @@ fun convertToHtml(text: String): String {
     var currentIndentLevel = -1 // -1 means not in a list
 
     for (line in lines) {
-        // Count leading tabs for indentation level
-        val leadingTabs = line.takeWhile { it == '\t' }
-        val indentLevel = leadingTabs.length
-        val lineContent = line.removePrefix(leadingTabs)
+        val lineInfo = TextLineUtils.parseLine(line)
+        val indentLevel = lineInfo.indentation.length
 
-        val isBullet = lineContent.startsWith(BULLET_PREFIX)
-        val isCheckbox = lineContent.startsWith(CHECKBOX_UNCHECKED_PREFIX) || lineContent.startsWith(CHECKBOX_CHECKED_PREFIX)
-
-        if (isBullet || isCheckbox) {
+        if (lineInfo.prefix != null) {
             // Adjust nesting level
             while (currentIndentLevel < indentLevel) {
                 body.append("<ul>")
@@ -217,12 +204,7 @@ fun convertToHtml(text: String): String {
                 currentIndentLevel--
             }
 
-            val prefix = when {
-                lineContent.startsWith(BULLET_PREFIX) -> BULLET_PREFIX
-                lineContent.startsWith(CHECKBOX_CHECKED_PREFIX) -> CHECKBOX_CHECKED_PREFIX
-                else -> CHECKBOX_UNCHECKED_PREFIX
-            }
-            val content = escapeHtml(lineContent.removePrefix(prefix))
+            val content = escapeHtml(lineInfo.content)
             body.append("<li>$content</li>")
         } else {
             // Close all open lists
@@ -248,6 +230,51 @@ fun convertToHtml(text: String): String {
     return body.toString()
 }
 
-private fun escapeHtml(text: String): String {
-    return Html.escapeHtml(text)
+private fun escapeHtml(text: String): String = HtmlEntities.escape(text)
+
+/**
+ * Detects paste operations and transforms HTML list content to bulleted text.
+ * If the pasted content contains HTML lists, converts them to bulleted format.
+ *
+ * @param context Android context for clipboard access
+ * @param oldValue The TextFieldValue before the change
+ * @param newValue The TextFieldValue after the change
+ * @return The transformed TextFieldValue with bullets if applicable, or newValue unchanged
+ */
+fun handlePasteTransformation(
+    context: Context,
+    oldValue: androidx.compose.ui.text.input.TextFieldValue,
+    newValue: androidx.compose.ui.text.input.TextFieldValue
+): androidx.compose.ui.text.input.TextFieldValue {
+    // Detect if this is a paste: text grew significantly and it's an insertion
+    val insertedLength = newValue.text.length - oldValue.text.length
+    if (insertedLength < 2) return newValue // Not a paste, too small
+
+    // Get the inserted text
+    val insertionStart = oldValue.selection.min
+    val insertionEnd = insertionStart + insertedLength
+    if (insertionEnd > newValue.text.length) return newValue
+
+    val insertedText = newValue.text.substring(insertionStart, insertionEnd)
+
+    // Check if clipboard has HTML lists that should be converted
+    val bulletedText = getClipboardAsBulletedText(context) ?: return newValue
+
+    // Verify the inserted text matches clipboard content (it's actually a paste)
+    val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val clipText = clipboardManager.primaryClip?.getItemAt(0)?.text?.toString() ?: return newValue
+
+    if (insertedText.trim() != clipText.trim()) return newValue // Not a clipboard paste
+
+    // Replace the pasted text with the bulleted version
+    val newText = newValue.text.substring(0, insertionStart) +
+            bulletedText +
+            newValue.text.substring(insertionEnd)
+
+    val newCursorPos = insertionStart + bulletedText.length
+
+    return androidx.compose.ui.text.input.TextFieldValue(
+        newText,
+        androidx.compose.ui.text.TextRange(newCursorPos)
+    )
 }
