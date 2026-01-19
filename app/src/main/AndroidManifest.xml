@@ -2,7 +2,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Exact alarms (required for alarm clock functionality) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Notifications -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Full-screen intent for lock screen display -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Vibrate for alarm -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Boot receiver to reschedule alarms -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
+        android:name=".TaskBrainApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
