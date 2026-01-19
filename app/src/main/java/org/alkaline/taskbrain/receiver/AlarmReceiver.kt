@@ -78,6 +78,10 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         val notificationManager = context.getSystemService(NotificationManager::class.java)
+        if (notificationManager == null) {
+            Log.e(TAG, "NotificationManager is null - cannot show notification")
+            return
+        }
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.REMINDER_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_alarm)
@@ -100,6 +104,10 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         val notificationManager = context.getSystemService(NotificationManager::class.java)
+        if (notificationManager == null) {
+            Log.e(TAG, "NotificationManager is null - cannot show notification")
+            return
+        }
 
         val fullScreenIntent = createFullScreenIntent(context, alarm, AlarmType.URGENT)
 
@@ -126,6 +134,10 @@ class AlarmReceiver : BroadcastReceiver() {
         }
 
         val notificationManager = context.getSystemService(NotificationManager::class.java)
+        if (notificationManager == null) {
+            Log.e(TAG, "NotificationManager is null - cannot show notification")
+            return
+        }
 
         val fullScreenIntent = createFullScreenIntent(context, alarm, AlarmType.ALARM)
 

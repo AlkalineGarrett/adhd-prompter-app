@@ -345,6 +345,132 @@ class AlarmRepositoryTest {
 
     // endregion
 
+    // region Error Handling Tests
+
+    @Test
+    fun `createAlarm returns failure on Firebase exception`() = runTest {
+        val newRef = mockk<DocumentReference> { every { id } returns "new_alarm_id" }
+        every { mockAlarmsCollection.document() } returns newRef
+        every { newRef.set(any<Map<String, Any?>>()) } returns Tasks.forException(
+            RuntimeException("PERMISSION_DENIED: Missing or insufficient permissions")
+        )
+
+        val result = repository.createAlarm(
+            Alarm(noteId = "note_1", lineContent = "Test")
+        )
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("PERMISSION_DENIED") == true)
+    }
+
+    @Test
+    fun `getAlarm returns failure on Firebase exception`() = runTest {
+        val ref = mockk<DocumentReference>()
+        every { mockAlarmsCollection.document("alarm_1") } returns ref
+        every { ref.get() } returns Tasks.forException(
+            RuntimeException("Network error")
+        )
+
+        val result = repository.getAlarm("alarm_1")
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("Network error") == true)
+    }
+
+    @Test
+    fun `markDone returns failure on Firebase exception`() = runTest {
+        val ref = mockAlarmDocument("alarm_1", alarmData())
+        every { ref.update(any<Map<String, Any>>()) } returns Tasks.forException(
+            RuntimeException("Permission denied")
+        )
+
+        val result = repository.markDone("alarm_1")
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `markCancelled returns failure on Firebase exception`() = runTest {
+        val ref = mockAlarmDocument("alarm_1", alarmData())
+        every { ref.update(any<Map<String, Any>>()) } returns Tasks.forException(
+            RuntimeException("Permission denied")
+        )
+
+        val result = repository.markCancelled("alarm_1")
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `reactivateAlarm returns failure on Firebase exception`() = runTest {
+        val ref = mockAlarmDocument("alarm_1", alarmData())
+        every { ref.update(any<Map<String, Any>>()) } returns Tasks.forException(
+            RuntimeException("Permission denied")
+        )
+
+        val result = repository.reactivateAlarm("alarm_1")
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `getUpcomingAlarms returns failure on Firebase exception`() = runTest {
+        val query = mockk<Query>()
+        val orderedQuery = mockk<Query>()
+        every { mockAlarmsCollection.whereEqualTo("status", AlarmStatus.PENDING.name) } returns query
+        every { query.orderBy("upcomingTime", Query.Direction.ASCENDING) } returns orderedQuery
+        every { orderedQuery.get() } returns Tasks.forException(
+            RuntimeException("PERMISSION_DENIED: Missing or insufficient permissions")
+        )
+
+        val result = repository.getUpcomingAlarms()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("PERMISSION_DENIED") == true)
+    }
+
+    @Test
+    fun `getLaterAlarms returns failure on Firebase exception`() = runTest {
+        val query = mockk<Query>()
+        val orderedQuery = mockk<Query>()
+        every { mockAlarmsCollection.whereEqualTo("status", AlarmStatus.PENDING.name) } returns query
+        every { query.orderBy("createdAt", Query.Direction.DESCENDING) } returns orderedQuery
+        every { orderedQuery.get() } returns Tasks.forException(
+            RuntimeException("PERMISSION_DENIED: Missing or insufficient permissions")
+        )
+
+        val result = repository.getLaterAlarms()
+
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("PERMISSION_DENIED") == true)
+    }
+
+    @Test
+    fun `snoozeAlarm returns failure on Firebase exception`() = runTest {
+        val ref = mockAlarmDocument("alarm_1", alarmData())
+        every { ref.update(any<Map<String, Any?>>()) } returns Tasks.forException(
+            RuntimeException("Permission denied")
+        )
+
+        val result = repository.snoozeAlarm("alarm_1", SnoozeDuration.TEN_MINUTES)
+
+        assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `deleteAlarm returns failure on Firebase exception`() = runTest {
+        val ref = mockAlarmDocument("alarm_1", alarmData())
+        every { ref.delete() } returns Tasks.forException(
+            RuntimeException("Permission denied")
+        )
+
+        val result = repository.deleteAlarm("alarm_1")
+
+        assertTrue(result.isFailure)
+    }
+
+    // endregion
+
     companion object {
         private const val USER_ID = "test_user_id"
     }

@@ -114,7 +114,7 @@ class AlarmActivity : ComponentActivity() {
 
     private fun dismissNotification(alarmId: String) {
         val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager.cancel(alarmId.hashCode())
+        notificationManager?.cancel(alarmId.hashCode())
     }
 
     companion object {

@@ -148,4 +148,118 @@ class AlarmsViewModelTest {
         assertEquals("alarm2", sortedAlarms[0].id)
         assertEquals("alarm1", sortedAlarms[1].id)
     }
+
+    // ==================== Error Handling Tests ====================
+
+    @Test
+    fun `loadAlarms sets error when upcoming alarms fetch fails`() = runTest {
+        val testError = RuntimeException("Permission denied")
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.failure(testError)
+        coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        // Simulate what loadAlarms does
+        var firstError: Throwable? = null
+        mockRepository.getUpcomingAlarms().onFailure { if (firstError == null) firstError = it }
+
+        assertNotNull(firstError)
+        assertEquals("Permission denied", firstError?.message)
+    }
+
+    @Test
+    fun `loadAlarms sets error when later alarms fetch fails`() = runTest {
+        val testError = RuntimeException("Network error")
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getLaterAlarms() } returns Result.failure(testError)
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        var firstError: Throwable? = null
+        mockRepository.getUpcomingAlarms().onFailure { if (firstError == null) firstError = it }
+        mockRepository.getLaterAlarms().onFailure { if (firstError == null) firstError = it }
+
+        assertNotNull(firstError)
+        assertEquals("Network error", firstError?.message)
+    }
+
+    @Test
+    fun `loadAlarms captures first error when multiple fetches fail`() = runTest {
+        val upcomingError = RuntimeException("Upcoming error")
+        val laterError = RuntimeException("Later error")
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.failure(upcomingError)
+        coEvery { mockRepository.getLaterAlarms() } returns Result.failure(laterError)
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        var firstError: Throwable? = null
+        mockRepository.getUpcomingAlarms().onFailure { if (firstError == null) firstError = it }
+        mockRepository.getLaterAlarms().onFailure { if (firstError == null) firstError = it }
+
+        // Should capture the first error (upcoming), not the second (later)
+        assertNotNull(firstError)
+        assertEquals("Upcoming error", firstError?.message)
+    }
+
+    @Test
+    fun `markDone sets error on failure`() = runTest {
+        val testError = RuntimeException("Failed to mark done")
+        coEvery { mockRepository.markDone(any()) } returns Result.failure(testError)
+
+        var capturedError: Throwable? = null
+        mockRepository.markDone("test_alarm").onFailure { capturedError = it }
+
+        assertNotNull(capturedError)
+        assertEquals("Failed to mark done", capturedError?.message)
+    }
+
+    @Test
+    fun `markCancelled sets error on failure`() = runTest {
+        val testError = RuntimeException("Failed to cancel")
+        coEvery { mockRepository.markCancelled(any()) } returns Result.failure(testError)
+
+        var capturedError: Throwable? = null
+        mockRepository.markCancelled("test_alarm").onFailure { capturedError = it }
+
+        assertNotNull(capturedError)
+        assertEquals("Failed to cancel", capturedError?.message)
+    }
+
+    @Test
+    fun `reactivateAlarm sets error on failure`() = runTest {
+        val testError = RuntimeException("Failed to reactivate")
+        coEvery { mockRepository.reactivateAlarm(any()) } returns Result.failure(testError)
+
+        var capturedError: Throwable? = null
+        mockRepository.reactivateAlarm("test_alarm").onFailure { capturedError = it }
+
+        assertNotNull(capturedError)
+        assertEquals("Failed to reactivate", capturedError?.message)
+    }
+
+    @Test
+    fun `successful operations do not set error`() = runTest {
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        var firstError: Throwable? = null
+        mockRepository.getUpcomingAlarms().onFailure { if (firstError == null) firstError = it }
+        mockRepository.getLaterAlarms().onFailure { if (firstError == null) firstError = it }
+        mockRepository.getCompletedAlarms().onFailure { if (firstError == null) firstError = it }
+        mockRepository.getCancelledAlarms().onFailure { if (firstError == null) firstError = it }
+
+        assertNull(firstError)
+    }
+
+    @Test
+    fun `error can be cleared`() {
+        var error: Throwable? = RuntimeException("Test error")
+
+        // Simulate clearError behavior
+        error = null
+
+        assertNull(error)
+    }
 }

@@ -61,12 +61,14 @@ class AlarmScheduler(private val context: Context) {
 
     private fun scheduleAlarmTrigger(alarmId: String, triggerAtMillis: Long, alarmType: AlarmType) {
         // Don't schedule alarms in the past
-        if (triggerAtMillis <= System.currentTimeMillis()) {
-            Log.d(TAG, "Skipping past alarm: $alarmId ($alarmType)")
+        val now = System.currentTimeMillis()
+        if (triggerAtMillis <= now) {
+            Log.d(TAG, "Skipping past alarm: $alarmId ($alarmType) - trigger time $triggerAtMillis <= now $now")
             return
         }
 
         val pendingIntent = createPendingIntent(alarmId, alarmType)
+        val triggerInSeconds = (triggerAtMillis - now) / 1000
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -76,6 +78,7 @@ class AlarmScheduler(private val context: Context) {
                         triggerAtMillis,
                         pendingIntent
                     )
+                    Log.d(TAG, "Scheduled EXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s")
                 } else {
                     // Fall back to inexact alarm if exact alarm permission not granted
                     alarmManager.setAndAllowWhileIdle(
@@ -83,7 +86,7 @@ class AlarmScheduler(private val context: Context) {
                         triggerAtMillis,
                         pendingIntent
                     )
-                    Log.w(TAG, "Using inexact alarm - exact alarm permission not granted")
+                    Log.w(TAG, "Scheduled INEXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s - exact alarm permission not granted. Go to Settings > Apps > TaskBrain > Alarms & reminders to enable.")
                 }
             } else {
                 alarmManager.setExactAndAllowWhileIdle(
@@ -91,16 +94,28 @@ class AlarmScheduler(private val context: Context) {
                     triggerAtMillis,
                     pendingIntent
                 )
+                Log.d(TAG, "Scheduled EXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s")
             }
-            Log.d(TAG, "Scheduled alarm: $alarmId ($alarmType) at $triggerAtMillis")
         } catch (e: SecurityException) {
-            Log.e(TAG, "Failed to schedule exact alarm", e)
+            Log.e(TAG, "Failed to schedule exact alarm - falling back to inexact", e)
             // Fall back to inexact alarm
             alarmManager.setAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 triggerAtMillis,
                 pendingIntent
             )
+        }
+    }
+
+    /**
+     * Checks if the app can schedule exact alarms.
+     * On Android 12+, this requires user permission.
+     */
+    fun canScheduleExactAlarms(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
         }
     }
 

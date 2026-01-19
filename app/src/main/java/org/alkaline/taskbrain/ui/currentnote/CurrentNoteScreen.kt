@@ -33,6 +33,9 @@ fun CurrentNoteScreen(
     val contentModified by currentNoteViewModel.contentModified.observeAsState(false)
     val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
     val alarmCreated by currentNoteViewModel.alarmCreated.observeAsState()
+    val alarmError by currentNoteViewModel.alarmError.observeAsState()
+    val alarmPermissionWarning by currentNoteViewModel.alarmPermissionWarning.observeAsState(false)
+    val notificationPermissionWarning by currentNoteViewModel.notificationPermissionWarning.observeAsState(false)
 
     var userContent by remember { mutableStateOf("") }
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -101,6 +104,56 @@ fun CurrentNoteScreen(
             title = "Load Error",
             throwable = (loadStatus as LoadStatus.Error).throwable,
             onDismiss = { currentNoteViewModel.clearLoadError() }
+        )
+    }
+
+    alarmError?.let { throwable ->
+        ErrorDialog(
+            title = "Alarm Error",
+            throwable = throwable,
+            onDismiss = { currentNoteViewModel.clearAlarmError() }
+        )
+    }
+
+    // Alarm permission warning dialog
+    if (alarmPermissionWarning) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { currentNoteViewModel.clearAlarmPermissionWarning() },
+            title = { androidx.compose.material3.Text("Exact Alarms Disabled") },
+            text = {
+                androidx.compose.material3.Text(
+                    "Exact alarm permission is not granted. Your alarm may not trigger at the exact time.\n\n" +
+                    "To enable: Settings → Apps → TaskBrain → Alarms & reminders → Allow"
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { currentNoteViewModel.clearAlarmPermissionWarning() }
+                ) {
+                    androidx.compose.material3.Text("OK")
+                }
+            }
+        )
+    }
+
+    // Notification permission warning dialog
+    if (notificationPermissionWarning) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { currentNoteViewModel.clearNotificationPermissionWarning() },
+            title = { androidx.compose.material3.Text("Notifications Disabled") },
+            text = {
+                androidx.compose.material3.Text(
+                    "Notification permission is not granted. Your alarms will not show notifications.\n\n" +
+                    "To enable: Settings → Apps → TaskBrain → Notifications → Allow"
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { currentNoteViewModel.clearNotificationPermissionWarning() }
+                ) {
+                    androidx.compose.material3.Text("OK")
+                }
+            }
         )
     }
 

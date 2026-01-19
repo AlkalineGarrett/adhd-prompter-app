@@ -46,25 +46,43 @@ class AlarmsViewModel : ViewModel() {
             val completedResult = repository.getCompletedAlarms()
             val cancelledResult = repository.getCancelledAlarms()
 
+            // Track first error encountered to show to user
+            var firstError: Throwable? = null
+
             upcomingResult.fold(
                 onSuccess = { _upcomingAlarms.value = it },
-                onFailure = { Log.e(TAG, "Error loading upcoming alarms", it) }
+                onFailure = {
+                    Log.e(TAG, "Error loading upcoming alarms", it)
+                    if (firstError == null) firstError = it
+                }
             )
 
             laterResult.fold(
                 onSuccess = { _laterAlarms.value = it },
-                onFailure = { Log.e(TAG, "Error loading later alarms", it) }
+                onFailure = {
+                    Log.e(TAG, "Error loading later alarms", it)
+                    if (firstError == null) firstError = it
+                }
             )
 
             completedResult.fold(
                 onSuccess = { _completedAlarms.value = it },
-                onFailure = { Log.e(TAG, "Error loading completed alarms", it) }
+                onFailure = {
+                    Log.e(TAG, "Error loading completed alarms", it)
+                    if (firstError == null) firstError = it
+                }
             )
 
             cancelledResult.fold(
                 onSuccess = { _cancelledAlarms.value = it },
-                onFailure = { Log.e(TAG, "Error loading cancelled alarms", it) }
+                onFailure = {
+                    Log.e(TAG, "Error loading cancelled alarms", it)
+                    if (firstError == null) firstError = it
+                }
             )
+
+            // Show error dialog if any load failed
+            firstError?.let { _error.value = it }
 
             _isLoading.value = false
         }

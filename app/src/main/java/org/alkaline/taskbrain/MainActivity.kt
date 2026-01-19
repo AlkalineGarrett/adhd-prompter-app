@@ -1,11 +1,14 @@
 package org.alkaline.taskbrain
 
+import android.Manifest
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.MotionEvent
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -28,6 +31,7 @@ import com.google.firebase.auth.GoogleAuthProvider
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.alkaline.taskbrain.util.PermissionHelper
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
@@ -38,6 +42,15 @@ class MainActivity : AppCompatActivity() {
     // Global finger state tracking - receives ALL touch events before Compose
     private val _isFingerDown = MutableStateFlow(false)
     val isFingerDown: StateFlow<Boolean> = _isFingerDown.asStateFlow()
+
+    // Permission request launcher for notification permission (Android 13+)
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Log.w(TAG, "Notification permission denied")
+        }
+    }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
@@ -53,6 +66,9 @@ class MainActivity : AppCompatActivity() {
 
         auth = FirebaseAuth.getInstance()
         credentialManager = CredentialManager.create(this)
+
+        // Request notification permission on Android 13+
+        requestNotificationPermissionIfNeeded()
 
         setContent {
             var user by remember { mutableStateOf(auth.currentUser) }
@@ -128,9 +144,25 @@ class MainActivity : AppCompatActivity() {
                 if (task.isSuccessful) {
                     // Sign-in successful; AuthStateListener will pick this up and update the UI
                 } else {
-                    Log.w("MainActivity", "signInWithCredential:failure", task.exception)
+                    Log.w(TAG, "signInWithCredential:failure", task.exception)
                     Toast.makeText(this, "Authentication Failed.", Toast.LENGTH_SHORT).show()
                 }
             }
+    }
+
+    /**
+     * Requests notification permission on Android 13+ if not already granted.
+     * This is required to show alarm notifications.
+     */
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!PermissionHelper.hasNotificationPermission(this)) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }

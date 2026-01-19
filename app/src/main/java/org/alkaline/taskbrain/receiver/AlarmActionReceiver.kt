@@ -98,7 +98,7 @@ class AlarmActionReceiver : BroadcastReceiver() {
 
     private fun dismissNotification(context: Context, alarmId: String) {
         val notificationManager = context.getSystemService(NotificationManager::class.java)
-        notificationManager.cancel(alarmId.hashCode())
+        notificationManager?.cancel(alarmId.hashCode())
     }
 
     companion object {

@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================== Helper Functions ====================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get the current user's UID
+    function currentUserId() {
+      return request.auth.uid;
+    }
+
+    // Check if the incoming document's userId field matches the current user
+    function incomingDataBelongsToUser() {
+      return request.resource.data.userId == currentUserId();
+    }
+
+    // Check if the existing document's userId field matches the current user
+    function existingDataBelongsToUser() {
+      return resource.data.userId == currentUserId();
+    }
+
+    // Check if user owns the path (for /users/{userId}/... collections)
+    function userOwnsPath(userId) {
+      return userId == currentUserId();
+    }
+
+    // ==================== Notes Collection ====================
+
+    match /notes/{noteId} {
+      allow create: if isAuthenticated() && incomingDataBelongsToUser();
+      allow read: if isAuthenticated() && (resource == null || existingDataBelongsToUser());
+      allow update, delete: if isAuthenticated() && existingDataBelongsToUser();
+    }
+
+    // ==================== Alarms Collection ====================
+
+    match /users/{userId}/alarms/{alarmId} {
+      allow read, write: if isAuthenticated() && userOwnsPath(userId);
+    }
+  }
+}

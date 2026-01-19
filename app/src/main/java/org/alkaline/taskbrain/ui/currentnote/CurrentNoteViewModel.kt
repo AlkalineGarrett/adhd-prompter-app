@@ -17,6 +17,7 @@ import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
+import org.alkaline.taskbrain.util.PermissionHelper
 
 class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -42,6 +43,18 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     // Alarm creation status - signals when to insert alarm symbol
     private val _alarmCreated = MutableLiveData<AlarmCreatedEvent?>()
     val alarmCreated: LiveData<AlarmCreatedEvent?> = _alarmCreated
+
+    // Alarm error state
+    private val _alarmError = MutableLiveData<Throwable?>()
+    val alarmError: LiveData<Throwable?> = _alarmError
+
+    // Alarm permission warning
+    private val _alarmPermissionWarning = MutableLiveData<Boolean>(false)
+    val alarmPermissionWarning: LiveData<Boolean> = _alarmPermissionWarning
+
+    // Notification permission warning
+    private val _notificationPermissionWarning = MutableLiveData<Boolean>(false)
+    val notificationPermissionWarning: LiveData<Boolean> = _notificationPermissionWarning
 
     // Current Note ID being edited
     private var currentNoteId = "root_note"
@@ -205,10 +218,14 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // Use the note ID from line tracker if available
             val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
 
+            // Auto-populate upcomingTime with the earliest scheduled time if not set
+            val effectiveUpcomingTime = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
+                .minByOrNull { it.toDate().time }
+
             val alarm = Alarm(
                 noteId = noteId,
                 lineContent = lineContent,
-                upcomingTime = upcomingTime,
+                upcomingTime = effectiveUpcomingTime,
                 notifyTime = notifyTime,
                 urgentTime = urgentTime,
                 alarmTime = alarmTime
@@ -218,6 +235,15 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             result.fold(
                 onSuccess = { alarmId ->
                     Log.d("CurrentNoteViewModel", "Alarm created with ID: $alarmId")
+
+                    // Check permissions and show warnings
+                    val context = getApplication<Application>()
+                    if (!alarmScheduler.canScheduleExactAlarms()) {
+                        _alarmPermissionWarning.value = true
+                    }
+                    if (!PermissionHelper.hasNotificationPermission(context)) {
+                        _notificationPermissionWarning.value = true
+                    }
 
                     // Schedule the alarm
                     val createdAlarm = alarm.copy(id = alarmId)
@@ -229,6 +255,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error creating alarm", e)
+                    _alarmError.value = e
                 }
             )
         }
@@ -239,6 +266,27 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      */
     fun clearAlarmCreatedEvent() {
         _alarmCreated.value = null
+    }
+
+    /**
+     * Clears the alarm error after it has been shown.
+     */
+    fun clearAlarmError() {
+        _alarmError.value = null
+    }
+
+    /**
+     * Clears the alarm permission warning after it has been shown.
+     */
+    fun clearAlarmPermissionWarning() {
+        _alarmPermissionWarning.value = false
+    }
+
+    /**
+     * Clears the notification permission warning after it has been shown.
+     */
+    fun clearNotificationPermissionWarning() {
+        _notificationPermissionWarning.value = false
     }
 
     // Call this when content is manually edited or when a save completes

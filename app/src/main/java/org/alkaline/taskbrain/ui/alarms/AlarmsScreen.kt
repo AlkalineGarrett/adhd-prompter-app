@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.alarms
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -29,14 +31,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.ui.components.ErrorDialog
+import org.alkaline.taskbrain.util.PermissionHelper
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -44,6 +51,7 @@ import java.util.Locale
 fun AlarmsScreen(
     alarmsViewModel: AlarmsViewModel = viewModel()
 ) {
+    val context = LocalContext.current
     val upcomingAlarms by alarmsViewModel.upcomingAlarms.observeAsState(emptyList())
     val laterAlarms by alarmsViewModel.laterAlarms.observeAsState(emptyList())
     val completedAlarms by alarmsViewModel.completedAlarms.observeAsState(emptyList())
@@ -51,8 +59,13 @@ fun AlarmsScreen(
     val isLoading by alarmsViewModel.isLoading.observeAsState(false)
     val error by alarmsViewModel.error.observeAsState()
 
+    // Check permission status
+    var permissionStatus by remember { mutableStateOf(PermissionHelper.getAlarmPermissionStatus(context)) }
+
     LaunchedEffect(Unit) {
         alarmsViewModel.loadAlarms()
+        // Refresh permission status when screen is shown
+        permissionStatus = PermissionHelper.getAlarmPermissionStatus(context)
     }
 
     error?.let { throwable ->
@@ -63,9 +76,17 @@ fun AlarmsScreen(
         )
     }
 
-    Box(
+    Column(
         modifier = Modifier.fillMaxSize()
     ) {
+        // Permission warnings banner
+        if (!permissionStatus.hasNotificationPermission || !permissionStatus.canScheduleExactAlarms) {
+            PermissionWarningBanner(permissionStatus)
+        }
+
+        Box(
+            modifier = Modifier.weight(1f)
+        ) {
         if (isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         } else {
@@ -142,6 +163,51 @@ fun AlarmsScreen(
                     }
                 }
             }
+        }
+        }
+    }
+}
+
+@Composable
+private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPermissionStatus) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.errorContainer)
+            .padding(12.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Permission Issues",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+
+        if (!permissionStatus.hasNotificationPermission) {
+            Text(
+                text = "• Notifications disabled: Go to Settings → Apps → TaskBrain → Notifications",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+
+        if (!permissionStatus.canScheduleExactAlarms) {
+            Text(
+                text = "• Exact alarms disabled: Go to Settings → Apps → TaskBrain → Alarms & reminders",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
         }
     }
 }
