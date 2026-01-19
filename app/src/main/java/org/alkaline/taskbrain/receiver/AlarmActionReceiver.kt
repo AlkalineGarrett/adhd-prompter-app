@@ -9,12 +9,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.data.SnoozeDuration
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmUtils
 
 /**
- * Handles notification action buttons (Done, Snooze).
+ * Handles notification action buttons (Done, Snooze, Cancel).
+ *
+ * When a user taps an action button on an alarm notification:
+ * 1. This receiver gets the corresponding ACTION_* intent
+ * 2. The handler updates the alarm status in Firestore via AlarmRepository
+ * 3. Scheduled alarm triggers are cancelled via AlarmScheduler
+ * 4. The notification is dismissed
+ *
+ * The AlarmsScreen will reflect these changes when it resumes (via lifecycle observation).
  */
 class AlarmActionReceiver : BroadcastReceiver() {
 
@@ -41,6 +50,9 @@ class AlarmActionReceiver : BroadcastReceiver() {
 
             // Dismiss the notification
             dismissNotification(context, alarmId)
+
+            // Notify observers to refresh their data
+            AlarmUpdateEvent.notifyAlarmUpdated()
         }
     }
 
@@ -72,6 +84,9 @@ class AlarmActionReceiver : BroadcastReceiver() {
 
                     // Dismiss the current notification
                     dismissNotification(context, alarmId)
+
+                    // Notify observers to refresh their data
+                    AlarmUpdateEvent.notifyAlarmUpdated()
                 },
                 onFailure = { e ->
                     Log.e(TAG, "Error snoozing alarm", e)
@@ -93,12 +108,15 @@ class AlarmActionReceiver : BroadcastReceiver() {
 
             // Dismiss the notification
             dismissNotification(context, alarmId)
+
+            // Notify observers to refresh their data
+            AlarmUpdateEvent.notifyAlarmUpdated()
         }
     }
 
     private fun dismissNotification(context: Context, alarmId: String) {
         val notificationManager = context.getSystemService(NotificationManager::class.java)
-        notificationManager?.cancel(alarmId.hashCode())
+        notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
     }
 
     companion object {

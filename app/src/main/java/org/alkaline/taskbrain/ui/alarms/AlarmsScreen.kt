@@ -28,7 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,10 +65,21 @@ fun AlarmsScreen(
     // Check permission status
     var permissionStatus by remember { mutableStateOf(PermissionHelper.getAlarmPermissionStatus(context)) }
 
-    LaunchedEffect(Unit) {
-        alarmsViewModel.loadAlarms()
-        // Refresh permission status when screen is shown
-        permissionStatus = PermissionHelper.getAlarmPermissionStatus(context)
+    // Refresh alarms when screen becomes visible (ON_RESUME).
+    // This ensures external changes (e.g., alarm cancelled/done via notification action)
+    // are reflected in the UI when the user returns to the app.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                alarmsViewModel.loadAlarms()
+                permissionStatus = PermissionHelper.getAlarmPermissionStatus(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     error?.let { throwable ->

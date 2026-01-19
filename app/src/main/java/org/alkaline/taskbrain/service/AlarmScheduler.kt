@@ -18,17 +18,20 @@ data class AlarmScheduleResult(
     val scheduledTriggers: List<AlarmType>,
     val skippedPastTriggers: List<AlarmType>,
     val noTriggersConfigured: Boolean,
-    val usedExactAlarm: Boolean
+    val usedExactAlarm: Boolean,
+    val immediateNotificationShown: Boolean = false
 ) {
     val success: Boolean
-        get() = scheduledTriggers.isNotEmpty()
+        get() = scheduledTriggers.isNotEmpty() || immediateNotificationShown
 
     val message: String
         get() = when {
             noTriggersConfigured -> "No alarm times were configured"
-            scheduledTriggers.isEmpty() && skippedPastTriggers.isNotEmpty() ->
+            scheduledTriggers.isEmpty() && !immediateNotificationShown && skippedPastTriggers.isNotEmpty() ->
                 "All alarm times are in the past: ${skippedPastTriggers.joinToString()}"
-            scheduledTriggers.isEmpty() -> "No triggers could be scheduled"
+            scheduledTriggers.isEmpty() && !immediateNotificationShown -> "No triggers could be scheduled"
+            immediateNotificationShown && scheduledTriggers.isEmpty() -> "Showed immediate notification"
+            immediateNotificationShown -> "Showed immediate notification, scheduled ${scheduledTriggers.size} trigger(s): ${scheduledTriggers.joinToString()}"
             else -> "Scheduled ${scheduledTriggers.size} trigger(s): ${scheduledTriggers.joinToString()}"
         }
 }
@@ -40,10 +43,17 @@ data class AlarmScheduleResult(
 class AlarmScheduler(private val context: Context) {
 
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+    private val notificationHelper = NotificationHelper(context)
 
     /**
      * Schedules all time thresholds for an alarm.
      * Each non-null time threshold gets its own scheduled alarm.
+     *
+     * Lock screen notification logic:
+     * - If notifyTime is set, schedules notification at that time
+     * - If notifyTime is not set but alarmTime is set, schedules notification 3 hours before alarm
+     * - If the effective notify time is in the past, shows notification immediately
+     *
      * Returns a result indicating what was scheduled.
      */
     fun scheduleAlarm(alarm: Alarm): AlarmScheduleResult {
@@ -61,6 +71,7 @@ class AlarmScheduler(private val context: Context) {
         val scheduledTriggers = mutableListOf<AlarmType>()
         val skippedPastTriggers = mutableListOf<AlarmType>()
         var usedExactAlarm = false
+        var immediateNotificationShown = false
 
         // Check if any triggers are configured
         val hasAnyTrigger = alarm.notifyTime != null || alarm.urgentTime != null || alarm.alarmTime != null
@@ -74,13 +85,27 @@ class AlarmScheduler(private val context: Context) {
             )
         }
 
-        alarm.notifyTime?.let { timestamp ->
-            val result = scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.NOTIFY)
-            if (result.scheduled) {
-                scheduledTriggers.add(AlarmType.NOTIFY)
-                usedExactAlarm = usedExactAlarm || result.usedExactAlarm
-            } else if (result.skippedPast) {
-                skippedPastTriggers.add(AlarmType.NOTIFY)
+        // Calculate effective notify time (notifyTime if set, or 3 hours before alarmTime)
+        val effectiveNotifyTime = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        if (effectiveNotifyTime != null) {
+            val now = System.currentTimeMillis()
+            if (effectiveNotifyTime <= now) {
+                // Notify time is in the past - show notification immediately (silently)
+                immediateNotificationShown = notificationHelper.showNotification(alarm, AlarmType.NOTIFY, silent = true)
+                if (!immediateNotificationShown) {
+                    // If we couldn't show it (permission denied), track as skipped
+                    skippedPastTriggers.add(AlarmType.NOTIFY)
+                }
+            } else {
+                // Schedule the notification for the effective time
+                val result = scheduleAlarmTrigger(alarm.id, effectiveNotifyTime, AlarmType.NOTIFY)
+                if (result.scheduled) {
+                    scheduledTriggers.add(AlarmType.NOTIFY)
+                    usedExactAlarm = usedExactAlarm || result.usedExactAlarm
+                } else if (result.skippedPast) {
+                    skippedPastTriggers.add(AlarmType.NOTIFY)
+                }
             }
         }
 
@@ -109,7 +134,8 @@ class AlarmScheduler(private val context: Context) {
             scheduledTriggers = scheduledTriggers,
             skippedPastTriggers = skippedPastTriggers,
             noTriggersConfigured = false,
-            usedExactAlarm = usedExactAlarm
+            usedExactAlarm = usedExactAlarm,
+            immediateNotificationShown = immediateNotificationShown
         )
     }
 

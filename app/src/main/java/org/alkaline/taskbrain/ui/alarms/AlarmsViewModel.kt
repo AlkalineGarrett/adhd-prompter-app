@@ -1,17 +1,26 @@
 package org.alkaline.taskbrain.ui.alarms
 
+import android.app.Application
+import android.app.NotificationManager
 import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmUpdateEvent
+import org.alkaline.taskbrain.service.AlarmScheduler
+import org.alkaline.taskbrain.service.AlarmUtils
 
-class AlarmsViewModel : ViewModel() {
+class AlarmsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AlarmRepository()
+    private val alarmScheduler = AlarmScheduler(application)
+    private val notificationManager = application.getSystemService(NotificationManager::class.java)
 
     private val _upcomingAlarms = MutableLiveData<List<Alarm>>(emptyList())
     val upcomingAlarms: LiveData<List<Alarm>> = _upcomingAlarms
@@ -33,6 +42,11 @@ class AlarmsViewModel : ViewModel() {
 
     init {
         loadAlarms()
+
+        // Observe alarm updates from external sources (e.g., notification actions)
+        AlarmUpdateEvent.updates
+            .onEach { loadAlarms() }
+            .launchIn(viewModelScope)
     }
 
     fun loadAlarms() {
@@ -93,6 +107,10 @@ class AlarmsViewModel : ViewModel() {
             repository.markDone(alarmId).fold(
                 onSuccess = {
                     Log.d(TAG, "Alarm marked done: $alarmId")
+                    // Cancel any scheduled triggers
+                    alarmScheduler.cancelAlarm(alarmId)
+                    // Dismiss any existing notification
+                    dismissNotification(alarmId)
                     loadAlarms()
                 },
                 onFailure = {
@@ -108,6 +126,10 @@ class AlarmsViewModel : ViewModel() {
             repository.markCancelled(alarmId).fold(
                 onSuccess = {
                     Log.d(TAG, "Alarm marked cancelled: $alarmId")
+                    // Cancel any scheduled triggers
+                    alarmScheduler.cancelAlarm(alarmId)
+                    // Dismiss any existing notification
+                    dismissNotification(alarmId)
                     loadAlarms()
                 },
                 onFailure = {
@@ -116,6 +138,10 @@ class AlarmsViewModel : ViewModel() {
                 }
             )
         }
+    }
+
+    private fun dismissNotification(alarmId: String) {
+        notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
     }
 
     fun reactivateAlarm(alarmId: String) {

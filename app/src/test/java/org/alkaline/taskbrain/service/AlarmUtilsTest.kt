@@ -290,4 +290,176 @@ class AlarmUtilsTest {
     }
 
     // endregion
+
+    // region calculateEffectiveNotifyTime tests
+
+    @Test
+    fun `calculateEffectiveNotifyTime returns notifyTime when set`() {
+        val notifyTime = Timestamp(Date(1000000L))
+        val alarm = Alarm(
+            notifyTime = notifyTime,
+            alarmTime = Timestamp(Date(2000000L))
+        )
+
+        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        assertEquals(1000000L, result)
+    }
+
+    @Test
+    fun `calculateEffectiveNotifyTime returns 3 hours before alarmTime when notifyTime not set`() {
+        val alarmTimeMillis = 10000000L
+        val alarm = Alarm(
+            notifyTime = null,
+            alarmTime = Timestamp(Date(alarmTimeMillis))
+        )
+
+        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        val expectedTime = alarmTimeMillis - (3 * 60 * 60 * 1000L)
+        assertEquals(expectedTime, result)
+    }
+
+    @Test
+    fun `calculateEffectiveNotifyTime returns null when neither notifyTime nor alarmTime set`() {
+        val alarm = Alarm(
+            notifyTime = null,
+            alarmTime = null,
+            urgentTime = Timestamp(Date(1000000L)) // urgentTime alone shouldn't trigger notify
+        )
+
+        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `calculateEffectiveNotifyTime prefers notifyTime over calculated time`() {
+        val notifyTime = Timestamp(Date(5000000L))
+        val alarmTime = Timestamp(Date(10000000L))
+        val alarm = Alarm(
+            notifyTime = notifyTime,
+            alarmTime = alarmTime
+        )
+
+        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        // Should use explicit notifyTime, not 3 hours before alarm
+        assertEquals(5000000L, result)
+    }
+
+    @Test
+    fun `calculateEffectiveNotifyTime handles alarmTime only scenario`() {
+        // Alarm at 12:00, should notify at 09:00
+        val noonMillis = 12 * 60 * 60 * 1000L // 12 hours in millis
+        val alarm = Alarm(
+            alarmTime = Timestamp(Date(noonMillis))
+        )
+
+        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+
+        val expected = 9 * 60 * 60 * 1000L // 9 hours in millis
+        assertEquals(expected, result)
+    }
+
+    // endregion
+
+    // region isNotifyTimeInPast tests
+
+    @Test
+    fun `isNotifyTimeInPast returns true when time is before current time`() {
+        val result = AlarmUtils.isNotifyTimeInPast(
+            effectiveNotifyTime = 1000L,
+            currentTimeMillis = 2000L
+        )
+
+        assertTrue(result)
+    }
+
+    @Test
+    fun `isNotifyTimeInPast returns true when time equals current time`() {
+        val result = AlarmUtils.isNotifyTimeInPast(
+            effectiveNotifyTime = 1000L,
+            currentTimeMillis = 1000L
+        )
+
+        assertTrue(result)
+    }
+
+    @Test
+    fun `isNotifyTimeInPast returns false when time is after current time`() {
+        val result = AlarmUtils.isNotifyTimeInPast(
+            effectiveNotifyTime = 2000L,
+            currentTimeMillis = 1000L
+        )
+
+        assertFalse(result)
+    }
+
+    // endregion
+
+    // region getNotificationId tests
+
+    @Test
+    fun `getNotificationId returns consistent value for same alarm ID`() {
+        val alarmId = "test_alarm_123"
+
+        val id1 = AlarmUtils.getNotificationId(alarmId)
+        val id2 = AlarmUtils.getNotificationId(alarmId)
+
+        assertEquals(id1, id2)
+    }
+
+    @Test
+    fun `getNotificationId returns different values for different alarm IDs`() {
+        val id1 = AlarmUtils.getNotificationId("alarm_1")
+        val id2 = AlarmUtils.getNotificationId("alarm_2")
+
+        assertNotEquals(id1, id2)
+    }
+
+    @Test
+    fun `getNotificationId handles empty string`() {
+        val id = AlarmUtils.getNotificationId("")
+
+        // Should not throw, and should return a consistent value
+        assertEquals("".hashCode(), id)
+    }
+
+    @Test
+    fun `getNotificationId handles special characters in alarm ID`() {
+        val alarmId = "alarm-with_special.chars:123"
+
+        val id1 = AlarmUtils.getNotificationId(alarmId)
+        val id2 = AlarmUtils.getNotificationId(alarmId)
+
+        assertEquals(id1, id2)
+    }
+
+    @Test
+    fun `getNotificationId uses hashCode for consistency with notification system`() {
+        val alarmId = "test_alarm"
+
+        val notificationId = AlarmUtils.getNotificationId(alarmId)
+
+        // Verify it uses hashCode (this is important for consistency when showing/dismissing)
+        assertEquals(alarmId.hashCode(), notificationId)
+    }
+
+    @Test
+    fun `getNotificationId is deterministic across multiple calls`() {
+        // This is critical for notification dismiss to work correctly
+        // The same ID must be used when showing AND dismissing a notification
+        val alarmId = "firebase_generated_id_abc123"
+
+        // Simulate showing notification
+        val showNotificationId = AlarmUtils.getNotificationId(alarmId)
+
+        // Simulate dismissing notification (from different code path)
+        val dismissNotificationId = AlarmUtils.getNotificationId(alarmId)
+
+        assertEquals(showNotificationId, dismissNotificationId)
+    }
+
+    // endregion
 }

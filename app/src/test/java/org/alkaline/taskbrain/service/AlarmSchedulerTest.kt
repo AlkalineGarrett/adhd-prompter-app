@@ -150,4 +150,105 @@ class AlarmSchedulerTest {
     }
 
     // endregion
+
+    // region Immediate Notification Tests
+
+    @Test
+    fun `AlarmScheduleResult success is true when immediate notification shown`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = false,
+            immediateNotificationShown = true
+        )
+
+        assertTrue(result.success)
+    }
+
+    @Test
+    fun `AlarmScheduleResult success is true when immediate notification shown with scheduled triggers`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = listOf(AlarmType.ALARM),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true,
+            immediateNotificationShown = true
+        )
+
+        assertTrue(result.success)
+    }
+
+    @Test
+    fun `AlarmScheduleResult message shows immediate notification only`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = false,
+            immediateNotificationShown = true
+        )
+
+        assertEquals("Showed immediate notification", result.message)
+    }
+
+    @Test
+    fun `AlarmScheduleResult message shows immediate notification with scheduled triggers`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = listOf(AlarmType.ALARM),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true,
+            immediateNotificationShown = true
+        )
+
+        assertEquals("Showed immediate notification, scheduled 1 trigger(s): ALARM", result.message)
+    }
+
+    @Test
+    fun `AlarmScheduleResult message shows immediate notification with multiple scheduled triggers`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = listOf(AlarmType.URGENT, AlarmType.ALARM),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true,
+            immediateNotificationShown = true
+        )
+
+        assertEquals("Showed immediate notification, scheduled 2 trigger(s): URGENT, ALARM", result.message)
+    }
+
+    @Test
+    fun `AlarmScheduleResult without immediate notification shows past triggers`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = listOf(AlarmType.NOTIFY),
+            noTriggersConfigured = false,
+            usedExactAlarm = false,
+            immediateNotificationShown = false
+        )
+
+        assertEquals("All alarm times are in the past: NOTIFY", result.message)
+    }
+
+    @Test
+    fun `AlarmScheduleResult defaults immediateNotificationShown to false`() {
+        val result = AlarmScheduleResult(
+            alarmId = "test_id",
+            scheduledTriggers = listOf(AlarmType.ALARM),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        assertFalse(result.immediateNotificationShown)
+    }
+
+    // endregion
 }

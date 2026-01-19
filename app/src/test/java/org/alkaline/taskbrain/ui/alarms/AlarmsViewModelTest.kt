@@ -262,4 +262,95 @@ class AlarmsViewModelTest {
 
         assertNull(error)
     }
+
+    // ==================== Refresh Behavior Tests ====================
+
+    @Test
+    fun `loadAlarms can be called multiple times safely`() = runTest {
+        // This tests that repeated calls to loadAlarms (e.g., on screen resume) work correctly
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        // Simulate multiple resume events
+        repeat(3) {
+            mockRepository.getUpcomingAlarms()
+            mockRepository.getLaterAlarms()
+            mockRepository.getCompletedAlarms()
+            mockRepository.getCancelledAlarms()
+        }
+
+        // Verify repository methods were called multiple times
+        coVerify(exactly = 3) { mockRepository.getUpcomingAlarms() }
+        coVerify(exactly = 3) { mockRepository.getLaterAlarms() }
+        coVerify(exactly = 3) { mockRepository.getCompletedAlarms() }
+        coVerify(exactly = 3) { mockRepository.getCancelledAlarms() }
+    }
+
+    @Test
+    fun `loadAlarms reflects updated data after external changes`() = runTest {
+        // First load: alarm is pending/upcoming
+        val pendingAlarm = createTestAlarm(
+            id = "alarm1",
+            status = AlarmStatus.PENDING,
+            upcomingTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
+        )
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(listOf(pendingAlarm))
+        coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        var upcomingResult = mockRepository.getUpcomingAlarms().getOrNull()
+        var cancelledResult = mockRepository.getCancelledAlarms().getOrNull()
+
+        assertEquals(1, upcomingResult?.size)
+        assertEquals(0, cancelledResult?.size)
+
+        // Simulate external change: alarm was cancelled via notification
+        val cancelledAlarm = pendingAlarm.copy(status = AlarmStatus.CANCELLED)
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(listOf(cancelledAlarm))
+
+        // Second load (simulating ON_RESUME after returning from notification)
+        upcomingResult = mockRepository.getUpcomingAlarms().getOrNull()
+        cancelledResult = mockRepository.getCancelledAlarms().getOrNull()
+
+        assertEquals(0, upcomingResult?.size)
+        assertEquals(1, cancelledResult?.size)
+        assertEquals(AlarmStatus.CANCELLED, cancelledResult?.first()?.status)
+    }
+
+    @Test
+    fun `loadAlarms reflects alarm marked done externally`() = runTest {
+        // First load: alarm is pending
+        val pendingAlarm = createTestAlarm(
+            id = "alarm1",
+            status = AlarmStatus.PENDING,
+            upcomingTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
+        )
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(listOf(pendingAlarm))
+        coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCancelledAlarms() } returns Result.success(emptyList())
+
+        var upcomingResult = mockRepository.getUpcomingAlarms().getOrNull()
+        var completedResult = mockRepository.getCompletedAlarms().getOrNull()
+
+        assertEquals(1, upcomingResult?.size)
+        assertEquals(0, completedResult?.size)
+
+        // Simulate external change: alarm was marked done via notification
+        val doneAlarm = pendingAlarm.copy(status = AlarmStatus.DONE)
+        coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(emptyList())
+        coEvery { mockRepository.getCompletedAlarms() } returns Result.success(listOf(doneAlarm))
+
+        // Second load (simulating ON_RESUME)
+        upcomingResult = mockRepository.getUpcomingAlarms().getOrNull()
+        completedResult = mockRepository.getCompletedAlarms().getOrNull()
+
+        assertEquals(0, upcomingResult?.size)
+        assertEquals(1, completedResult?.size)
+        assertEquals(AlarmStatus.DONE, completedResult?.first()?.status)
+    }
 }

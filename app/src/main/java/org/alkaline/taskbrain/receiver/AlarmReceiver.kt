@@ -91,9 +91,10 @@ class AlarmReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(createContentIntent(context, alarm))
             .addAction(createDoneAction(context, alarm))
+            .addAction(createCancelAction(context, alarm))
             .build()
 
-        notificationManager.notify(alarm.id.hashCode(), notification)
+        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
         Log.d(TAG, "Showed notification for alarm: ${alarm.id}")
     }
 
@@ -123,7 +124,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .addAction(createDoneAction(context, alarm))
             .build()
 
-        notificationManager.notify(alarm.id.hashCode(), notification)
+        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
         Log.d(TAG, "Showed urgent notification for alarm: ${alarm.id}")
     }
 
@@ -155,7 +156,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .addAction(createSnoozeAction(context, alarm))
             .build()
 
-        notificationManager.notify(alarm.id.hashCode(), notification)
+        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
         Log.d(TAG, "Showed alarm notification for alarm: ${alarm.id}")
     }
 
@@ -219,6 +220,24 @@ class AlarmReceiver : BroadcastReceiver() {
         return NotificationCompat.Action.Builder(
             R.drawable.ic_alarm,
             "Snooze",
+            pendingIntent
+        ).build()
+    }
+
+    private fun createCancelAction(context: Context, alarm: Alarm): NotificationCompat.Action {
+        val intent = Intent(context, AlarmActionReceiver::class.java).apply {
+            action = AlarmActionReceiver.ACTION_CANCEL
+            putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            alarm.id.hashCode() + 4000,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Action.Builder(
+            R.drawable.ic_close,
+            "Cancel",
             pendingIntent
         ).build()
     }

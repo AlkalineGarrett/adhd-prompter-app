@@ -90,4 +90,56 @@ object AlarmUtils {
 
         return true
     }
+
+    /**
+     * Generates the notification ID for an alarm.
+     * Used consistently across AlarmReceiver (to show) and AlarmActivity/AlarmActionReceiver (to dismiss).
+     */
+    fun getNotificationId(alarmId: String): Int {
+        return alarmId.hashCode()
+    }
+
+    /**
+     * Hours before alarm time to show lock screen notification if notifyTime is not set.
+     */
+    const val DEFAULT_NOTIFY_HOURS_BEFORE_ALARM = 3
+
+    /**
+     * Calculates the effective notify time for an alarm.
+     * - If notifyTime is set, returns notifyTime
+     * - If notifyTime is not set but alarmTime is set, returns alarmTime - 3 hours
+     * - If neither is set, returns null
+     *
+     * @param alarm The alarm to calculate notify time for
+     * @return The effective notify time in milliseconds, or null if no notification should be scheduled
+     */
+    fun calculateEffectiveNotifyTime(alarm: Alarm): Long? {
+        // If notifyTime is explicitly set, use it
+        alarm.notifyTime?.let {
+            return it.toDate().time
+        }
+
+        // If alarmTime is set, calculate 3 hours before
+        alarm.alarmTime?.let {
+            val alarmTimeMillis = it.toDate().time
+            return alarmTimeMillis - (DEFAULT_NOTIFY_HOURS_BEFORE_ALARM * 60 * 60 * 1000L)
+        }
+
+        // No notification needed
+        return null
+    }
+
+    /**
+     * Determines if the effective notify time is in the past.
+     *
+     * @param effectiveNotifyTime The calculated notify time in milliseconds
+     * @param currentTimeMillis The current time (for testing)
+     * @return true if the notify time is in the past or equal to current time
+     */
+    fun isNotifyTimeInPast(
+        effectiveNotifyTime: Long,
+        currentTimeMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        return effectiveNotifyTime <= currentTimeMillis
+    }
 }

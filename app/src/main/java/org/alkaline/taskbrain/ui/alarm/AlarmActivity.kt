@@ -50,6 +50,7 @@ import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.data.SnoozeDuration
 import org.alkaline.taskbrain.receiver.AlarmActionReceiver
 import org.alkaline.taskbrain.service.AlarmScheduler
+import org.alkaline.taskbrain.service.AlarmUtils
 
 /**
  * Full-screen activity shown when an alarm fires.
@@ -82,7 +83,10 @@ class AlarmActivity : ComponentActivity() {
             AlarmScreen(
                 alarmId = alarmId,
                 alarmType = alarmType,
-                onDismiss = { finish() },
+                onDismiss = {
+                    dismissNotification(alarmId)
+                    finish()
+                },
                 onSnooze = { duration ->
                     snoozeAlarm(alarmId, duration)
                     finish()
@@ -114,7 +118,7 @@ class AlarmActivity : ComponentActivity() {
 
     private fun dismissNotification(alarmId: String) {
         val notificationManager = getSystemService(NotificationManager::class.java)
-        notificationManager?.cancel(alarmId.hashCode())
+        notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
     }
 
     companion object {
