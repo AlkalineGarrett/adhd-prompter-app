@@ -32,6 +32,7 @@ fun CurrentNoteScreen(
     val loadStatus by currentNoteViewModel.loadStatus.observeAsState()
     val contentModified by currentNoteViewModel.contentModified.observeAsState(false)
     val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
+    val alarmCreated by currentNoteViewModel.alarmCreated.observeAsState()
 
     var userContent by remember { mutableStateOf("") }
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -45,6 +46,7 @@ fun CurrentNoteScreen(
     // Alarm dialog state
     var showAlarmDialog by remember { mutableStateOf(false) }
     var alarmDialogLineContent by remember { mutableStateOf("") }
+    var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
 
     // Handle initial data loading
     LaunchedEffect(noteId) {
@@ -75,6 +77,16 @@ fun CurrentNoteScreen(
         }
     }
 
+    // Handle alarm creation - insert symbol at end of line
+    LaunchedEffect(alarmCreated) {
+        alarmCreated?.let { event ->
+            textFieldValue = AlarmSymbolUtils.insertAlarmSymbolAtLineEnd(textFieldValue)
+            userContent = textFieldValue.text
+            if (isSaved) isSaved = false
+            currentNoteViewModel.clearAlarmCreatedEvent()
+        }
+    }
+
     // Show error dialogs
     if (saveStatus is SaveStatus.Error) {
         ErrorDialog(
@@ -100,13 +112,17 @@ fun CurrentNoteScreen(
             onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
                 currentNoteViewModel.createAlarm(
                     lineContent = alarmDialogLineContent,
+                    lineIndex = alarmDialogLineIndex,
                     upcomingTime = upcomingTime,
                     notifyTime = notifyTime,
                     urgentTime = urgentTime,
                     alarmTime = alarmTime
                 )
             },
-            onDismiss = { showAlarmDialog = false }
+            onDismiss = {
+                showAlarmDialog = false
+                alarmDialogLineIndex = null
+            }
         )
     }
 
@@ -134,6 +150,14 @@ fun CurrentNoteScreen(
             focusRequester = mainContentFocusRequester,
             onFocusChanged = { isFocused -> isMainContentFocused = isFocused },
             isFingerDownFlow = isFingerDownFlow,
+            onAlarmSymbolTap = { symbolInfo ->
+                // Get the line content for this line and show the alarm dialog
+                val lineStart = TextLineUtils.getLineStartOffset(textFieldValue.text, symbolInfo.lineIndex)
+                val lineContent = TextLineUtils.getLineContent(textFieldValue.text, lineStart)
+                alarmDialogLineContent = lineContent
+                alarmDialogLineIndex = symbolInfo.lineIndex
+                showAlarmDialog = true
+            },
             modifier = Modifier.weight(1f)
         )
 
@@ -155,10 +179,12 @@ fun CurrentNoteScreen(
             },
             isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed,
             onAddAlarm = {
+                val cursorPos = textFieldValue.selection.start
                 alarmDialogLineContent = TextLineUtils.getLineContent(
                     textFieldValue.text,
-                    textFieldValue.selection.start
+                    cursorPos
                 )
+                alarmDialogLineIndex = TextLineUtils.getLineIndex(textFieldValue.text, cursorPos)
                 showAlarmDialog = true
             },
             isAlarmEnabled = isMainContentFocused && textFieldValue.selection.collapsed

@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,7 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -47,6 +50,7 @@ fun NoteTextField(
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
     isFingerDownFlow: StateFlow<Boolean>? = null,
+    onAlarmSymbolTap: ((AlarmSymbolInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -138,7 +142,36 @@ fun NoteTextField(
             CompositionLocalProvider(
                 LocalTextToolbar provides EmptyTextToolbar
             ) {
-                Box(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (onAlarmSymbolTap != null) {
+                                Modifier.pointerInput(textFieldValue.text) {
+                                    detectTapGestures { offset ->
+                                        textLayoutResult?.let { layout ->
+                                            // Adjust offset for padding (8.dp)
+                                            val adjustedOffset = Offset(
+                                                offset.x - 8.dp.toPx(),
+                                                offset.y - 8.dp.toPx()
+                                            )
+                                            if (adjustedOffset.x >= 0 && adjustedOffset.y >= 0) {
+                                                val charOffset = layout.getOffsetForPosition(adjustedOffset)
+                                                AlarmSymbolUtils.getAlarmSymbolInfo(
+                                                    textFieldValue.text,
+                                                    charOffset
+                                                )?.let { symbolInfo ->
+                                                    onAlarmSymbolTap(symbolInfo)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
                     BasicTextField(
                         value = textFieldValue,
                         onValueChange = { newValue ->

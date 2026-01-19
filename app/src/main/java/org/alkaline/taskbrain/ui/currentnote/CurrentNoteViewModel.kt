@@ -39,6 +39,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val _isAgentProcessing = MutableLiveData<Boolean>(false)
     val isAgentProcessing: LiveData<Boolean> = _isAgentProcessing
 
+    // Alarm creation status - signals when to insert alarm symbol
+    private val _alarmCreated = MutableLiveData<AlarmCreatedEvent?>()
+    val alarmCreated: LiveData<AlarmCreatedEvent?> = _alarmCreated
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
@@ -134,21 +138,58 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Gets the note ID for a given line index.
+     * Returns the parent note ID if the line doesn't have an associated note.
+     */
+    fun getNoteIdForLine(lineIndex: Int): String {
+        val lines = lineTracker.getTrackedLines()
+        return if (lineIndex < lines.size) {
+            lines[lineIndex].noteId ?: currentNoteId
+        } else {
+            currentNoteId
+        }
+    }
+
+    /**
+     * Fetches alarms for a specific line by its note ID.
+     */
+    private val _lineAlarms = MutableLiveData<List<Alarm>>()
+    val lineAlarms: LiveData<List<Alarm>> = _lineAlarms
+
+    fun fetchAlarmsForLine(lineIndex: Int) {
+        val noteId = getNoteIdForLine(lineIndex)
+        viewModelScope.launch {
+            val result = alarmRepository.getAlarmsForNote(noteId)
+            result.fold(
+                onSuccess = { alarms ->
+                    _lineAlarms.value = alarms.filter { it.status == org.alkaline.taskbrain.data.AlarmStatus.PENDING }
+                },
+                onFailure = { e ->
+                    Log.e("CurrentNoteViewModel", "Error fetching alarms for line", e)
+                    _lineAlarms.value = emptyList()
+                }
+            )
+        }
+    }
+
+    /**
      * Creates a new alarm for the current line.
      * Uses the line tracker to get the note ID for the current line.
      */
     fun createAlarm(
         lineContent: String,
+        lineIndex: Int? = null,
         upcomingTime: Timestamp?,
         notifyTime: Timestamp?,
         urgentTime: Timestamp?,
         alarmTime: Timestamp?
     ) {
         viewModelScope.launch {
-            // For now, we'll use a placeholder note ID
-            // TODO: Get the actual note ID from line tracker based on line content position
+            // Use the note ID from line tracker if available
+            val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
+
             val alarm = Alarm(
-                noteId = currentNoteId,
+                noteId = noteId,
                 lineContent = lineContent,
                 upcomingTime = upcomingTime,
                 notifyTime = notifyTime,
@@ -166,13 +207,21 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     alarmScheduler.scheduleAlarm(createdAlarm)
                     Log.d("CurrentNoteViewModel", "Alarm scheduled: $alarmId")
 
-                    // TODO: Insert alarm symbol into text
+                    // Signal to insert alarm symbol
+                    _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent)
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error creating alarm", e)
                 }
             )
         }
+    }
+
+    /**
+     * Clears the alarm created event after it has been handled.
+     */
+    fun clearAlarmCreatedEvent() {
+        _alarmCreated.value = null
     }
 
     // Call this when content is manually edited or when a save completes
@@ -204,3 +253,11 @@ sealed class LoadStatus {
     data class Success(val content: String) : LoadStatus()
     data class Error(val throwable: Throwable) : LoadStatus()
 }
+
+/**
+ * Event emitted when an alarm is successfully created.
+ */
+data class AlarmCreatedEvent(
+    val alarmId: String,
+    val lineContent: String
+)
