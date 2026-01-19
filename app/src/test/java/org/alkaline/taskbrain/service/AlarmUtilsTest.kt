@@ -364,6 +364,79 @@ class AlarmUtilsTest {
 
     // endregion
 
+    // region calculateEffectiveUrgentTime tests
+
+    @Test
+    fun `calculateEffectiveUrgentTime returns urgentTime when set`() {
+        val urgentTime = Timestamp(Date(1000000L))
+        val alarm = Alarm(
+            urgentTime = urgentTime,
+            alarmTime = Timestamp(Date(2000000L))
+        )
+
+        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+
+        assertEquals(1000000L, result)
+    }
+
+    @Test
+    fun `calculateEffectiveUrgentTime returns 30 minutes before alarmTime when urgentTime not set`() {
+        val alarmTimeMillis = 10000000L
+        val alarm = Alarm(
+            urgentTime = null,
+            alarmTime = Timestamp(Date(alarmTimeMillis))
+        )
+
+        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+
+        val expectedTime = alarmTimeMillis - (30 * 60 * 1000L)
+        assertEquals(expectedTime, result)
+    }
+
+    @Test
+    fun `calculateEffectiveUrgentTime returns null when neither urgentTime nor alarmTime set`() {
+        val alarm = Alarm(
+            urgentTime = null,
+            alarmTime = null,
+            notifyTime = Timestamp(Date(1000000L)) // notifyTime alone shouldn't trigger urgent
+        )
+
+        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `calculateEffectiveUrgentTime prefers urgentTime over calculated time`() {
+        val urgentTime = Timestamp(Date(5000000L))
+        val alarmTime = Timestamp(Date(10000000L))
+        val alarm = Alarm(
+            urgentTime = urgentTime,
+            alarmTime = alarmTime
+        )
+
+        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+
+        // Should use explicit urgentTime, not 30 minutes before alarm
+        assertEquals(5000000L, result)
+    }
+
+    @Test
+    fun `calculateEffectiveUrgentTime handles alarmTime only scenario`() {
+        // Alarm at 60 minutes, should urgent at 30 minutes
+        val sixtyMinutesMillis = 60 * 60 * 1000L
+        val alarm = Alarm(
+            alarmTime = Timestamp(Date(sixtyMinutesMillis))
+        )
+
+        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+
+        val expected = 30 * 60 * 1000L // 30 minutes in millis
+        assertEquals(expected, result)
+    }
+
+    // endregion
+
     // region isNotifyTimeInPast tests
 
     @Test

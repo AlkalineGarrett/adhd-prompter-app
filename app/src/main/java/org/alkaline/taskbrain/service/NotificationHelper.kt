@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.alkaline.taskbrain.R
@@ -32,19 +31,13 @@ class NotificationHelper(private val context: Context) {
      * Returns true if the notification was shown, false otherwise.
      */
     fun showNotification(alarm: Alarm, alarmType: AlarmType = AlarmType.NOTIFY, silent: Boolean = false): Boolean {
-        if (!hasNotificationPermission()) {
-            Log.w(TAG, "Notification permission not granted")
-            return false
-        }
-
-        if (notificationManager == null) {
-            Log.e(TAG, "NotificationManager is null - cannot show notification")
+        if (!hasNotificationPermission() || notificationManager == null) {
             return false
         }
 
         return when (alarmType) {
             AlarmType.NOTIFY -> showReminderNotification(alarm, silent)
-            AlarmType.URGENT -> showUrgentNotification(alarm)
+            AlarmType.URGENT -> showUrgentNotification(alarm, silent)
             AlarmType.ALARM -> showAlarmNotification(alarm)
         }
     }
@@ -68,27 +61,37 @@ class NotificationHelper(private val context: Context) {
         }
 
         notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), builder.build())
-        Log.d(TAG, "Showed notification for alarm: ${alarm.id} (silent=$silent)")
         return true
     }
 
-    private fun showUrgentNotification(alarm: Alarm): Boolean {
-        val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.URGENT)
+    private fun showUrgentNotification(alarm: Alarm, silent: Boolean = false): Boolean {
+        // Use REMINDER channel for silent notifications (channel settings override per-notification on Android 8+)
+        val channelId = if (silent) NotificationChannels.REMINDER_CHANNEL_ID else NotificationChannels.URGENT_CHANNEL_ID
 
-        val notification = NotificationCompat.Builder(context, NotificationChannels.URGENT_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_alarm)
             .setContentTitle("Urgent Reminder")
             .setContentText(alarm.lineContent)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
-            .setFullScreenIntent(fullScreenIntent, true)
             .setContentIntent(createContentIntent(alarm))
             .addAction(createDoneAction(alarm))
-            .build()
 
-        notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), notification)
-        Log.d(TAG, "Showed urgent notification for alarm: ${alarm.id}")
+        if (silent) {
+            // Silent notification: low priority, no sound/vibration, no full-screen intent
+            builder.setPriority(NotificationCompat.PRIORITY_LOW)
+                .setNotificationSilent()
+        } else {
+            // Full urgent notification with full-screen intent:
+            // - If device is LOCKED: Android shows the full-screen activity
+            // - If device is UNLOCKED: Android shows a heads-up notification
+            val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.URGENT)
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                .setFullScreenIntent(fullScreenIntent, true)
+        }
+
+        notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), builder.build())
         return true
     }
 
@@ -110,7 +113,6 @@ class NotificationHelper(private val context: Context) {
             .build()
 
         notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), notification)
-        Log.d(TAG, "Showed alarm notification for alarm: ${alarm.id}")
         return true
     }
 
@@ -201,9 +203,5 @@ class NotificationHelper(private val context: Context) {
             context,
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    companion object {
-        private const val TAG = "NotificationHelper"
     }
 }

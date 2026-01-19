@@ -15,12 +15,14 @@ import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmUtils
+import org.alkaline.taskbrain.service.LockScreenWallpaperManager
 
 class AlarmsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AlarmRepository()
     private val alarmScheduler = AlarmScheduler(application)
     private val notificationManager = application.getSystemService(NotificationManager::class.java)
+    private val lockScreenWallpaperManager = LockScreenWallpaperManager(application)
 
     private val _upcomingAlarms = MutableLiveData<List<Alarm>>(emptyList())
     val upcomingAlarms: LiveData<List<Alarm>> = _upcomingAlarms
@@ -109,6 +111,8 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
                     Log.d(TAG, "Alarm marked done: $alarmId")
                     // Cancel any scheduled triggers
                     alarmScheduler.cancelAlarm(alarmId)
+                    // Restore lock screen wallpaper if this alarm set it
+                    lockScreenWallpaperManager.restoreWallpaper(alarmId)
                     // Dismiss any existing notification
                     dismissNotification(alarmId)
                     loadAlarms()
@@ -128,6 +132,8 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
                     Log.d(TAG, "Alarm marked cancelled: $alarmId")
                     // Cancel any scheduled triggers
                     alarmScheduler.cancelAlarm(alarmId)
+                    // Restore lock screen wallpaper if this alarm set it
+                    lockScreenWallpaperManager.restoreWallpaper(alarmId)
                     // Dismiss any existing notification
                     dismissNotification(alarmId)
                     loadAlarms()

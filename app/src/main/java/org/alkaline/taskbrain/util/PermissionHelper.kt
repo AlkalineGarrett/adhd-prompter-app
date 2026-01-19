@@ -63,18 +63,45 @@ object PermissionHelper {
     }
 
     /**
+     * Checks if the app can use full-screen intents.
+     * On Android 14+ (API 34), this requires explicit permission granted in settings.
+     * On older versions, the USE_FULL_SCREEN_INTENT manifest permission is sufficient.
+     */
+    fun canUseFullScreenIntent(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            notificationManager?.canUseFullScreenIntent() ?: false
+        } else {
+            // Before Android 14, USE_FULL_SCREEN_INTENT manifest permission is enough
+            true
+        }
+    }
+
+    /**
+     * Returns true if full-screen intent permission needs to be granted in settings.
+     * Only returns true on Android 14+ where this is a special permission.
+     */
+    fun needsFullScreenIntentPermission(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+    }
+
+    /**
      * Data class containing the overall permission status for alarm functionality.
      */
     data class AlarmPermissionStatus(
         val hasNotificationPermission: Boolean,
         val canScheduleExactAlarms: Boolean,
-        val areNotificationsEnabled: Boolean
+        val areNotificationsEnabled: Boolean,
+        val canUseFullScreenIntent: Boolean
     ) {
         val canShowAlarms: Boolean
             get() = hasNotificationPermission && areNotificationsEnabled
 
+        val canShowFullScreenAlarms: Boolean
+            get() = canShowAlarms && canUseFullScreenIntent
+
         val hasAllPermissions: Boolean
-            get() = hasNotificationPermission && canScheduleExactAlarms && areNotificationsEnabled
+            get() = hasNotificationPermission && canScheduleExactAlarms && areNotificationsEnabled && canUseFullScreenIntent
     }
 
     /**
@@ -84,7 +111,8 @@ object PermissionHelper {
         return AlarmPermissionStatus(
             hasNotificationPermission = hasNotificationPermission(context),
             canScheduleExactAlarms = canScheduleExactAlarms(context),
-            areNotificationsEnabled = areNotificationsEnabled(context)
+            areNotificationsEnabled = areNotificationsEnabled(context),
+            canUseFullScreenIntent = canUseFullScreenIntent(context)
         )
     }
 }

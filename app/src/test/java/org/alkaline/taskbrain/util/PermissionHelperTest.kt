@@ -12,7 +12,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = true,
             canScheduleExactAlarms = false,
-            areNotificationsEnabled = true
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
         )
 
         assertTrue(status.canShowAlarms)
@@ -23,7 +24,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = false,
             canScheduleExactAlarms = true,
-            areNotificationsEnabled = true
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
         )
 
         assertFalse(status.canShowAlarms)
@@ -34,7 +36,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = true,
             canScheduleExactAlarms = true,
-            areNotificationsEnabled = false
+            areNotificationsEnabled = false,
+            canUseFullScreenIntent = true
         )
 
         assertFalse(status.canShowAlarms)
@@ -45,7 +48,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = true,
             canScheduleExactAlarms = true,
-            areNotificationsEnabled = true
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
         )
 
         assertTrue(status.hasAllPermissions)
@@ -56,7 +60,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = false,
             canScheduleExactAlarms = true,
-            areNotificationsEnabled = true
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
         )
 
         assertFalse(status.hasAllPermissions)
@@ -67,7 +72,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = true,
             canScheduleExactAlarms = false,
-            areNotificationsEnabled = true
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
         )
 
         assertFalse(status.hasAllPermissions)
@@ -78,7 +84,8 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = true,
             canScheduleExactAlarms = true,
-            areNotificationsEnabled = false
+            areNotificationsEnabled = false,
+            canUseFullScreenIntent = true
         )
 
         assertFalse(status.hasAllPermissions)
@@ -89,11 +96,48 @@ class PermissionHelperTest {
         val status = PermissionHelper.AlarmPermissionStatus(
             hasNotificationPermission = false,
             canScheduleExactAlarms = false,
-            areNotificationsEnabled = false
+            areNotificationsEnabled = false,
+            canUseFullScreenIntent = false
         )
 
         assertFalse(status.hasAllPermissions)
         assertFalse(status.canShowAlarms)
+    }
+
+    @Test
+    fun `hasAllPermissions is false when fullScreenIntent permission missing`() {
+        val status = PermissionHelper.AlarmPermissionStatus(
+            hasNotificationPermission = true,
+            canScheduleExactAlarms = true,
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = false
+        )
+
+        assertFalse(status.hasAllPermissions)
+    }
+
+    @Test
+    fun `canShowFullScreenAlarms is true when all required permissions granted`() {
+        val status = PermissionHelper.AlarmPermissionStatus(
+            hasNotificationPermission = true,
+            canScheduleExactAlarms = true,
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = true
+        )
+
+        assertTrue(status.canShowFullScreenAlarms)
+    }
+
+    @Test
+    fun `canShowFullScreenAlarms is false when fullScreenIntent permission missing`() {
+        val status = PermissionHelper.AlarmPermissionStatus(
+            hasNotificationPermission = true,
+            canScheduleExactAlarms = true,
+            areNotificationsEnabled = true,
+            canUseFullScreenIntent = false
+        )
+
+        assertFalse(status.canShowFullScreenAlarms)
     }
 
     // endregion

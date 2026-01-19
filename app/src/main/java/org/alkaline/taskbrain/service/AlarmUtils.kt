@@ -105,6 +105,11 @@ object AlarmUtils {
     const val DEFAULT_NOTIFY_HOURS_BEFORE_ALARM = 3
 
     /**
+     * Minutes before alarm time to show urgent notification if urgentTime is not set.
+     */
+    const val DEFAULT_URGENT_MINUTES_BEFORE_ALARM = 30
+
+    /**
      * Calculates the effective notify time for an alarm.
      * - If notifyTime is set, returns notifyTime
      * - If notifyTime is not set but alarmTime is set, returns alarmTime - 3 hours
@@ -126,6 +131,31 @@ object AlarmUtils {
         }
 
         // No notification needed
+        return null
+    }
+
+    /**
+     * Calculates the effective urgent time for an alarm.
+     * - If urgentTime is set, returns urgentTime
+     * - If urgentTime is not set but alarmTime is set, returns alarmTime - 30 minutes
+     * - If neither is set, returns null
+     *
+     * @param alarm The alarm to calculate urgent time for
+     * @return The effective urgent time in milliseconds, or null if no urgent notification should be scheduled
+     */
+    fun calculateEffectiveUrgentTime(alarm: Alarm): Long? {
+        // If urgentTime is explicitly set, use it
+        alarm.urgentTime?.let {
+            return it.toDate().time
+        }
+
+        // If alarmTime is set, calculate 30 minutes before
+        alarm.alarmTime?.let {
+            val alarmTimeMillis = it.toDate().time
+            return alarmTimeMillis - (DEFAULT_URGENT_MINUTES_BEFORE_ALARM * 60 * 1000L)
+        }
+
+        // No urgent notification needed
         return null
     }
 

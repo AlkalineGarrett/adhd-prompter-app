@@ -17,6 +17,9 @@
     <!-- Boot receiver to reschedule alarms -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Set lock screen wallpaper for urgent state -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
     <application
         android:name=".TaskBrainApplication"
         android:allowBackup="true"
@@ -46,6 +49,12 @@
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.TaskBrain" />
+
+        <!-- Error dialog activity for showing errors from BroadcastReceivers -->
+        <activity
+            android:name=".ui.alarm.AlarmErrorActivity"
+            android:exported="false"
+            android:theme="@style/Theme.TaskBrain.Transparent" />
 
         <!-- Alarm trigger receiver -->
         <receiver

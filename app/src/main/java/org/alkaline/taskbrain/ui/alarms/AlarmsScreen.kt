@@ -94,7 +94,7 @@ fun AlarmsScreen(
         modifier = Modifier.fillMaxSize()
     ) {
         // Permission warnings banner
-        if (!permissionStatus.hasNotificationPermission || !permissionStatus.canScheduleExactAlarms) {
+        if (!permissionStatus.hasNotificationPermission || !permissionStatus.canScheduleExactAlarms || !permissionStatus.canUseFullScreenIntent) {
             PermissionWarningBanner(permissionStatus)
         }
 
@@ -219,6 +219,14 @@ private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPerm
         if (!permissionStatus.canScheduleExactAlarms) {
             Text(
                 text = "• Exact alarms disabled: Go to Settings → Apps → TaskBrain → Alarms & reminders",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer
+            )
+        }
+
+        if (!permissionStatus.canUseFullScreenIntent) {
+            Text(
+                text = "• Full-screen alarms disabled: Go to Settings → Apps → TaskBrain → App info → Allow display over other apps",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
