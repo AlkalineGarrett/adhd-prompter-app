@@ -199,7 +199,7 @@ fun AlarmScreen(
 
             // Line content
             Text(
-                text = alarm?.lineContent ?: "Loading...",
+                text = alarm?.displayName ?: "Loading...",
                 style = MaterialTheme.typography.headlineMedium,
                 color = contentColor,
                 textAlign = TextAlign.Center

@@ -337,4 +337,76 @@ class TextLineUtilsTest {
     fun `getLineStartOffset returns correct offset for line 2`() {
         assertEquals(12, TextLineUtils.getLineStartOffset("Line1\nLine2\nLine3", 2))
     }
+
+    // ==================== trimLineForAlarm ====================
+
+    @Test
+    fun `trimLineForAlarm returns plain text unchanged`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("Buy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes leading tabs`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("\t\tBuy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes bullet prefix`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("• Buy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes unchecked checkbox prefix`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("☐ Buy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes checked checkbox prefix`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("☑ Buy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes indentation and bullet`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("\t• Buy groceries"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes trailing alarm symbol`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("Buy groceries ⏰"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes alarm symbol without preceding space`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("Buy groceries⏰"))
+    }
+
+    @Test
+    fun `trimLineForAlarm removes both prefix and alarm symbol`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("\t\t• Buy groceries ⏰"))
+    }
+
+    @Test
+    fun `trimLineForAlarm handles checkbox with alarm symbol`() {
+        assertEquals("Call mom", TextLineUtils.trimLineForAlarm("☐ Call mom ⏰"))
+    }
+
+    @Test
+    fun `trimLineForAlarm trims extra whitespace`() {
+        assertEquals("Buy groceries", TextLineUtils.trimLineForAlarm("  Buy groceries  "))
+    }
+
+    @Test
+    fun `trimLineForAlarm handles empty line`() {
+        assertEquals("", TextLineUtils.trimLineForAlarm(""))
+    }
+
+    @Test
+    fun `trimLineForAlarm handles line with only prefix`() {
+        assertEquals("", TextLineUtils.trimLineForAlarm("• "))
+    }
+
+    @Test
+    fun `trimLineForAlarm handles line with only alarm symbol`() {
+        assertEquals("", TextLineUtils.trimLineForAlarm("⏰"))
+    }
 }

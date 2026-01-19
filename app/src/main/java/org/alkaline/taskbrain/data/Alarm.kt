@@ -22,7 +22,43 @@ data class Alarm(
 
     val status: AlarmStatus = AlarmStatus.PENDING,
     val snoozedUntil: Timestamp? = null        // If snoozed, when to fire again
-)
+) {
+    /**
+     * Display-friendly name with bullets, checkboxes, tabs, and alarm symbols removed.
+     * Computed lazily and cached.
+     */
+    val displayName: String by lazy {
+        var result = lineContent
+
+        // Remove leading tabs
+        result = result.trimStart('\t')
+
+        // Remove bullet/checkbox prefixes
+        DISPLAY_PREFIXES.forEach { prefix ->
+            if (result.startsWith(prefix)) {
+                result = result.removePrefix(prefix)
+            }
+        }
+
+        // Trim leading whitespace after prefix removal
+        result = result.trimStart()
+
+        // Remove trailing alarm symbol and space before it
+        if (result.endsWith(ALARM_SYMBOL)) {
+            result = result.dropLast(ALARM_SYMBOL.length)
+            if (result.endsWith(" ")) {
+                result = result.dropLast(1)
+            }
+        }
+
+        result.trim()
+    }
+
+    companion object {
+        private const val ALARM_SYMBOL = "⏰"
+        private val DISPLAY_PREFIXES = listOf("• ", "☐ ", "☑ ")
+    }
+}
 
 enum class AlarmStatus {
     PENDING,    // Active alarm

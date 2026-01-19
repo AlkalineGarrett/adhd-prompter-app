@@ -3,17 +3,22 @@ package org.alkaline.taskbrain.ui.currentnote
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.ui.components.ErrorDialog
@@ -52,6 +57,23 @@ fun CurrentNoteScreen(
     var alarmDialogLineContent by remember { mutableStateOf("") }
     var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
 
+    // Auto-save when navigating away or app goes to background
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentUserContent by rememberUpdatedState(userContent)
+    val currentIsSaved by rememberUpdatedState(isSaved)
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && !currentIsSaved && currentUserContent.isNotEmpty()) {
+                currentNoteViewModel.saveContent(currentUserContent)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // Handle initial data loading
     LaunchedEffect(noteId) {
         currentNoteViewModel.loadContent(noteId)
@@ -81,12 +103,13 @@ fun CurrentNoteScreen(
         }
     }
 
-    // Handle alarm creation - insert symbol at end of line
+    // Handle alarm creation - insert symbol at end of line and save
     LaunchedEffect(alarmCreated) {
         alarmCreated?.let { event ->
             textFieldValue = AlarmSymbolUtils.insertAlarmSymbolAtLineEnd(textFieldValue)
             userContent = textFieldValue.text
-            if (isSaved) isSaved = false
+            // Save the note with the alarm symbol included
+            currentNoteViewModel.saveContent(textFieldValue.text)
             currentNoteViewModel.clearAlarmCreatedEvent()
         }
     }
@@ -186,7 +209,9 @@ fun CurrentNoteScreen(
             lineContent = alarmDialogLineContent,
             existingAlarm = null,
             onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
-                currentNoteViewModel.createAlarm(
+                // Auto-save before creating alarm to ensure correct note IDs
+                currentNoteViewModel.saveAndCreateAlarm(
+                    content = userContent,
                     lineContent = alarmDialogLineContent,
                     lineIndex = alarmDialogLineIndex,
                     upcomingTime = upcomingTime,
@@ -230,7 +255,7 @@ fun CurrentNoteScreen(
                 // Get the line content for this line and show the alarm dialog
                 val lineStart = TextLineUtils.getLineStartOffset(textFieldValue.text, symbolInfo.lineIndex)
                 val lineContent = TextLineUtils.getLineContent(textFieldValue.text, lineStart)
-                alarmDialogLineContent = lineContent
+                alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
                 alarmDialogLineIndex = symbolInfo.lineIndex
                 showAlarmDialog = true
             },
@@ -256,10 +281,8 @@ fun CurrentNoteScreen(
             isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed,
             onAddAlarm = {
                 val cursorPos = textFieldValue.selection.start
-                alarmDialogLineContent = TextLineUtils.getLineContent(
-                    textFieldValue.text,
-                    cursorPos
-                )
+                val lineContent = TextLineUtils.getLineContent(textFieldValue.text, cursorPos)
+                alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
                 alarmDialogLineIndex = TextLineUtils.getLineIndex(textFieldValue.text, cursorPos)
                 showAlarmDialog = true
             },

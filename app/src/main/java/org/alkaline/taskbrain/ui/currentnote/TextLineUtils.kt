@@ -186,6 +186,33 @@ object TextLineUtils {
         }
         return pos
     }
+
+    /**
+     * Trims a line for use in alarm display:
+     * 1. Removes leading tabs, bullet/checkbox prefix, and whitespace
+     * 2. Removes trailing alarm symbol (⏰) and any space before it
+     */
+    fun trimLineForAlarm(line: String): String {
+        // Parse line to get content without indentation and prefix
+        val parsed = parseLine(line)
+        var result = parsed.content
+
+        // Trim leading whitespace
+        result = result.trimStart()
+
+        // Remove trailing alarm symbol (and space before it)
+        if (result.endsWith(AlarmSymbolUtils.ALARM_SYMBOL)) {
+            result = result.dropLast(AlarmSymbolUtils.ALARM_SYMBOL.length)
+            if (result.endsWith(" ")) {
+                result = result.dropLast(1)
+            }
+        }
+
+        // Trim any remaining trailing whitespace
+        result = result.trimEnd()
+
+        return result
+    }
 }
 
 /**

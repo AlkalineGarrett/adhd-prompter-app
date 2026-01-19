@@ -471,6 +471,85 @@ class AlarmRepositoryTest {
 
     // endregion
 
+    // region Line Content Sync Tests
+
+    @Test
+    fun `updateLineContentForNote updates only lineContent not updatedAt`() = runTest {
+        val query = mockk<Query>()
+        val mockBatch = mockk<WriteBatch>(relaxed = true)
+        val doc1Ref = mockk<DocumentReference>()
+        val doc2Ref = mockk<DocumentReference>()
+        val docs = listOf(
+            mockk<QueryDocumentSnapshot> {
+                every { id } returns "alarm_1"
+                every { reference } returns doc1Ref
+                every { data } returns alarmData(noteId = "note_1", lineContent = "Old content")
+            },
+            mockk<QueryDocumentSnapshot> {
+                every { id } returns "alarm_2"
+                every { reference } returns doc2Ref
+                every { data } returns alarmData(noteId = "note_1", lineContent = "Old content")
+            }
+        )
+        every { mockAlarmsCollection.whereEqualTo("noteId", "note_1") } returns query
+        every { query.get() } returns Tasks.forResult(mockk {
+            every { documents } returns docs
+        })
+        every { mockFirestore.batch() } returns mockBatch
+        every { mockBatch.commit() } returns Tasks.forResult(null)
+
+        val result = repository.updateLineContentForNote("note_1", "New content")
+
+        assertTrue(result.isSuccess)
+
+        // Verify batch.update was called with only lineContent, not updatedAt
+        verify {
+            mockBatch.update(doc1Ref, match<Map<String, Any>> { map ->
+                map.containsKey("lineContent") &&
+                map["lineContent"] == "New content" &&
+                !map.containsKey("updatedAt")
+            })
+        }
+        verify {
+            mockBatch.update(doc2Ref, match<Map<String, Any>> { map ->
+                map.containsKey("lineContent") &&
+                map["lineContent"] == "New content" &&
+                !map.containsKey("updatedAt")
+            })
+        }
+        verify { mockBatch.commit() }
+    }
+
+    @Test
+    fun `updateLineContentForNote does nothing when no alarms match`() = runTest {
+        val query = mockk<Query>()
+        val mockBatch = mockk<WriteBatch>(relaxed = true)
+        every { mockAlarmsCollection.whereEqualTo("noteId", "note_1") } returns query
+        every { query.get() } returns Tasks.forResult(mockk {
+            every { documents } returns emptyList()
+        })
+        every { mockFirestore.batch() } returns mockBatch
+        every { mockBatch.commit() } returns Tasks.forResult(null)
+
+        val result = repository.updateLineContentForNote("note_1", "New content")
+
+        assertTrue(result.isSuccess)
+        verify(exactly = 0) { mockBatch.update(any<DocumentReference>(), any<Map<String, Any>>()) }
+        verify { mockBatch.commit() }
+    }
+
+    @Test
+    fun `updateLineContentForNote fails when user is not signed in`() = runTest {
+        signOut()
+
+        val result = repository.updateLineContentForNote("note_1", "New content")
+
+        assertTrue(result.isFailure)
+        assertEquals("User not signed in", result.exceptionOrNull()?.message)
+    }
+
+    // endregion
+
     companion object {
         private const val USER_ID = "test_user_id"
     }

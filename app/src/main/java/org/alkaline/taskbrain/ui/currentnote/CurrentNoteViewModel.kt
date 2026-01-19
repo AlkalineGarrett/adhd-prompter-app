@@ -212,6 +212,45 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Saves content if needed, then creates a new alarm for the current line.
+     * This ensures the line tracker has correct note IDs before alarm creation.
+     */
+    fun saveAndCreateAlarm(
+        content: String,
+        lineContent: String,
+        lineIndex: Int? = null,
+        upcomingTime: Timestamp?,
+        notifyTime: Timestamp?,
+        urgentTime: Timestamp?,
+        alarmTime: Timestamp?
+    ) {
+        viewModelScope.launch {
+            // First, save the content to ensure line tracker has correct note IDs
+            updateTrackedLines(content)
+            val trackedLines = lineTracker.getTrackedLines()
+            val saveResult = repository.saveNoteWithChildren(currentNoteId, trackedLines)
+
+            saveResult.fold(
+                onSuccess = { newIdsMap ->
+                    // Update trackedLines with newly created IDs
+                    for ((index, newId) in newIdsMap) {
+                        lineTracker.updateLineNoteId(index, newId)
+                    }
+                    syncAlarmLineContent(trackedLines)
+                    _saveStatus.value = SaveStatus.Success
+                    markAsSaved()
+
+                    // Now create the alarm with correct note ID
+                    createAlarmInternal(lineContent, lineIndex, upcomingTime, notifyTime, urgentTime, alarmTime)
+                },
+                onFailure = { e ->
+                    _saveStatus.value = SaveStatus.Error(e)
+                }
+            )
+        }
+    }
+
+    /**
      * Creates a new alarm for the current line.
      * Uses the line tracker to get the note ID for the current line.
      */
@@ -224,54 +263,63 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         alarmTime: Timestamp?
     ) {
         viewModelScope.launch {
-            // Use the note ID from line tracker if available
-            val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
-
-            // Auto-populate upcomingTime with the earliest scheduled time if not set
-            val effectiveUpcomingTime = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
-                .minByOrNull { it.toDate().time }
-
-            val alarm = Alarm(
-                noteId = noteId,
-                lineContent = lineContent,
-                upcomingTime = effectiveUpcomingTime,
-                notifyTime = notifyTime,
-                urgentTime = urgentTime,
-                alarmTime = alarmTime
-            )
-
-            val result = alarmRepository.createAlarm(alarm)
-            result.fold(
-                onSuccess = { alarmId ->
-                    // Check permissions and show warnings
-                    val context = getApplication<Application>()
-                    if (!alarmScheduler.canScheduleExactAlarms()) {
-                        _alarmPermissionWarning.value = true
-                    }
-                    if (!PermissionHelper.hasNotificationPermission(context)) {
-                        _notificationPermissionWarning.value = true
-                    }
-
-                    // Schedule the alarm
-                    val createdAlarm = alarm.copy(id = alarmId)
-                    val scheduleResult = alarmScheduler.scheduleAlarm(createdAlarm)
-
-                    // Handle schedule result
-                    if (!scheduleResult.success) {
-                        Log.e(TAG, "Alarm scheduling failed: ${scheduleResult.message}")
-                        _schedulingWarning.value = scheduleResult.message
-                    }
-
-                    // Signal to insert alarm symbol (even if scheduling partially failed,
-                    // the alarm exists in the DB)
-                    _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent)
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "Error creating alarm", e)
-                    _alarmError.value = e
-                }
-            )
+            createAlarmInternal(lineContent, lineIndex, upcomingTime, notifyTime, urgentTime, alarmTime)
         }
+    }
+
+    private suspend fun createAlarmInternal(
+        lineContent: String,
+        lineIndex: Int?,
+        upcomingTime: Timestamp?,
+        notifyTime: Timestamp?,
+        urgentTime: Timestamp?,
+        alarmTime: Timestamp?
+    ) {
+        // Use the note ID from line tracker if available
+        val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
+
+        // Auto-populate upcomingTime with the earliest scheduled time if not set
+        val effectiveUpcomingTime = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
+            .minByOrNull { it.toDate().time }
+
+        val alarm = Alarm(
+            noteId = noteId,
+            lineContent = lineContent,
+            upcomingTime = effectiveUpcomingTime,
+            notifyTime = notifyTime,
+            urgentTime = urgentTime,
+            alarmTime = alarmTime
+        )
+
+        val result = alarmRepository.createAlarm(alarm)
+        result.fold(
+            onSuccess = { alarmId ->
+                // Check permissions and show warnings
+                val context = getApplication<Application>()
+                if (!alarmScheduler.canScheduleExactAlarms()) {
+                    _alarmPermissionWarning.value = true
+                }
+                if (!PermissionHelper.hasNotificationPermission(context)) {
+                    _notificationPermissionWarning.value = true
+                }
+
+                // Schedule the alarm
+                val createdAlarm = alarm.copy(id = alarmId)
+                val scheduleResult = alarmScheduler.scheduleAlarm(createdAlarm)
+
+                // Handle schedule result
+                if (!scheduleResult.success) {
+                    _schedulingWarning.value = scheduleResult.message
+                }
+
+                // Signal to insert alarm symbol (even if scheduling partially failed,
+                // the alarm exists in the DB)
+                _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent)
+            },
+            onFailure = { e ->
+                _alarmError.value = e
+            }
+        )
     }
 
     companion object {

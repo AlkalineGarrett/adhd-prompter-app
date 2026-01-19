@@ -313,6 +313,7 @@ class AlarmRepository(
     /**
      * Updates the line content for all alarms associated with a note.
      * Called when a note is saved to keep alarm display text in sync.
+     * Note: Does NOT update updatedAt to preserve completion/cancellation timestamps.
      */
     suspend fun updateLineContentForNote(noteId: String, newContent: String): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
@@ -325,15 +326,13 @@ class AlarmRepository(
             val batch = db.batch()
             for (doc in result.documents) {
                 batch.update(doc.reference, mapOf(
-                    "lineContent" to newContent,
-                    "updatedAt" to FieldValue.serverTimestamp()
+                    "lineContent" to newContent
                 ))
             }
             batch.commit().await()
-            Log.d(TAG, "Updated line content for ${result.size()} alarms")
             Unit
         }
-    }.onFailure { Log.e(TAG, "Error updating line content for note", it) }
+    }
 
     /**
      * Gets the highest priority active alarm for the current user.

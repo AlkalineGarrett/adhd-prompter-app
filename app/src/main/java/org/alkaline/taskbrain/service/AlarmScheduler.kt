@@ -333,9 +333,9 @@ class AlarmScheduler(private val context: Context) {
             } else {
                 SimpleDateFormat("h:mm a", Locale.getDefault())
             }
-            "${alarm.lineContent}: due ${timeFormat.format(alarmTime)}"
+            "${alarm.displayName}: due ${timeFormat.format(alarmTime)}"
         } else {
-            alarm.lineContent
+            alarm.displayName
         }
     }
 

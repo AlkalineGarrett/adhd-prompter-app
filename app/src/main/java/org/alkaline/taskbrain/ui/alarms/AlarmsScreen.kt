@@ -267,7 +267,7 @@ private fun AlarmItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = alarm.lineContent.ifEmpty { "Untitled alarm" },
+                    text = alarm.displayName.ifEmpty { "Untitled alarm" },
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -337,7 +337,7 @@ private fun CompletedAlarmItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = alarm.lineContent.ifEmpty { "Untitled alarm" },
+                    text = alarm.displayName.ifEmpty { "Untitled alarm" },
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
