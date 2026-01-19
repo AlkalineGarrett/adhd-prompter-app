@@ -9,6 +9,9 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
@@ -17,6 +20,7 @@ import org.alkaline.taskbrain.data.PrompterAgent
 class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = NoteRepository()
+    private val alarmRepository = AlarmRepository()
     private val sharedPreferences: SharedPreferences = application.getSharedPreferences("taskbrain_prefs", Context.MODE_PRIVATE)
     private val agent = PrompterAgent()
     
@@ -126,7 +130,44 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
     }
-    
+
+    /**
+     * Creates a new alarm for the current line.
+     * Uses the line tracker to get the note ID for the current line.
+     */
+    fun createAlarm(
+        lineContent: String,
+        upcomingTime: Timestamp?,
+        notifyTime: Timestamp?,
+        urgentTime: Timestamp?,
+        alarmTime: Timestamp?
+    ) {
+        viewModelScope.launch {
+            // For now, we'll use a placeholder note ID
+            // TODO: Get the actual note ID from line tracker based on line content position
+            val alarm = Alarm(
+                noteId = currentNoteId,
+                lineContent = lineContent,
+                upcomingTime = upcomingTime,
+                notifyTime = notifyTime,
+                urgentTime = urgentTime,
+                alarmTime = alarmTime
+            )
+
+            val result = alarmRepository.createAlarm(alarm)
+            result.fold(
+                onSuccess = { alarmId ->
+                    Log.d("CurrentNoteViewModel", "Alarm created with ID: $alarmId")
+                    // TODO: Schedule the alarm with AlarmScheduler
+                    // TODO: Insert alarm symbol into text
+                },
+                onFailure = { e ->
+                    Log.e("CurrentNoteViewModel", "Error creating alarm", e)
+                }
+            )
+        }
+    }
+
     // Call this when content is manually edited or when a save completes
     fun markAsSaved() {
         _contentModified.value = false

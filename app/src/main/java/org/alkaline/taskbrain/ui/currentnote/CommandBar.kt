@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.dp
 import org.alkaline.taskbrain.R
 
 /**
- * A bottom toolbar with buttons for bullet/checkbox toggle, indent/unindent, and paste.
+ * A bottom toolbar with buttons for bullet/checkbox toggle, indent/unindent, paste, and alarm.
  */
 @Composable
 fun CommandBar(
@@ -27,6 +27,8 @@ fun CommandBar(
     onUnindent: () -> Unit,
     onPaste: (String) -> Unit,
     isPasteEnabled: Boolean,
+    onAddAlarm: () -> Unit,
+    isAlarmEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -105,6 +107,20 @@ fun CommandBar(
                 painter = painterResource(id = R.drawable.ic_paste),
                 contentDescription = "Paste",
                 tint = if (isPasteEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Alarm button
+        IconButton(
+            onClick = onAddAlarm,
+            enabled = isAlarmEnabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_alarm),
+                contentDescription = "Add alarm",
+                tint = if (isAlarmEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
                 modifier = Modifier.size(24.dp)
             )
         }

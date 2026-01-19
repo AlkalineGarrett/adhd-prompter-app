@@ -42,6 +42,10 @@ fun CurrentNoteScreen(
     val mainContentFocusRequester = remember { FocusRequester() }
     var isMainContentFocused by remember { mutableStateOf(false) }
 
+    // Alarm dialog state
+    var showAlarmDialog by remember { mutableStateOf(false) }
+    var alarmDialogLineContent by remember { mutableStateOf("") }
+
     // Handle initial data loading
     LaunchedEffect(noteId) {
         currentNoteViewModel.loadContent(noteId)
@@ -88,6 +92,24 @@ fun CurrentNoteScreen(
         )
     }
 
+    // Alarm configuration dialog
+    if (showAlarmDialog) {
+        AlarmConfigDialog(
+            lineContent = alarmDialogLineContent,
+            existingAlarm = null,
+            onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
+                currentNoteViewModel.createAlarm(
+                    lineContent = alarmDialogLineContent,
+                    upcomingTime = upcomingTime,
+                    notifyTime = notifyTime,
+                    urgentTime = urgentTime,
+                    alarmTime = alarmTime
+                )
+            },
+            onDismiss = { showAlarmDialog = false }
+        )
+    }
+
     // Monitor clipboard and add HTML formatting for bullets/checkboxes
     ClipboardHtmlConverter()
 
@@ -131,7 +153,15 @@ fun CurrentNoteScreen(
             onPaste = { clipText ->
                 updateTextFieldValue(SelectionActions.insertText(textFieldValue, clipText))
             },
-            isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed
+            isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed,
+            onAddAlarm = {
+                alarmDialogLineContent = TextLineUtils.getLineContent(
+                    textFieldValue.text,
+                    textFieldValue.selection.start
+                )
+                showAlarmDialog = true
+            },
+            isAlarmEnabled = isMainContentFocused && textFieldValue.selection.collapsed
         )
 
         AgentCommandSection(
