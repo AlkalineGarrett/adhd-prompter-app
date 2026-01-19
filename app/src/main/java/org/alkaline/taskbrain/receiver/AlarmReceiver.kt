@@ -21,7 +21,11 @@ import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmUtils
+import org.alkaline.taskbrain.service.LockScreenWallpaperManager
 import org.alkaline.taskbrain.service.NotificationChannels
+import android.text.format.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Locale
 import org.alkaline.taskbrain.ui.alarm.AlarmActivity
 import org.alkaline.taskbrain.ui.alarm.AlarmErrorActivity
 
@@ -148,6 +152,12 @@ class AlarmReceiver : BroadcastReceiver() {
     private fun showUrgentNotification(context: Context, alarm: Alarm) {
         Log.d(TAG, "showUrgentNotification called for ${alarm.id}")
 
+        // Set the lock screen wallpaper to urgent (red) with alarm text
+        val displayText = formatWallpaperText(context, alarm)
+        val alarmTimeMillis = alarm.alarmTime?.toDate()?.time ?: System.currentTimeMillis()
+        val wallpaperManager = LockScreenWallpaperManager(context)
+        wallpaperManager.setUrgentWallpaper(alarm.id, displayText, alarmTimeMillis)
+
         if (!hasNotificationPermission(context)) {
             Log.w(TAG, "Notification permission not granted")
             showErrorDialog(context, "Permission Required",
@@ -188,6 +198,7 @@ class AlarmReceiver : BroadcastReceiver() {
             .setFullScreenIntent(fullScreenIntent, true)
             .setContentIntent(createContentIntent(context, alarm))
             .addAction(createDoneAction(context, alarm))
+            .addAction(createCancelAction(context, alarm))
             .build()
 
         notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
@@ -345,6 +356,21 @@ class AlarmReceiver : BroadcastReceiver() {
             "Cancel",
             pendingIntent
         ).build()
+    }
+
+    private fun formatWallpaperText(context: Context, alarm: Alarm): String {
+        val alarmTime = alarm.alarmTime?.toDate()
+        return if (alarmTime != null) {
+            // Use device's preferred time format (12h or 24h)
+            val timeFormat = if (DateFormat.is24HourFormat(context)) {
+                SimpleDateFormat("HH:mm", Locale.getDefault())
+            } else {
+                SimpleDateFormat("h:mm a", Locale.getDefault())
+            }
+            "${alarm.displayName}: due ${timeFormat.format(alarmTime)}"
+        } else {
+            alarm.displayName
+        }
     }
 
     private fun hasNotificationPermission(context: Context): Boolean {

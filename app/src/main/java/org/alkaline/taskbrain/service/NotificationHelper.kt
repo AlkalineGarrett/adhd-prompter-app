@@ -77,6 +77,7 @@ class NotificationHelper(private val context: Context) {
             .setAutoCancel(true)
             .setContentIntent(createContentIntent(alarm))
             .addAction(createDoneAction(alarm))
+            .addAction(createCancelAction(alarm))
 
         if (silent) {
             // Silent notification: low priority, no sound/vibration, no full-screen intent
