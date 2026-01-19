@@ -38,6 +38,43 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Full-screen alarm activity -->
+        <activity
+            android:name=".ui.alarm.AlarmActivity"
+            android:exported="false"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.TaskBrain" />
+
+        <!-- Alarm trigger receiver -->
+        <receiver
+            android:name=".receiver.AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.alkaline.taskbrain.ACTION_ALARM_TRIGGERED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Alarm action receiver (Done, Snooze, Cancel) -->
+        <receiver
+            android:name=".receiver.AlarmActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.alkaline.taskbrain.ACTION_MARK_DONE" />
+                <action android:name="org.alkaline.taskbrain.ACTION_SNOOZE" />
+                <action android:name="org.alkaline.taskbrain.ACTION_CANCEL" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Boot receiver to reschedule alarms -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

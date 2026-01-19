@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
@@ -21,6 +22,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
     private val repository = NoteRepository()
     private val alarmRepository = AlarmRepository()
+    private val alarmScheduler = AlarmScheduler(application)
     private val sharedPreferences: SharedPreferences = application.getSharedPreferences("taskbrain_prefs", Context.MODE_PRIVATE)
     private val agent = PrompterAgent()
     
@@ -158,7 +160,12 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             result.fold(
                 onSuccess = { alarmId ->
                     Log.d("CurrentNoteViewModel", "Alarm created with ID: $alarmId")
-                    // TODO: Schedule the alarm with AlarmScheduler
+
+                    // Schedule the alarm
+                    val createdAlarm = alarm.copy(id = alarmId)
+                    alarmScheduler.scheduleAlarm(createdAlarm)
+                    Log.d("CurrentNoteViewModel", "Alarm scheduled: $alarmId")
+
                     // TODO: Insert alarm symbol into text
                 },
                 onFailure = { e ->
