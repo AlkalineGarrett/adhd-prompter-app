@@ -36,6 +36,7 @@ fun CurrentNoteScreen(
     val alarmError by currentNoteViewModel.alarmError.observeAsState()
     val alarmPermissionWarning by currentNoteViewModel.alarmPermissionWarning.observeAsState(false)
     val notificationPermissionWarning by currentNoteViewModel.notificationPermissionWarning.observeAsState(false)
+    val schedulingWarning by currentNoteViewModel.schedulingWarning.observeAsState()
 
     var userContent by remember { mutableStateOf("") }
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -150,6 +151,28 @@ fun CurrentNoteScreen(
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = { currentNoteViewModel.clearNotificationPermissionWarning() }
+                ) {
+                    androidx.compose.material3.Text("OK")
+                }
+            }
+        )
+    }
+
+    // Scheduling warning dialog - shown when alarm couldn't be scheduled
+    schedulingWarning?.let { warning ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { currentNoteViewModel.clearSchedulingWarning() },
+            title = { androidx.compose.material3.Text("Alarm Scheduling Issue") },
+            text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    androidx.compose.material3.Text(
+                        "$warning\n\nThe alarm was saved but may not trigger at the expected time."
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { currentNoteViewModel.clearSchedulingWarning() }
                 ) {
                     androidx.compose.material3.Text("OK")
                 }

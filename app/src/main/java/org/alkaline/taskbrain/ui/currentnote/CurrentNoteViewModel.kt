@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.service.AlarmScheduleResult
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
@@ -202,6 +203,14 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    // Scheduling failure warning
+    private val _schedulingWarning = MutableLiveData<String?>()
+    val schedulingWarning: LiveData<String?> = _schedulingWarning
+
+    fun clearSchedulingWarning() {
+        _schedulingWarning.value = null
+    }
+
     /**
      * Creates a new alarm for the current line.
      * Uses the line tracker to get the note ID for the current line.
@@ -234,8 +243,6 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             val result = alarmRepository.createAlarm(alarm)
             result.fold(
                 onSuccess = { alarmId ->
-                    Log.d("CurrentNoteViewModel", "Alarm created with ID: $alarmId")
-
                     // Check permissions and show warnings
                     val context = getApplication<Application>()
                     if (!alarmScheduler.canScheduleExactAlarms()) {
@@ -247,18 +254,28 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
                     // Schedule the alarm
                     val createdAlarm = alarm.copy(id = alarmId)
-                    alarmScheduler.scheduleAlarm(createdAlarm)
-                    Log.d("CurrentNoteViewModel", "Alarm scheduled: $alarmId")
+                    val scheduleResult = alarmScheduler.scheduleAlarm(createdAlarm)
 
-                    // Signal to insert alarm symbol
+                    // Handle schedule result
+                    if (!scheduleResult.success) {
+                        Log.e(TAG, "Alarm scheduling failed: ${scheduleResult.message}")
+                        _schedulingWarning.value = scheduleResult.message
+                    }
+
+                    // Signal to insert alarm symbol (even if scheduling partially failed,
+                    // the alarm exists in the DB)
                     _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent)
                 },
                 onFailure = { e ->
-                    Log.e("CurrentNoteViewModel", "Error creating alarm", e)
+                    Log.e(TAG, "Error creating alarm", e)
                     _alarmError.value = e
                 }
             )
         }
+    }
+
+    companion object {
+        private const val TAG = "CurrentNoteViewModel"
     }
 
     /**

@@ -11,40 +11,134 @@ import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.receiver.AlarmReceiver
 
 /**
+ * Result of scheduling an alarm, indicating what was scheduled and any issues.
+ */
+data class AlarmScheduleResult(
+    val alarmId: String,
+    val scheduledTriggers: List<AlarmType>,
+    val skippedPastTriggers: List<AlarmType>,
+    val noTriggersConfigured: Boolean,
+    val usedExactAlarm: Boolean
+) {
+    val success: Boolean
+        get() = scheduledTriggers.isNotEmpty()
+
+    val message: String
+        get() = when {
+            noTriggersConfigured -> "No alarm times were configured"
+            scheduledTriggers.isEmpty() && skippedPastTriggers.isNotEmpty() ->
+                "All alarm times are in the past: ${skippedPastTriggers.joinToString()}"
+            scheduledTriggers.isEmpty() -> "No triggers could be scheduled"
+            else -> "Scheduled ${scheduledTriggers.size} trigger(s): ${scheduledTriggers.joinToString()}"
+        }
+}
+
+/**
  * Schedules and cancels alarms using Android's AlarmManager.
  * Each alarm can have up to 3 scheduled triggers (notify, urgent, alarm).
  */
 class AlarmScheduler(private val context: Context) {
 
-    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
 
     /**
      * Schedules all time thresholds for an alarm.
      * Each non-null time threshold gets its own scheduled alarm.
+     * Returns a result indicating what was scheduled.
      */
-    fun scheduleAlarm(alarm: Alarm) {
+    fun scheduleAlarm(alarm: Alarm): AlarmScheduleResult {
+        if (alarmManager == null) {
+            Log.e(TAG, "AlarmManager is null - cannot schedule alarms")
+            return AlarmScheduleResult(
+                alarmId = alarm.id,
+                scheduledTriggers = emptyList(),
+                skippedPastTriggers = emptyList(),
+                noTriggersConfigured = false,
+                usedExactAlarm = false
+            )
+        }
+
+        val scheduledTriggers = mutableListOf<AlarmType>()
+        val skippedPastTriggers = mutableListOf<AlarmType>()
+        var usedExactAlarm = false
+
+        // Check if any triggers are configured
+        val hasAnyTrigger = alarm.notifyTime != null || alarm.urgentTime != null || alarm.alarmTime != null
+        if (!hasAnyTrigger) {
+            return AlarmScheduleResult(
+                alarmId = alarm.id,
+                scheduledTriggers = emptyList(),
+                skippedPastTriggers = emptyList(),
+                noTriggersConfigured = true,
+                usedExactAlarm = false
+            )
+        }
+
         alarm.notifyTime?.let { timestamp ->
-            scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.NOTIFY)
+            val result = scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.NOTIFY)
+            if (result.scheduled) {
+                scheduledTriggers.add(AlarmType.NOTIFY)
+                usedExactAlarm = usedExactAlarm || result.usedExactAlarm
+            } else if (result.skippedPast) {
+                skippedPastTriggers.add(AlarmType.NOTIFY)
+            }
         }
+
         alarm.urgentTime?.let { timestamp ->
-            scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.URGENT)
+            val result = scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.URGENT)
+            if (result.scheduled) {
+                scheduledTriggers.add(AlarmType.URGENT)
+                usedExactAlarm = usedExactAlarm || result.usedExactAlarm
+            } else if (result.skippedPast) {
+                skippedPastTriggers.add(AlarmType.URGENT)
+            }
         }
+
         alarm.alarmTime?.let { timestamp ->
-            scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.ALARM)
+            val result = scheduleAlarmTrigger(alarm.id, timestamp.toDate().time, AlarmType.ALARM)
+            if (result.scheduled) {
+                scheduledTriggers.add(AlarmType.ALARM)
+                usedExactAlarm = usedExactAlarm || result.usedExactAlarm
+            } else if (result.skippedPast) {
+                skippedPastTriggers.add(AlarmType.ALARM)
+            }
         }
+
+        return AlarmScheduleResult(
+            alarmId = alarm.id,
+            scheduledTriggers = scheduledTriggers,
+            skippedPastTriggers = skippedPastTriggers,
+            noTriggersConfigured = false,
+            usedExactAlarm = usedExactAlarm
+        )
     }
+
+    /**
+     * Result of scheduling a single alarm trigger.
+     */
+    private data class TriggerScheduleResult(
+        val scheduled: Boolean,
+        val skippedPast: Boolean,
+        val usedExactAlarm: Boolean,
+        val error: String? = null
+    )
 
     /**
      * Schedules a snooze alarm to fire at the specified time.
      */
-    fun scheduleSnooze(alarmId: String, triggerAtMillis: Long, alarmType: AlarmType) {
-        scheduleAlarmTrigger(alarmId, triggerAtMillis, alarmType)
+    fun scheduleSnooze(alarmId: String, triggerAtMillis: Long, alarmType: AlarmType): Boolean {
+        val result = scheduleAlarmTrigger(alarmId, triggerAtMillis, alarmType)
+        return result.scheduled
     }
 
     /**
      * Cancels all scheduled triggers for an alarm.
      */
     fun cancelAlarm(alarmId: String) {
+        if (alarmManager == null) {
+            Log.e(TAG, "Cannot cancel alarm - AlarmManager is null")
+            return
+        }
         AlarmType.entries.forEach { type ->
             cancelAlarmTrigger(alarmId, type)
         }
@@ -54,21 +148,23 @@ class AlarmScheduler(private val context: Context) {
      * Cancels a specific alarm type trigger.
      */
     fun cancelAlarmTrigger(alarmId: String, alarmType: AlarmType) {
+        if (alarmManager == null) return
         val pendingIntent = createPendingIntent(alarmId, alarmType)
         alarmManager.cancel(pendingIntent)
-        Log.d(TAG, "Cancelled alarm trigger: $alarmId ($alarmType)")
     }
 
-    private fun scheduleAlarmTrigger(alarmId: String, triggerAtMillis: Long, alarmType: AlarmType) {
+    private fun scheduleAlarmTrigger(alarmId: String, triggerAtMillis: Long, alarmType: AlarmType): TriggerScheduleResult {
+        if (alarmManager == null) {
+            return TriggerScheduleResult(scheduled = false, skippedPast = false, usedExactAlarm = false, error = "AlarmManager is null")
+        }
+
         // Don't schedule alarms in the past
         val now = System.currentTimeMillis()
         if (triggerAtMillis <= now) {
-            Log.d(TAG, "Skipping past alarm: $alarmId ($alarmType) - trigger time $triggerAtMillis <= now $now")
-            return
+            return TriggerScheduleResult(scheduled = false, skippedPast = true, usedExactAlarm = false)
         }
 
         val pendingIntent = createPendingIntent(alarmId, alarmType)
-        val triggerInSeconds = (triggerAtMillis - now) / 1000
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -78,7 +174,7 @@ class AlarmScheduler(private val context: Context) {
                         triggerAtMillis,
                         pendingIntent
                     )
-                    Log.d(TAG, "Scheduled EXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s")
+                    return TriggerScheduleResult(scheduled = true, skippedPast = false, usedExactAlarm = true)
                 } else {
                     // Fall back to inexact alarm if exact alarm permission not granted
                     alarmManager.setAndAllowWhileIdle(
@@ -86,7 +182,7 @@ class AlarmScheduler(private val context: Context) {
                         triggerAtMillis,
                         pendingIntent
                     )
-                    Log.w(TAG, "Scheduled INEXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s - exact alarm permission not granted. Go to Settings > Apps > TaskBrain > Alarms & reminders to enable.")
+                    return TriggerScheduleResult(scheduled = true, skippedPast = false, usedExactAlarm = false)
                 }
             } else {
                 alarmManager.setExactAndAllowWhileIdle(
@@ -94,16 +190,24 @@ class AlarmScheduler(private val context: Context) {
                     triggerAtMillis,
                     pendingIntent
                 )
-                Log.d(TAG, "Scheduled EXACT alarm: $alarmId ($alarmType) in ${triggerInSeconds}s")
+                return TriggerScheduleResult(scheduled = true, skippedPast = false, usedExactAlarm = true)
             }
         } catch (e: SecurityException) {
-            Log.e(TAG, "Failed to schedule exact alarm - falling back to inexact", e)
-            // Fall back to inexact alarm
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                triggerAtMillis,
-                pendingIntent
-            )
+            Log.e(TAG, "SecurityException scheduling alarm - falling back to inexact", e)
+            try {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAtMillis,
+                    pendingIntent
+                )
+                return TriggerScheduleResult(scheduled = true, skippedPast = false, usedExactAlarm = false)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Failed to schedule alarm", e2)
+                return TriggerScheduleResult(scheduled = false, skippedPast = false, usedExactAlarm = false, error = e2.message)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to schedule alarm", e)
+            return TriggerScheduleResult(scheduled = false, skippedPast = false, usedExactAlarm = false, error = e.message)
         }
     }
 
@@ -112,6 +216,7 @@ class AlarmScheduler(private val context: Context) {
      * On Android 12+, this requires user permission.
      */
     fun canScheduleExactAlarms(): Boolean {
+        if (alarmManager == null) return false
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             alarmManager.canScheduleExactAlarms()
         } else {

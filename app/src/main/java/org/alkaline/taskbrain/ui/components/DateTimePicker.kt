@@ -30,10 +30,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.util.DateTimeUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * A row component for selecting a date and time.
@@ -164,13 +166,12 @@ fun DateTimePickerRow(
                         TextButton(
                             onClick = {
                                 val dateMillis = selectedDateMillis ?: System.currentTimeMillis()
-                                val cal = Calendar.getInstance()
-                                cal.timeInMillis = dateMillis
-                                cal.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-                                cal.set(Calendar.MINUTE, timePickerState.minute)
-                                cal.set(Calendar.SECOND, 0)
-                                cal.set(Calendar.MILLISECOND, 0)
-                                onValueChange(Timestamp(cal.time))
+                                val timestamp = DateTimeUtils.combineDatePickerWithTime(
+                                    datePickerMillis = dateMillis,
+                                    hour = timePickerState.hour,
+                                    minute = timePickerState.minute
+                                )
+                                onValueChange(timestamp)
                                 showTimePicker = false
                             }
                         ) {
