@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import org.alkaline.taskbrain.R
@@ -199,10 +200,26 @@ class NotificationHelper(private val context: Context) {
         ).build()
     }
 
-    private fun hasNotificationPermission(): Boolean {
+    /**
+     * Checks if the app has notification permission.
+     */
+    fun hasNotificationPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
             context,
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * Checks if the app can use full-screen intents.
+     * On Android 14+, this requires explicit permission.
+     */
+    fun canUseFullScreenIntent(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            notificationManager?.canUseFullScreenIntent() ?: false
+        } else {
+            // Before Android 14, full-screen intent is allowed with USE_FULL_SCREEN_INTENT permission
+            true
+        }
     }
 }

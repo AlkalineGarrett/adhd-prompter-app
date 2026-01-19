@@ -4,9 +4,6 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
@@ -35,6 +32,7 @@ class LockScreenWallpaperManager(private val context: Context) {
 
     private val wallpaperManager: WallpaperManager = WallpaperManager.getInstance(context)
     private val backupFile: File = File(context.filesDir, BACKUP_FILENAME)
+    private val renderer: UrgentWallpaperRenderer = UrgentWallpaperRenderer(context)
 
     /**
      * Adds an alarm to the urgent wallpaper display.
@@ -135,7 +133,7 @@ class LockScreenWallpaperManager(private val context: Context) {
 
     private fun updateWallpaper() {
         val alarms = getActiveAlarms().sortedBy { it.alarmTimeMillis }
-        val urgentBitmap = createUrgentWallpaper(alarms)
+        val urgentBitmap = renderer.createUrgentWallpaper(alarms)
         wallpaperManager.setBitmap(
             urgentBitmap,
             null,
@@ -208,75 +206,6 @@ class LockScreenWallpaperManager(private val context: Context) {
         }
     }
 
-    private fun createUrgentWallpaper(alarms: List<UrgentAlarmInfo>): Bitmap {
-        // Get screen dimensions for the wallpaper
-        val displayMetrics = context.resources.displayMetrics
-        val width = displayMetrics.widthPixels
-        val height = displayMetrics.heightPixels
-
-        // Create a solid red bitmap
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(URGENT_COLOR)
-
-        if (alarms.isEmpty()) {
-            return bitmap
-        }
-
-        // Build lines to display (up to 3)
-        val lines = mutableListOf<String>()
-        val sortedAlarms = alarms.sortedBy { it.alarmTimeMillis }
-
-        // Add first two alarms
-        sortedAlarms.take(2).forEach { alarm ->
-            lines.add(alarm.displayText)
-        }
-
-        // If more than 2, add "more" indicator
-        if (sortedAlarms.size > 2) {
-            lines.add("(${sortedAlarms.size - 2} more alarm${if (sortedAlarms.size > 3) "s" else ""} due after)")
-        }
-
-        // Setup text paint - smaller to fit multiple lines
-        val textPaint = Paint().apply {
-            color = Color.BLACK
-            textAlign = Paint.Align.CENTER
-            typeface = Typeface.DEFAULT_BOLD
-            isAntiAlias = true
-            // Smaller text to accommodate multiple lines
-            textSize = (width / 18f).coerceIn(32f, 72f)
-        }
-
-        // Calculate total height of all lines
-        val lineHeight = textPaint.descent() - textPaint.ascent()
-        val lineSpacing = lineHeight * 0.3f  // 30% spacing between lines
-        val totalTextHeight = (lineHeight * lines.size) + (lineSpacing * (lines.size - 1))
-        val margin = lineHeight * 0.5f  // Margin above/below all text
-
-        // Calculate band dimensions - centered at 1/3 up from bottom
-        val bandCenterY = height - (height / 3f)
-        val bandTop = bandCenterY - (totalTextHeight / 2) - margin
-        val bandBottom = bandCenterY + (totalTextHeight / 2) + margin
-
-        // Draw yellow band
-        val bandPaint = Paint().apply {
-            color = BAND_COLOR
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(0f, bandTop, width.toFloat(), bandBottom, bandPaint)
-
-        // Draw text lines centered in the band
-        val x = width / 2f
-        var y = bandCenterY - (totalTextHeight / 2) - textPaint.ascent()
-
-        for (line in lines) {
-            canvas.drawText(line, x, y, textPaint)
-            y += lineHeight + lineSpacing
-        }
-
-        return bitmap
-    }
-
     private fun getActiveAlarms(): List<UrgentAlarmInfo> {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val json = prefs.getString(KEY_ACTIVE_ALARMS, null) ?: return emptyList()
@@ -320,10 +249,5 @@ class LockScreenWallpaperManager(private val context: Context) {
         private const val PREFS_NAME = "lock_screen_wallpaper_prefs"
         private const val KEY_ACTIVE_ALARMS = "active_alarms"
         private const val BACKUP_FILENAME = "wallpaper_backup.png"
-
-        // Dark red color for urgent state
-        private const val URGENT_COLOR = 0xFFB71C1C.toInt()
-        // Yellow color for text band
-        private const val BAND_COLOR = 0xFFFFEB3B.toInt()
     }
 }

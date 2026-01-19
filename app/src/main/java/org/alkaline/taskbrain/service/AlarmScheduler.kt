@@ -5,13 +5,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.text.format.DateFormat
 import android.util.Log
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.receiver.AlarmReceiver
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 /**
  * Result of scheduling an alarm, indicating what was scheduled and any issues.
@@ -47,30 +44,17 @@ class AlarmScheduler(private val context: Context) {
 
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
     private val notificationHelper = NotificationHelper(context)
-    private val lockScreenWallpaperManager = LockScreenWallpaperManager(context)
+    private val urgentStateManager = UrgentStateManager(context)
 
     /**
      * Schedules all time thresholds for an alarm.
      * Each non-null time threshold gets its own scheduled alarm.
      *
-     * Lock screen notification logic:
-     * - If notifyTime is set, schedules notification at that time
-     * - If notifyTime is not set but alarmTime is set, schedules notification 3 hours before alarm
-     * - If the effective notify time is in the past, shows notification immediately
-     *
-     * Urgent full-screen activity logic:
-     * - If urgentTime is set, schedules urgent trigger at that time
-     * - If urgentTime is not set but alarmTime is set, schedules urgent trigger 30 minutes before alarm
-     * - Shows red-themed full-screen activity over lock screen when triggered
-     * - If the effective urgent time is in the past (alarm < 30 min away), shows urgent activity IMMEDIATELY
-     *
      * Returns a result indicating what was scheduled.
      */
     fun scheduleAlarm(alarm: Alarm): AlarmScheduleResult {
         Log.d(TAG, "scheduleAlarm called for ${alarm.id}")
-        Log.d(TAG, "  notifyTime: ${alarm.notifyTime}")
-        Log.d(TAG, "  urgentTime: ${alarm.urgentTime}")
-        Log.d(TAG, "  alarmTime: ${alarm.alarmTime}")
+        Log.d(TAG, "  notifyTime: ${alarm.notifyTime}, urgentTime: ${alarm.urgentTime}, alarmTime: ${alarm.alarmTime}")
 
         if (alarmManager == null) {
             Log.e(TAG, "AlarmManager is null - cannot schedule alarms")
@@ -82,11 +66,6 @@ class AlarmScheduler(private val context: Context) {
                 usedExactAlarm = false
             )
         }
-
-        val scheduledTriggers = mutableListOf<AlarmType>()
-        val skippedPastTriggers = mutableListOf<AlarmType>()
-        var usedExactAlarm = false
-        var immediateNotificationShown = false
 
         // Check if any triggers are configured
         val hasAnyTrigger = alarm.notifyTime != null || alarm.urgentTime != null || alarm.alarmTime != null
@@ -101,86 +80,24 @@ class AlarmScheduler(private val context: Context) {
             )
         }
 
-        // Calculate effective notify time (notifyTime if set, or 3 hours before alarmTime)
-        val effectiveNotifyTime = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-        Log.d(TAG, "  effectiveNotifyTime: $effectiveNotifyTime (${effectiveNotifyTime?.let { java.util.Date(it) }})")
+        // Schedule each trigger type
+        val notifyResult = scheduleNotifyTrigger(alarm)
+        val urgentResult = scheduleUrgentTrigger(alarm)
+        val alarmResult = scheduleAlarmTimeTrigger(alarm)
 
-        if (effectiveNotifyTime != null) {
-            val now = System.currentTimeMillis()
-            if (effectiveNotifyTime <= now) {
-                // Notify time is in the past - show notification immediately (silently)
-                Log.d(TAG, "  NOTIFY time is in past, showing immediately")
-                immediateNotificationShown = notificationHelper.showNotification(alarm, AlarmType.NOTIFY, silent = true)
-                if (!immediateNotificationShown) {
-                    // If we couldn't show it (permission denied), track as skipped
-                    Log.w(TAG, "  Could not show immediate notification (permission?)")
-                    skippedPastTriggers.add(AlarmType.NOTIFY)
-                }
-            } else {
-                // Schedule the notification for the effective time
-                Log.d(TAG, "  Scheduling NOTIFY for ${java.util.Date(effectiveNotifyTime)}")
-                val result = scheduleAlarmTrigger(alarm.id, effectiveNotifyTime, AlarmType.NOTIFY)
-                if (result.scheduled) {
-                    Log.d(TAG, "  NOTIFY scheduled successfully")
-                    scheduledTriggers.add(AlarmType.NOTIFY)
-                    usedExactAlarm = usedExactAlarm || result.usedExactAlarm
-                } else if (result.skippedPast) {
-                    Log.w(TAG, "  NOTIFY skipped (past)")
-                    skippedPastTriggers.add(AlarmType.NOTIFY)
-                } else {
-                    Log.e(TAG, "  NOTIFY scheduling failed: ${result.error}")
-                }
-            }
-        } else {
-            Log.d(TAG, "  No effective notify time calculated")
-        }
-
-        // Calculate effective urgent time (urgentTime if set, or 30 minutes before alarmTime)
-        // URGENT is a "state of being" - if we're already in the urgent window, show immediately
-        val effectiveUrgentTime = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-        Log.d(TAG, "  effectiveUrgentTime: $effectiveUrgentTime (${effectiveUrgentTime?.let { java.util.Date(it) }})")
-
-        if (effectiveUrgentTime != null) {
-            val now = System.currentTimeMillis()
-            if (effectiveUrgentTime <= now) {
-                // We're already in the urgent window - show full-screen activity immediately
-                Log.d(TAG, "  URGENT time is in past, showing full-screen activity immediately")
-                showUrgentActivityImmediately(alarm)
-                scheduledTriggers.add(AlarmType.URGENT) // Count as "handled"
-            } else {
-                // Schedule the urgent trigger for later
-                Log.d(TAG, "  Scheduling URGENT for ${java.util.Date(effectiveUrgentTime)}")
-                val result = scheduleAlarmTrigger(alarm.id, effectiveUrgentTime, AlarmType.URGENT)
-                if (result.scheduled) {
-                    Log.d(TAG, "  URGENT scheduled successfully")
-                    scheduledTriggers.add(AlarmType.URGENT)
-                    usedExactAlarm = usedExactAlarm || result.usedExactAlarm
-                } else if (result.skippedPast) {
-                    Log.w(TAG, "  URGENT skipped (past)")
-                    skippedPastTriggers.add(AlarmType.URGENT)
-                } else {
-                    Log.e(TAG, "  URGENT scheduling failed: ${result.error}")
-                }
-            }
-        } else {
-            Log.d(TAG, "  No effective urgent time calculated")
-        }
-
-        alarm.alarmTime?.let { timestamp ->
-            val alarmTimeMillis = timestamp.toDate().time
-            Log.d(TAG, "  Scheduling ALARM for ${java.util.Date(alarmTimeMillis)}")
-            val result = scheduleAlarmTrigger(alarm.id, alarmTimeMillis, AlarmType.ALARM)
-            if (result.scheduled) {
-                Log.d(TAG, "  ALARM scheduled successfully")
-                scheduledTriggers.add(AlarmType.ALARM)
-                usedExactAlarm = usedExactAlarm || result.usedExactAlarm
-            } else if (result.skippedPast) {
-                Log.w(TAG, "  ALARM skipped (past)")
-                skippedPastTriggers.add(AlarmType.ALARM)
-            } else {
-                Log.e(TAG, "  ALARM scheduling failed: ${result.error}")
-            }
-        }
+        // Combine results
+        val scheduledTriggers = listOfNotNull(
+            if (notifyResult.scheduled) AlarmType.NOTIFY else null,
+            if (urgentResult.scheduled) AlarmType.URGENT else null,
+            if (alarmResult.scheduled) AlarmType.ALARM else null
+        )
+        val skippedPastTriggers = listOfNotNull(
+            if (notifyResult.skippedPast) AlarmType.NOTIFY else null,
+            if (urgentResult.skippedPast) AlarmType.URGENT else null,
+            if (alarmResult.skippedPast) AlarmType.ALARM else null
+        )
+        val usedExactAlarm = notifyResult.usedExactAlarm || urgentResult.usedExactAlarm || alarmResult.usedExactAlarm
+        val immediateNotificationShown = notifyResult.immediateAction || urgentResult.immediateAction
 
         Log.d(TAG, "scheduleAlarm result: scheduled=$scheduledTriggers, skipped=$skippedPastTriggers")
         return AlarmScheduleResult(
@@ -194,7 +111,131 @@ class AlarmScheduler(private val context: Context) {
     }
 
     /**
-     * Result of scheduling a single alarm trigger.
+     * Result of scheduling a specific trigger type.
+     */
+    private data class TriggerTypeResult(
+        val scheduled: Boolean = false,
+        val skippedPast: Boolean = false,
+        val usedExactAlarm: Boolean = false,
+        val immediateAction: Boolean = false
+    )
+
+    /**
+     * Schedules the NOTIFY trigger.
+     * - If notifyTime is set, schedules at that time
+     * - If notifyTime is not set but alarmTime is set, schedules 3 hours before alarm
+     * - If the effective time is in the past, shows notification immediately
+     */
+    private fun scheduleNotifyTrigger(alarm: Alarm): TriggerTypeResult {
+        val effectiveNotifyTime = AlarmUtils.calculateEffectiveNotifyTime(alarm)
+        if (effectiveNotifyTime == null) {
+            Log.d(TAG, "  No effective notify time calculated")
+            return TriggerTypeResult()
+        }
+
+        Log.d(TAG, "  effectiveNotifyTime: ${java.util.Date(effectiveNotifyTime)}")
+        val now = System.currentTimeMillis()
+
+        if (effectiveNotifyTime <= now) {
+            // Notify time is in the past - show notification immediately (silently)
+            Log.d(TAG, "  NOTIFY time is in past, showing immediately")
+            val shown = notificationHelper.showNotification(alarm, AlarmType.NOTIFY, silent = true)
+            return if (shown) {
+                TriggerTypeResult(scheduled = true, immediateAction = true)
+            } else {
+                Log.w(TAG, "  Could not show immediate notification (permission?)")
+                TriggerTypeResult(skippedPast = true)
+            }
+        }
+
+        // Schedule the notification for the effective time
+        Log.d(TAG, "  Scheduling NOTIFY for ${java.util.Date(effectiveNotifyTime)}")
+        val result = scheduleAlarmTrigger(alarm.id, effectiveNotifyTime, AlarmType.NOTIFY)
+        return when {
+            result.scheduled -> {
+                Log.d(TAG, "  NOTIFY scheduled successfully")
+                TriggerTypeResult(scheduled = true, usedExactAlarm = result.usedExactAlarm)
+            }
+            result.skippedPast -> {
+                Log.w(TAG, "  NOTIFY skipped (past)")
+                TriggerTypeResult(skippedPast = true)
+            }
+            else -> {
+                Log.e(TAG, "  NOTIFY scheduling failed: ${result.error}")
+                TriggerTypeResult()
+            }
+        }
+    }
+
+    /**
+     * Schedules the URGENT trigger.
+     * - If urgentTime is set, schedules at that time
+     * - If urgentTime is not set but alarmTime is set, schedules 30 minutes before alarm
+     * - If the effective time is in the past (in urgent window), enters urgent state immediately
+     */
+    private fun scheduleUrgentTrigger(alarm: Alarm): TriggerTypeResult {
+        val effectiveUrgentTime = AlarmUtils.calculateEffectiveUrgentTime(alarm)
+        if (effectiveUrgentTime == null) {
+            Log.d(TAG, "  No effective urgent time calculated")
+            return TriggerTypeResult()
+        }
+
+        Log.d(TAG, "  effectiveUrgentTime: ${java.util.Date(effectiveUrgentTime)}")
+        val now = System.currentTimeMillis()
+
+        if (effectiveUrgentTime <= now) {
+            // We're already in the urgent window - enter urgent state immediately
+            Log.d(TAG, "  URGENT time is in past, entering urgent state immediately")
+            urgentStateManager.enterUrgentState(alarm, silent = true)
+            return TriggerTypeResult(scheduled = true, immediateAction = true)
+        }
+
+        // Schedule the urgent trigger for later
+        Log.d(TAG, "  Scheduling URGENT for ${java.util.Date(effectiveUrgentTime)}")
+        val result = scheduleAlarmTrigger(alarm.id, effectiveUrgentTime, AlarmType.URGENT)
+        return when {
+            result.scheduled -> {
+                Log.d(TAG, "  URGENT scheduled successfully")
+                TriggerTypeResult(scheduled = true, usedExactAlarm = result.usedExactAlarm)
+            }
+            result.skippedPast -> {
+                Log.w(TAG, "  URGENT skipped (past)")
+                TriggerTypeResult(skippedPast = true)
+            }
+            else -> {
+                Log.e(TAG, "  URGENT scheduling failed: ${result.error}")
+                TriggerTypeResult()
+            }
+        }
+    }
+
+    /**
+     * Schedules the ALARM trigger at the alarm time if set.
+     */
+    private fun scheduleAlarmTimeTrigger(alarm: Alarm): TriggerTypeResult {
+        val timestamp = alarm.alarmTime ?: return TriggerTypeResult()
+        val alarmTimeMillis = timestamp.toDate().time
+
+        Log.d(TAG, "  Scheduling ALARM for ${java.util.Date(alarmTimeMillis)}")
+        val result = scheduleAlarmTrigger(alarm.id, alarmTimeMillis, AlarmType.ALARM)
+        return when {
+            result.scheduled -> {
+                Log.d(TAG, "  ALARM scheduled successfully")
+                TriggerTypeResult(scheduled = true, usedExactAlarm = result.usedExactAlarm)
+            }
+            result.skippedPast -> {
+                Log.w(TAG, "  ALARM skipped (past)")
+                TriggerTypeResult(skippedPast = true)
+            }
+            else -> {
+                Log.e(TAG, "  ALARM scheduling failed: ${result.error}")
+                TriggerTypeResult()
+            }
+        }
+    }
+
+    /**
+     * Result of scheduling a single alarm trigger via AlarmManager.
      */
     private data class TriggerScheduleResult(
         val scheduled: Boolean,
@@ -301,41 +342,6 @@ class AlarmScheduler(private val context: Context) {
             alarmManager.canScheduleExactAlarms()
         } else {
             true
-        }
-    }
-
-    /**
-     * Activates the urgent state immediately.
-     * Called when an alarm is created within the urgent window (< 30 minutes from alarm time).
-     *
-     * Actions:
-     * - Sets lock screen wallpaper to red/urgent color
-     * - Shows a silent notification (no sound/vibration, like the NOTIFY case)
-     */
-    private fun showUrgentActivityImmediately(alarm: Alarm) {
-        // Format the display text with due time
-        val displayText = formatWallpaperText(alarm)
-        val alarmTimeMillis = alarm.alarmTime?.toDate()?.time ?: System.currentTimeMillis()
-
-        // Set the lock screen wallpaper to urgent (red) with alarm text
-        lockScreenWallpaperManager.setUrgentWallpaper(alarm.id, displayText, alarmTimeMillis)
-
-        // Show a silent notification (no sound/vibration since we're showing it immediately)
-        notificationHelper.showNotification(alarm, AlarmType.URGENT, silent = true)
-    }
-
-    private fun formatWallpaperText(alarm: Alarm): String {
-        val alarmTime = alarm.alarmTime?.toDate()
-        return if (alarmTime != null) {
-            // Use device's preferred time format (12h or 24h)
-            val timeFormat = if (DateFormat.is24HourFormat(context)) {
-                SimpleDateFormat("HH:mm", Locale.getDefault())
-            } else {
-                SimpleDateFormat("h:mm a", Locale.getDefault())
-            }
-            "${alarm.displayName}: due ${timeFormat.format(alarmTime)}"
-        } else {
-            alarm.displayName
         }
     }
 

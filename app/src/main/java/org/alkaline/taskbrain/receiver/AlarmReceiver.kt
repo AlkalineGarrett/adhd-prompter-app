@@ -1,32 +1,20 @@
 package org.alkaline.taskbrain.receiver
 
-import android.Manifest
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
-import androidx.core.app.NotificationCompat
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmUtils
-import org.alkaline.taskbrain.service.LockScreenWallpaperManager
-import org.alkaline.taskbrain.service.NotificationChannels
-import android.text.format.DateFormat
-import java.text.SimpleDateFormat
-import java.util.Locale
-import org.alkaline.taskbrain.ui.alarm.AlarmActivity
+import org.alkaline.taskbrain.service.NotificationHelper
+import org.alkaline.taskbrain.service.UrgentStateManager
 import org.alkaline.taskbrain.ui.alarm.AlarmErrorActivity
 
 /**
@@ -92,11 +80,7 @@ class AlarmReceiver : BroadcastReceiver() {
                         Log.d(TAG, "About to show alarm: type=$alarmType, content=${alarm.lineContent}")
 
                         withContext(Dispatchers.Main) {
-                            when (alarmType) {
-                                AlarmType.NOTIFY -> showNotification(context, alarm)
-                                AlarmType.URGENT -> showUrgentNotification(context, alarm)
-                                AlarmType.ALARM -> showAlarmWithFullScreen(context, alarm)
-                            }
+                            showAlarmTrigger(context, alarm, alarmType)
                         }
                     },
                     onFailure = { e ->
@@ -116,268 +100,51 @@ class AlarmReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun showNotification(context: Context, alarm: Alarm) {
-        Log.d(TAG, "showNotification called for ${alarm.id}")
-
-        if (!hasNotificationPermission(context)) {
-            Log.w(TAG, "Notification permission not granted")
-            showErrorDialog(context, "Permission Required",
-                "Notification permission is not granted. Please enable notifications for TaskBrain in Settings.")
-            return
-        }
-
-        val notificationManager = context.getSystemService(NotificationManager::class.java)
-        if (notificationManager == null) {
-            Log.e(TAG, "NotificationManager is null")
-            showErrorDialog(context, "System Error",
-                "Could not access NotificationManager. Please restart your device.")
-            return
-        }
-
-        val notification = NotificationCompat.Builder(context, NotificationChannels.REMINDER_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Reminder")
-            .setContentText(alarm.displayName)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(createContentIntent(context, alarm))
-            .addAction(createDoneAction(context, alarm))
-            .addAction(createCancelAction(context, alarm))
-            .build()
-
-        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
-        Log.d(TAG, "Showed notification for alarm: ${alarm.id}")
-    }
-
-    private fun showUrgentNotification(context: Context, alarm: Alarm) {
-        Log.d(TAG, "showUrgentNotification called for ${alarm.id}")
-
-        // Set the lock screen wallpaper to urgent (red) with alarm text
-        val displayText = formatWallpaperText(context, alarm)
-        val alarmTimeMillis = alarm.alarmTime?.toDate()?.time ?: System.currentTimeMillis()
-        val wallpaperManager = LockScreenWallpaperManager(context)
-        wallpaperManager.setUrgentWallpaper(alarm.id, displayText, alarmTimeMillis)
-
-        if (!hasNotificationPermission(context)) {
-            Log.w(TAG, "Notification permission not granted")
-            showErrorDialog(context, "Permission Required",
-                "Notification permission is not granted. Please enable notifications for TaskBrain in Settings.")
-            return
-        }
-
-        val notificationManager = context.getSystemService(NotificationManager::class.java)
-        if (notificationManager == null) {
-            Log.e(TAG, "NotificationManager is null")
-            showErrorDialog(context, "System Error",
-                "Could not access NotificationManager. Please restart your device.")
-            return
-        }
-
-        // Check full-screen intent permission on Android 14+
-        val canUseFullScreen = checkFullScreenIntentPermission(context, notificationManager)
-        Log.d(TAG, "Can use full-screen intent: $canUseFullScreen")
-
-        if (!canUseFullScreen) {
-            showErrorDialog(context, "Permission Required",
-                "Full-screen intent permission is not granted.\n\n" +
-                "To see urgent alarms over your lock screen, go to:\n" +
-                "Settings → Apps → TaskBrain → Allow display over other apps")
-        }
-
-        val fullScreenIntent = createFullScreenIntent(context, alarm, AlarmType.URGENT)
-
-        // Build notification with full-screen intent
-        val notification = NotificationCompat.Builder(context, NotificationChannels.URGENT_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Urgent Reminder")
-            .setContentText(alarm.displayName)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(true)
-            .setFullScreenIntent(fullScreenIntent, true)
-            .setContentIntent(createContentIntent(context, alarm))
-            .addAction(createDoneAction(context, alarm))
-            .addAction(createCancelAction(context, alarm))
-            .build()
-
-        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
-        Log.d(TAG, "Posted urgent notification with fullScreenIntent for alarm: ${alarm.id}")
-        // Note: Don't start activity directly - let fullScreenIntent handle it
-        // This way it only shows full-screen when device is locked
-    }
-
-    private fun showAlarmWithFullScreen(context: Context, alarm: Alarm) {
-        Log.d(TAG, "showAlarmWithFullScreen called for ${alarm.id}")
-
-        if (!hasNotificationPermission(context)) {
-            Log.w(TAG, "Notification permission not granted")
-            showErrorDialog(context, "Permission Required",
-                "Notification permission is not granted. Please enable notifications for TaskBrain in Settings.")
-            return
-        }
-
-        val notificationManager = context.getSystemService(NotificationManager::class.java)
-        if (notificationManager == null) {
-            Log.e(TAG, "NotificationManager is null")
-            showErrorDialog(context, "System Error",
-                "Could not access NotificationManager. Please restart your device.")
-            return
-        }
-
-        // Check full-screen intent permission on Android 14+
-        val canUseFullScreen = checkFullScreenIntentPermission(context, notificationManager)
-        Log.d(TAG, "Can use full-screen intent: $canUseFullScreen")
-
-        if (!canUseFullScreen) {
-            showErrorDialog(context, "Permission Required",
-                "Full-screen intent permission is not granted.\n\n" +
-                "To see alarms over your lock screen, go to:\n" +
-                "Settings → Apps → TaskBrain → Allow display over other apps")
-        }
-
-        val fullScreenIntent = createFullScreenIntent(context, alarm, AlarmType.ALARM)
-
-        val notification = NotificationCompat.Builder(context, NotificationChannels.ALARM_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Alarm")
-            .setContentText(alarm.displayName)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setFullScreenIntent(fullScreenIntent, true)
-            .setContentIntent(createContentIntent(context, alarm))
-            .addAction(createDoneAction(context, alarm))
-            .addAction(createSnoozeAction(context, alarm))
-            .build()
-
-        notificationManager.notify(AlarmUtils.getNotificationId(alarm.id), notification)
-        Log.d(TAG, "Posted alarm notification with fullScreenIntent for alarm: ${alarm.id}")
-        // Note: Don't start activity directly - let fullScreenIntent handle it
-        // This way it only shows full-screen when device is locked
-    }
-
     /**
-     * Checks if the app can use full-screen intents.
-     * On Android 14+, this requires explicit permission.
+     * Shows the appropriate notification for the alarm trigger.
+     * Uses NotificationHelper for NOTIFY/ALARM types, UrgentStateManager for URGENT type.
      */
-    private fun checkFullScreenIntentPermission(context: Context, notificationManager: NotificationManager): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val canUse = notificationManager.canUseFullScreenIntent()
-            if (!canUse) {
+    private fun showAlarmTrigger(context: Context, alarm: Alarm, alarmType: AlarmType) {
+        Log.d(TAG, "showAlarmTrigger called for ${alarm.id} with type $alarmType")
+
+        val notificationHelper = NotificationHelper(context)
+
+        // Check notification permission
+        if (!notificationHelper.hasNotificationPermission()) {
+            Log.w(TAG, "Notification permission not granted")
+            showErrorDialog(context, "Permission Required",
+                "Notification permission is not granted. Please enable notifications for TaskBrain in Settings.")
+            return
+        }
+
+        // Check full-screen intent permission for urgent/alarm types
+        if (alarmType == AlarmType.URGENT || alarmType == AlarmType.ALARM) {
+            if (!notificationHelper.canUseFullScreenIntent()) {
                 Log.w(TAG, "Full-screen intent permission NOT granted on Android 14+")
+                showErrorDialog(context, "Permission Required",
+                    "Full-screen intent permission is not granted.\n\n" +
+                    "To see alarms over your lock screen, go to:\n" +
+                    "Settings → Apps → TaskBrain → Allow display over other apps")
             }
-            canUse
-        } else {
-            // Before Android 14, full-screen intent is allowed with USE_FULL_SCREEN_INTENT permission
-            true
         }
-    }
 
-    private fun createContentIntent(context: Context, alarm: Alarm): PendingIntent {
-        val intent = Intent(context, AlarmActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(AlarmActivity.EXTRA_ALARM_ID, alarm.id)
-            putExtra(AlarmActivity.EXTRA_ALARM_TYPE, AlarmType.NOTIFY.name)
-        }
-        return PendingIntent.getActivity(
-            context,
-            alarm.id.hashCode(),
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun createFullScreenIntent(context: Context, alarm: Alarm, alarmType: AlarmType): PendingIntent {
-        val intent = Intent(context, AlarmActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(AlarmActivity.EXTRA_ALARM_ID, alarm.id)
-            putExtra(AlarmActivity.EXTRA_ALARM_TYPE, alarmType.name)
-        }
-        return PendingIntent.getActivity(
-            context,
-            alarm.id.hashCode() + 1000,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun createDoneAction(context: Context, alarm: Alarm): NotificationCompat.Action {
-        val intent = Intent(context, AlarmActionReceiver::class.java).apply {
-            action = AlarmActionReceiver.ACTION_MARK_DONE
-            putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            alarm.id.hashCode() + 2000,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Action.Builder(
-            R.drawable.ic_check_circle,
-            "Done",
-            pendingIntent
-        ).build()
-    }
-
-    private fun createSnoozeAction(context: Context, alarm: Alarm): NotificationCompat.Action {
-        val intent = Intent(context, AlarmActionReceiver::class.java).apply {
-            action = AlarmActionReceiver.ACTION_SNOOZE
-            putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            alarm.id.hashCode() + 3000,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Action.Builder(
-            R.drawable.ic_alarm,
-            "Snooze",
-            pendingIntent
-        ).build()
-    }
-
-    private fun createCancelAction(context: Context, alarm: Alarm): NotificationCompat.Action {
-        val intent = Intent(context, AlarmActionReceiver::class.java).apply {
-            action = AlarmActionReceiver.ACTION_CANCEL
-            putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
-        }
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            alarm.id.hashCode() + 4000,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Action.Builder(
-            R.drawable.ic_close,
-            "Cancel",
-            pendingIntent
-        ).build()
-    }
-
-    private fun formatWallpaperText(context: Context, alarm: Alarm): String {
-        val alarmTime = alarm.alarmTime?.toDate()
-        return if (alarmTime != null) {
-            // Use device's preferred time format (12h or 24h)
-            val timeFormat = if (DateFormat.is24HourFormat(context)) {
-                SimpleDateFormat("HH:mm", Locale.getDefault())
-            } else {
-                SimpleDateFormat("h:mm a", Locale.getDefault())
+        // Show the notification/urgent state based on alarm type
+        val success = when (alarmType) {
+            AlarmType.URGENT -> {
+                // Use UrgentStateManager for coordinated wallpaper + notification
+                UrgentStateManager(context).enterUrgentState(alarm, silent = false)
             }
-            "${alarm.displayName}: due ${timeFormat.format(alarmTime)}"
-        } else {
-            alarm.displayName
+            else -> {
+                // Use NotificationHelper directly for NOTIFY and ALARM types
+                notificationHelper.showNotification(alarm, alarmType, silent = false)
+            }
         }
-    }
 
-    private fun hasNotificationPermission(context: Context): Boolean {
-        return ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
+        if (success) {
+            Log.d(TAG, "Showed $alarmType notification for alarm: ${alarm.id}")
+        } else {
+            Log.e(TAG, "Failed to show $alarmType notification for alarm: ${alarm.id}")
+        }
     }
 
     private fun showErrorDialog(context: Context, title: String, message: String) {

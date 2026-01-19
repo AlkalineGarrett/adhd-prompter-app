@@ -1,7 +1,11 @@
 package org.alkaline.taskbrain.service
 
+import android.content.Context
+import android.text.format.DateFormat
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmType
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /**
  * Utility functions for alarm-related logic.
@@ -171,5 +175,28 @@ object AlarmUtils {
         currentTimeMillis: Long = System.currentTimeMillis()
     ): Boolean {
         return effectiveNotifyTime <= currentTimeMillis
+    }
+
+    /**
+     * Formats display text for wallpaper/notifications.
+     * Includes alarm name and due time if available.
+     *
+     * @param context Context for accessing DateFormat preferences
+     * @param alarm The alarm to format text for
+     * @return Formatted display text (e.g., "Task name: due 2:30 PM")
+     */
+    fun formatDisplayText(context: Context, alarm: Alarm): String {
+        val alarmTime = alarm.alarmTime?.toDate()
+        return if (alarmTime != null) {
+            // Use device's preferred time format (12h or 24h)
+            val timeFormat = if (DateFormat.is24HourFormat(context)) {
+                SimpleDateFormat("HH:mm", Locale.getDefault())
+            } else {
+                SimpleDateFormat("h:mm a", Locale.getDefault())
+            }
+            "${alarm.displayName}: due ${timeFormat.format(alarmTime)}"
+        } else {
+            alarm.displayName
+        }
     }
 }

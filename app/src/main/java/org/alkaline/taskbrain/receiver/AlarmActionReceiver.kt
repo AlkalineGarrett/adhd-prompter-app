@@ -13,7 +13,7 @@ import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.data.SnoozeDuration
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmUtils
-import org.alkaline.taskbrain.service.LockScreenWallpaperManager
+import org.alkaline.taskbrain.service.UrgentStateManager
 
 /**
  * Handles notification action buttons (Done, Snooze, Cancel).
@@ -49,9 +49,8 @@ class AlarmActionReceiver : BroadcastReceiver() {
             val scheduler = AlarmScheduler(context)
             scheduler.cancelAlarm(alarmId)
 
-            // Restore lock screen wallpaper if this alarm set it
-            val wallpaperManager = LockScreenWallpaperManager(context)
-            wallpaperManager.restoreWallpaper(alarmId)
+            // Exit urgent state if this alarm was in it
+            UrgentStateManager(context).exitUrgentState(alarmId)
 
             // Dismiss the notification
             dismissNotification(context, alarmId)
@@ -87,9 +86,8 @@ class AlarmActionReceiver : BroadcastReceiver() {
 
                     scheduler.scheduleSnooze(alarmId, snoozeTime, alarmType)
 
-                    // Restore lock screen wallpaper if this alarm set it
-                    val wallpaperManager = LockScreenWallpaperManager(context)
-                    wallpaperManager.restoreWallpaper(alarmId)
+                    // Exit urgent state if this alarm was in it
+                    UrgentStateManager(context).exitUrgentState(alarmId)
 
                     // Dismiss the current notification
                     dismissNotification(context, alarmId)
@@ -115,9 +113,8 @@ class AlarmActionReceiver : BroadcastReceiver() {
             val scheduler = AlarmScheduler(context)
             scheduler.cancelAlarm(alarmId)
 
-            // Restore lock screen wallpaper if this alarm set it
-            val wallpaperManager = LockScreenWallpaperManager(context)
-            wallpaperManager.restoreWallpaper(alarmId)
+            // Exit urgent state if this alarm was in it
+            UrgentStateManager(context).exitUrgentState(alarmId)
 
             // Dismiss the notification
             dismissNotification(context, alarmId)
