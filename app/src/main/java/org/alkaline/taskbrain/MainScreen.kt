@@ -49,7 +49,7 @@ import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
-import org.alkaline.taskbrain.ui.notifications.NotificationsScreen
+import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
 
 sealed class Screen(val route: String, val titleResourceId: Int, val icon: ImageVector) {
     object CurrentNote : Screen("current_note", R.string.title_current_note, Icons.Filled.Description)
@@ -208,7 +208,7 @@ fun MainScreen(
                 )
             }
             composable(Screen.Notifications.route) {
-                NotificationsScreen()
+                AlarmsScreen()
             }
         }
     }
