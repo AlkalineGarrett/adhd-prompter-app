@@ -102,7 +102,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     for ((index, newId) in newIdsMap) {
                         lineTracker.updateLineNoteId(index, newId)
                     }
-                    
+
+                    // Sync alarm line content with updated note content
+                    syncAlarmLineContent(trackedLines)
+
                     Log.d("CurrentNoteViewModel", "Note saved successfully with structure.")
                     _saveStatus.value = SaveStatus.Success
                     markAsSaved()
@@ -133,6 +136,20 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 _loadStatus.value = LoadStatus.Error(e)
             } finally {
                 _isAgentProcessing.value = false
+            }
+        }
+    }
+
+    /**
+     * Syncs alarm line content with the current note content.
+     * Called after saving to keep alarm display text up to date.
+     */
+    private fun syncAlarmLineContent(trackedLines: List<org.alkaline.taskbrain.data.NoteLine>) {
+        viewModelScope.launch {
+            for (line in trackedLines) {
+                line.noteId?.let { noteId ->
+                    alarmRepository.updateLineContentForNote(noteId, line.content)
+                }
             }
         }
     }
