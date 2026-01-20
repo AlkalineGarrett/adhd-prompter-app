@@ -1,165 +1,247 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-val GutterWidth = 21.dp
-private val GutterBackgroundColor = Color(0xFFE0E0E0) // Light gray
-private val GutterLineColor = Color(0xFF9E9E9E) // Dark gray
+// =============================================================================
+// Gutter Gesture Handling
+// =============================================================================
 
 /**
- * A composable gutter that appears to the left of the text field.
- * Allows line selection by tapping or dragging on line numbers.
+ * Callbacks for gutter gesture events.
+ */
+internal class GutterGestureCallbacks(
+    val onLineSelected: (Int) -> Unit,
+    val onLineDragStart: (Int) -> Unit,
+    val onLineDragUpdate: (Int) -> Unit,
+    val onLineDragEnd: () -> Unit
+)
+
+/**
+ * Tracks state for a gutter drag gesture.
+ */
+private class GutterGestureTracker(
+    private val startLineIndex: Int,
+    private val callbacks: GutterGestureCallbacks
+) {
+    private var isDragging = false
+    private var currentLineIndex = startLineIndex
+
+    fun start() {
+        callbacks.onLineDragStart(startLineIndex)
+    }
+
+    fun onLineChanged(newLineIndex: Int) {
+        if (newLineIndex != currentLineIndex) {
+            isDragging = true
+            currentLineIndex = newLineIndex
+            callbacks.onLineDragUpdate(currentLineIndex)
+        }
+    }
+
+    fun complete() {
+        if (!isDragging) {
+            callbacks.onLineSelected(startLineIndex)
+        }
+        callbacks.onLineDragEnd()
+    }
+}
+
+/**
+ * Modifier that handles gutter tap and drag gestures.
+ */
+internal fun Modifier.gutterPointerInput(
+    lineLayouts: List<LineLayoutInfo>,
+    lineCount: Int,
+    defaultLineHeight: Float,
+    callbacks: GutterGestureCallbacks
+): Modifier = this.pointerInput(lineLayouts, lineCount) {
+    awaitEachGesture {
+        val tracker = awaitGutterGestureStart(lineLayouts, lineCount, defaultLineHeight, callbacks)
+            ?: return@awaitEachGesture
+
+        tracker.start()
+        trackGutterDrag(tracker, lineLayouts, lineCount, defaultLineHeight)
+        tracker.complete()
+    }
+}
+
+private suspend fun AwaitPointerEventScope.awaitGutterGestureStart(
+    lineLayouts: List<LineLayoutInfo>,
+    lineCount: Int,
+    defaultLineHeight: Float,
+    callbacks: GutterGestureCallbacks
+): GutterGestureTracker? {
+    val down = awaitFirstDown()
+    val maxLineIndex = (lineCount - 1).coerceAtLeast(0)
+    val startLineIndex = findLineIndexAtY(down.position.y, lineLayouts, maxLineIndex, defaultLineHeight)
+
+    if (startLineIndex !in 0 until lineCount) {
+        return null
+    }
+
+    return GutterGestureTracker(startLineIndex, callbacks)
+}
+
+private suspend fun AwaitPointerEventScope.trackGutterDrag(
+    tracker: GutterGestureTracker,
+    lineLayouts: List<LineLayoutInfo>,
+    lineCount: Int,
+    defaultLineHeight: Float
+) {
+    val maxLineIndex = (lineCount - 1).coerceAtLeast(0)
+
+    do {
+        val event = awaitPointerEvent()
+        val change = event.changes.firstOrNull() ?: break
+
+        if (change.pressed) {
+            val newLineIndex = findLineIndexAtY(
+                change.position.y,
+                lineLayouts,
+                maxLineIndex,
+                defaultLineHeight
+            )
+            tracker.onLineChanged(newLineIndex)
+            change.consume()
+        }
+    } while (event.changes.any { it.pressed })
+}
+
+// =============================================================================
+// Selection Detection
+// =============================================================================
+
+/**
+ * Checks if a line is within the current selection.
+ */
+internal fun isLineInSelection(lineIndex: Int, state: EditorState): Boolean {
+    if (!state.hasSelection) return false
+
+    val lineStart = state.getLineStartOffset(lineIndex)
+    val lineEnd = lineStart + (state.lines.getOrNull(lineIndex)?.text?.length ?: 0)
+
+    val selMin = state.selection.min
+    val selMax = state.selection.max
+
+    // Line is selected if any part of it overlaps with the selection
+    return if (lineStart == lineEnd) {
+        // Empty line: selected if selection spans across this position
+        lineStart >= selMin && lineStart < selMax
+    } else {
+        // Non-empty line: selected if any part overlaps
+        lineEnd > selMin && lineStart < selMax
+    }
+}
+
+// =============================================================================
+// Display Composables
+// =============================================================================
+
+/**
+ * A composable gutter that appears to the left of the editor.
+ * Allows line selection by tapping or dragging on line boxes.
+ * Each box height matches the corresponding line's height (including wrapped lines).
  */
 @Composable
-fun LineGutter(
-    textLayoutResult: TextLayoutResult?,
-    scrollState: ScrollState,
+internal fun LineGutter(
+    lineLayouts: List<LineLayoutInfo>,
+    state: EditorState,
     onLineSelected: (Int) -> Unit,
-    onDragStart: (Int) -> Unit,
-    onDragUpdate: (Int) -> Unit,
-    onDragEnd: () -> Unit,
+    onLineDragStart: (Int) -> Unit,
+    onLineDragUpdate: (Int) -> Unit,
+    onLineDragEnd: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    val lineCount = textLayoutResult?.lineCount ?: 1
-    val lineHeight = textLayoutResult?.let {
-        if (it.lineCount > 0) it.getLineBottom(0) - it.getLineTop(0) else 0f
-    } ?: with(density) { 20.dp.toPx() }
+    val gutterWidthPx = with(density) { EditorConfig.GutterWidth.toPx() }
+    val defaultLineHeight = with(density) { 24.dp.toPx() }
 
-    // Calculate total height based on text layout
-    val totalHeight = textLayoutResult?.let {
-        if (it.lineCount > 0) it.getLineBottom(it.lineCount - 1) else lineHeight
-    } ?: lineHeight
+    val callbacks = GutterGestureCallbacks(
+        onLineSelected = onLineSelected,
+        onLineDragStart = onLineDragStart,
+        onLineDragUpdate = onLineDragUpdate,
+        onLineDragEnd = onLineDragEnd
+    )
 
-    val gutterWidthPx = with(density) { GutterWidth.toPx() }
-
-    Box(
+    Column(
         modifier = modifier
-            .width(GutterWidth)
-            .verticalScroll(scrollState)
-            .drawBehind {
-                // Draw background
-                drawRect(
-                    color = GutterBackgroundColor,
-                    size = Size(gutterWidthPx, totalHeight + with(density) { 16.dp.toPx() })
-                )
-
-                // Draw horizontal lines between each row
-                for (i in 0..lineCount) {
-                    val y = if (textLayoutResult != null && i < textLayoutResult.lineCount) {
-                        textLayoutResult.getLineTop(i)
-                    } else if (textLayoutResult != null && i == textLayoutResult.lineCount) {
-                        textLayoutResult.getLineBottom(i - 1)
-                    } else {
-                        i * lineHeight
-                    }
-                    // Add padding offset to match text field
-                    val yWithPadding = y + with(density) { 8.dp.toPx() }
-                    drawLine(
-                        color = GutterLineColor,
-                        start = Offset(0f, yWithPadding),
-                        end = Offset(gutterWidthPx, yWithPadding),
-                        strokeWidth = 1f
-                    )
-                }
-            }
-            .pointerInput(textLayoutResult) {
-                val paddingPx = with(density) { 8.dp.toPx() }
-                awaitEachGesture {
-                    val down = awaitFirstDown()
-                    val startOffset = down.position
-                    val startLineIndex = getLineIndexFromOffset(textLayoutResult, startOffset.y - paddingPx, lineHeight)
-
-                    if (startLineIndex !in 0 until lineCount) {
-                        return@awaitEachGesture
-                    }
-
-                    var isDragging = false
-                    var currentLineIndex = startLineIndex
-
-                    // Select the initial line immediately
-                    onDragStart(startLineIndex)
-
-                    // Track drag
-                    do {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull() ?: break
-
-                        if (change.pressed) {
-                            val newLineIndex = getLineIndexFromOffset(
-                                textLayoutResult,
-                                change.position.y - paddingPx,
-                                lineHeight
-                            ).coerceIn(0, lineCount - 1)
-
-                            if (newLineIndex != currentLineIndex) {
-                                isDragging = true
-                                currentLineIndex = newLineIndex
-                                onDragUpdate(currentLineIndex)
-                            }
-                            change.consume()
-                        }
-                    } while (event.changes.any { it.pressed })
-
-                    // Gesture ended
-                    if (!isDragging) {
-                        // It was a tap
-                        onLineSelected(startLineIndex)
-                    }
-                    onDragEnd()
-                }
-            }
+            .width(EditorConfig.GutterWidth)
+            .gutterPointerInput(lineLayouts, state.lines.size, defaultLineHeight, callbacks)
     ) {
-        // Empty box with calculated height to enable scrolling
-        Box(
-            modifier = Modifier
-                .width(GutterWidth)
-                .height(with(density) { (totalHeight + 16.dp.toPx()).toDp() })
+        GutterContent(
+            lineCount = state.lines.size,
+            lineLayouts = lineLayouts,
+            state = state,
+            defaultLineHeight = defaultLineHeight,
+            gutterWidthPx = gutterWidthPx,
+            density = density
+        )
+    }
+}
+
+@Composable
+private fun GutterContent(
+    lineCount: Int,
+    lineLayouts: List<LineLayoutInfo>,
+    state: EditorState,
+    defaultLineHeight: Float,
+    gutterWidthPx: Float,
+    density: androidx.compose.ui.unit.Density
+) {
+    repeat(lineCount) { index ->
+        val layoutInfo = lineLayouts.getOrNull(index)
+        val lineHeight = layoutInfo?.height?.takeIf { it > 0f } ?: defaultLineHeight
+        val isSelected = isLineInSelection(index, state)
+
+        GutterBox(
+            height = with(density) { lineHeight.toDp() },
+            width = EditorConfig.GutterWidth,
+            isSelected = isSelected,
+            gutterWidthPx = gutterWidthPx
         )
     }
 }
 
 /**
- * Gets the line index from a Y offset in the gutter.
+ * A single gutter box for one logical line.
  */
-fun getLineIndexFromOffset(
-    textLayoutResult: TextLayoutResult?,
-    yOffset: Float,
-    defaultLineHeight: Float
-): Int {
-    if (textLayoutResult == null || textLayoutResult.lineCount == 0) {
-        return (yOffset / defaultLineHeight).toInt()
-    }
-
-    // Binary search or linear search for the line
-    for (i in 0 until textLayoutResult.lineCount) {
-        val top = textLayoutResult.getLineTop(i)
-        val bottom = textLayoutResult.getLineBottom(i)
-        if (yOffset >= top && yOffset < bottom) {
-            return i
-        }
-    }
-
-    // If below all lines, return last line
-    if (yOffset >= textLayoutResult.getLineBottom(textLayoutResult.lineCount - 1)) {
-        return textLayoutResult.lineCount - 1
-    }
-
-    return 0
+@Composable
+private fun GutterBox(
+    height: Dp,
+    width: Dp,
+    isSelected: Boolean,
+    gutterWidthPx: Float
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+            .drawBehind {
+                drawRect(
+                    color = if (isSelected) EditorConfig.GutterSelectionColor else EditorConfig.GutterBackgroundColor,
+                    size = Size(gutterWidthPx, size.height)
+                )
+                drawLine(
+                    color = EditorConfig.GutterLineColor,
+                    start = Offset(0f, size.height),
+                    end = Offset(gutterWidthPx, size.height),
+                    strokeWidth = 1f
+                )
+            }
+    )
 }

@@ -51,6 +51,7 @@ fun CurrentNoteScreen(
 
     val mainContentFocusRequester = remember { FocusRequester() }
     var isMainContentFocused by remember { mutableStateOf(false) }
+    val editorState = rememberHangingIndentEditorState()
 
     // Alarm dialog state
     var showAlarmDialog by remember { mutableStateOf(false) }
@@ -106,10 +107,10 @@ fun CurrentNoteScreen(
     // Handle alarm creation - insert symbol at end of line and save
     LaunchedEffect(alarmCreated) {
         alarmCreated?.let { event ->
-            textFieldValue = AlarmSymbolUtils.insertAlarmSymbolAtLineEnd(textFieldValue)
-            userContent = textFieldValue.text
+            editorState.insertAtEndOfCurrentLine(AlarmSymbolUtils.ALARM_SYMBOL)
+            userContent = editorState.text
             // Save the note with the alarm symbol included
-            currentNoteViewModel.saveContent(textFieldValue.text)
+            currentNoteViewModel.saveContent(editorState.text)
             currentNoteViewModel.clearAlarmCreatedEvent()
         }
     }
@@ -250,6 +251,7 @@ fun CurrentNoteScreen(
             onTextFieldValueChange = updateTextFieldValue,
             focusRequester = mainContentFocusRequester,
             onFocusChanged = { isFocused -> isMainContentFocused = isFocused },
+            editorState = editorState,
             isFingerDownFlow = isFingerDownFlow,
             onAlarmSymbolTap = { symbolInfo ->
                 // Get the line content for this line and show the alarm dialog
@@ -264,21 +266,21 @@ fun CurrentNoteScreen(
 
         CommandBar(
             onToggleBullet = {
-                updateTextFieldValue(toggleBulletOnCurrentLine(textFieldValue))
+                editorState.toggleBullet()
             },
             onToggleCheckbox = {
-                updateTextFieldValue(toggleCheckboxOnCurrentLine(textFieldValue))
+                editorState.toggleCheckbox()
             },
             onIndent = {
-                updateTextFieldValue(handleSelectionIndent(textFieldValue))
+                editorState.indent()
             },
             onUnindent = {
-                handleSelectionUnindent(textFieldValue)?.let { updateTextFieldValue(it) }
+                editorState.unindent()
             },
             onPaste = { clipText ->
-                updateTextFieldValue(SelectionActions.insertText(textFieldValue, clipText))
+                editorState.replaceSelection(clipText)
             },
-            isPasteEnabled = isMainContentFocused && textFieldValue.selection.collapsed,
+            isPasteEnabled = isMainContentFocused,
             onAddAlarm = {
                 val cursorPos = textFieldValue.selection.start
                 val lineContent = TextLineUtils.getLineContent(textFieldValue.text, cursorPos)
