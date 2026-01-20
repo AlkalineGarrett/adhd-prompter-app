@@ -280,7 +280,7 @@ fun CurrentNoteScreen(
             onPaste = { clipText ->
                 editorState.replaceSelection(clipText)
             },
-            isPasteEnabled = isMainContentFocused,
+            isPasteEnabled = isMainContentFocused && !editorState.hasSelection,
             onAddAlarm = {
                 val cursorPos = textFieldValue.selection.start
                 val lineContent = TextLineUtils.getLineContent(textFieldValue.text, cursorPos)

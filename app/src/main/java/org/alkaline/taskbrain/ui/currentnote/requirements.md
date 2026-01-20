@@ -1,105 +1,125 @@
-# CurrentNoteScreen Selection Menu Requirements
+# CurrentNoteScreen Editor Requirements
 
-## Requirements
-
-### Selection Menu Behavior
-1. **Auto-show menu on selection**: When a text selection is made, automatically show the context menu after the user lifts their finger (not immediately when selection starts)
-2. **Menu positioning**: Menu appears near the right of the screen
-3. **Menu items order**: Copy, Cut, Select All, Unselect, Delete
-4. **No Paste in selection menu**: Paste was removed from the selection context menu
+## Text Selection
 
 ### Selection Gestures
-1. **Long-press + drag**: Must work to create selections (native BasicTextField behavior)
-2. **Long-press outside selection**: Should create new selection, not be blocked
-3. **Tap in existing selection**: Should retain selection (unfortunately in implementation might require restoring selection) and show menu
-4. **Gutter selection**: Tapping/dragging in the gutter to select lines should also trigger menu on finger up
-5. **Menu timing**: The selection menu should not appear on initial selection dragging or selection resizing, only on finger up
+1. **Tap to position cursor**: Single tap places cursor at tapped position
+2. **Long-press to select word**: Long press (~500ms) selects the word at press location
+3. **Drag to extend selection**: After long press triggers, dragging extends selection
+4. **Long-press outside selection**: Creates new selection (doesn't extend existing)
+5. **Tap in existing selection**: Toggles context menu visibility (retains selection)
+6. **Tap outside selection**: Collapses selection and positions cursor at tap location
+
+### Selection Handles
+1. **Teardrop handles**: Start and end handles appear at selection boundaries
+2. **Handle dragging**: Both handles can be dragged to adjust selection
+3. **Accumulated delta tracking**: Handles use delta accumulation for smooth dragging
+4. **Handle positioning**: Start handle points left, end handle points right
+
+### Gutter Selection
+1. **Line selection by tap**: Tapping gutter selects entire line
+2. **Multi-line selection by drag**: Dragging in gutter selects range of lines
+3. **Visual feedback**: Selected lines show highlight in gutter area
+4. **Menu on completion**: Context menu appears after gutter selection completes
+
+## Selection Context Menu
+
+### Menu Behavior
+1. **Auto-show on selection**: Menu appears after finger lifts (not during drag)
+2. **Positioning**: Menu positions left or right of selection based on available space
+3. **Multi-line positioning**: Multi-line selections position menu at right edge
+4. **Vertical centering**: Menu vertically centers on the selection
+5. **Menu items order**: Copy, Cut, Select All, Unselect, Delete
 
 ### Menu Actions
-1. **Unselect**: Collapses selection to cursor at end, does NOT re-select
-2. **Delete**: Removes selected text, places cursor at deletion point, does NOT re-select
-3. **Cut**: Copies to clipboard, removes text, places cursor at deletion point, does NOT re-select
-4. **Copy**: Copies to clipboard, keeps selection
-5. **Select All**: Selects all text
-6. **Empty lines**: If a removal of content (Cut/Delete) leaves an empty line because all content from the selected lines was removed, also remove the empty line
+1. **Copy**: Copies selected text to clipboard, keeps selection
+2. **Cut**: Copies to clipboard, removes text, places cursor at deletion point
+3. **Select All**: Selects entire document text
+4. **Unselect**: Collapses selection to cursor at start of selection
+5. **Delete**: Removes selected text, places cursor at deletion point
 
-### Paste Functionality
-1. **Location**: Paste button in CommandBar (bottom toolbar), not floating near cursor
-2. **Enabled state**: Only enabled when text field is focused AND there's no selection (just a cursor)
-3. **Disabled state**: Grayed out when not focused or when there's a selection
-4. **Action**: Pastes clipboard content directly at cursor position
+### Full Line Selection Extension
+1. **Newline inclusion**: When full lines are selected (selection starts at line beginning and ends at line end), the trailing newline is included in copy/cut
+2. **Clean deletion**: This ensures deleting full lines removes the newline too, avoiding empty lines
+3. **Partial line exclusion**: Selections starting mid-line do not extend to include trailing newline
 
-### System Menu
-1. **Disabled**: The system text toolbar/context menu is disabled via custom empty TextToolbar implementation
+### Empty Line Cleanup
+1. **Auto-removal**: Deleting/cutting that leaves an empty line removes that line
+2. **Last line preservation**: Always keeps at least one line for continued typing
+3. **Pre-existing preservation**: Pre-existing empty lines (spacers) are not removed
 
----
+## Line Prefixes
 
-## Learnings: What Didn't Work
+### Prefix Types
+1. **Bullet**: Display `• ` (user types `* `)
+2. **Unchecked checkbox**: Display `☐ ` (user types `[]`)
+3. **Checked checkbox**: Display `☑ ` (user types `[x]`)
+4. **Tab indentation**: Leading tabs increase nesting level
 
-### Overlay Approaches
-1. **detectTapGestures overlay**: Adding a Box with `pointerInput` using `detectTapGestures` on top of BasicTextField blocked long-press gestures entirely, even without consuming events. Compose's gesture system doesn't allow events to "pass through" siblings.
+### Prefix Behavior
+1. **Prefix extraction**: System separates prefix (tabs + bullet/checkbox) from content
+2. **Prefix continuation**: Enter key continues prefix on new line
+3. **Checked → unchecked**: New line from checked checkbox becomes unchecked
+4. **Prefix-aware backspace**: Backspace at content start removes prefix character before merging lines
 
-2. **awaitEachGesture overlay**: Same issue - blocked native selection gestures even when trying to detect taps and pass through long-presses.
+### Toggle Behavior
+1. **Toggle bullet**: Cycles: none → bullet → none; replaces checkbox if present
+2. **Toggle checkbox**: Cycles: none → unchecked → checked → none; replaces bullet if present
+3. **Checkbox state toggle**: Checked ↔ unchecked only (via gutter tap on checkbox lines)
+4. **Indentation preserved**: Toggling prefix preserves leading tabs
 
-### Pointer Input on BasicTextField
-1. **pointerInput modifier on BasicTextField**: Adding `pointerInput` with `detectTapGestures` directly to BasicTextField's modifier chain didn't receive any tap events. BasicTextField consumes all pointer events internally.
+## Indentation
 
-### Floating Paste Button
-1. **Floating button near cursor**: Caused the Android magnifier/zoom bubble to appear constantly when the cursor was active. The button's presence near the text input area triggered unwanted system behavior.
+### Basic Operations
+1. **Indent**: Adds tab at line start (toolbar button)
+2. **Unindent**: Removes tab from line start if present (toolbar button)
+3. **Multi-line support**: Indent/unindent applies to all selected lines
 
-2. **Positioning issues**: Converting between pixels and dp was error-prone. `cursorRect` values are in pixels; using them directly with `.dp` caused double-conversion issues.
+### Space Key with Selection
+1. **Single space indents**: Pressing space with selection indents all selected lines
+2. **Double-space unindents**: Two spaces within 250ms undoes indent and unindents further
+3. **Selection preserved**: Selection is maintained and adjusted after indent/unindent
 
-### Finger Tracking Approaches
-1. **pointerInteropFilter**: Not invoked when selection handles are active. Selection handles appear to consume events before they reach the parent's pointerInteropFilter.
+## Text Editing
 
-2. **PointerEventPass.Initial on parent Box**: Events ARE received when there's no selection, but NOT received when selection handles are visible. The selection handles intercept events.
+### Basic Operations
+1. **Character insertion**: Type text at cursor position
+2. **Backspace**: Delete character before cursor
+3. **Forward delete**: Delete character after cursor
+4. **Line joining**: Backspace at line start merges with previous line
+5. **Line splitting**: Enter splits line at cursor with prefix continuation
 
-3. **Fixed timeout fallback (300ms, 800ms)**: Triggered prematurely during natural pauses while dragging selection handles, causing menu to appear mid-drag.
+### IME Integration
+1. **Composing text**: Handles autocomplete suggestions from IME
+2. **Text commit**: Accepts committed text from IME
+3. **Hardware keyboard**: Backspace, delete, and enter work from physical keyboard
 
-### Selection Handle Touch Events
-1. **Selection handles bypass normal touch routing**: When dragging selection handles, touch events don't always flow through the normal Compose pointer event system. The handles may be in a separate window or have special event handling.
+## Cursor Behavior
 
----
+1. **Blinking cursor**: Cursor blinks at 500ms interval when focused
+2. **Hidden during selection**: Cursor not shown when text is selected
+3. **Auto-positioning**: Cursor moves to selection start when selection is made
 
-## Learnings: What Worked
+## Toolbar (CommandBar)
 
-### Activity-Level Touch Tracking
-1. **dispatchTouchEvent override**: Overriding `Activity.dispatchTouchEvent()` receives ALL touch events before they reach Compose, including most events that would be consumed by selection handles. Exposed via `StateFlow<Boolean>` for Compose to observe.
+### Buttons
+1. **Bullet toggle**: Toggles bullet prefix on current/selected lines
+2. **Checkbox toggle**: Toggles checkbox on current/selected lines
+3. **Indent**: Indents current/selected lines
+4. **Unindent**: Unindents current/selected lines
+5. **Paste**: Pastes clipboard content at cursor position
+6. **Alarm**: Opens alarm configuration dialog
 
-### Selection Change Detection
-1. **LaunchedEffect keyed on selection**: Using `LaunchedEffect(textFieldValue.selection, textLayoutResult)` to detect selection changes works reliably. The effect restarts whenever selection changes.
+### Paste Button State
+1. **Enabled**: Only when editor is focused AND no selection (just cursor)
+2. **Disabled**: Grayed out when not focused or when there's a selection
+3. **Action**: Pastes clipboard text directly at cursor position
 
-2. **Detecting new vs changed selection**: Check if selection is non-collapsed AND (was previously collapsed OR is different from previous). This catches both new selections and resized selections.
+### Alarm Button State
+1. **Enabled**: Only when editor is focused AND no selection (just cursor)
+2. **Disabled**: When not focused or when there's a selection
 
-### Waiting for Finger Up
-1. **StateFlow.first { !it }**: Waiting for `isFingerDownFlow.first { !it }` properly suspends until finger is lifted.
+## System Menu
 
-2. **Handling already-up state**: When selection changes but `isFingerDown` is already false (selection handles may bypass dispatchTouchEvent), wait for next down→up cycle: first wait for `first { it }` (finger down), then `first { !it }` (finger up).
-
-### Preventing Re-selection
-1. **skipNextRestore flag**: Setting a flag before intentional selection collapse (Unselect, Cut, Delete) prevents the tap-in-selection restore logic from re-selecting the text.
-
-### Disabling System Menu
-1. **Custom TextToolbar**: Providing an empty `TextToolbar` implementation via `CompositionLocalProvider(LocalTextToolbar provides emptyTextToolbar)` disables the system's built-in text selection menu.
-
-### CommandBar Paste Button
-1. **Focus tracking**: Track focus state via `onFocusChanged` modifier on BasicTextField, lift state to parent, pass to CommandBar.
-2. **Enable condition**: `isMainContentFocused && textFieldValue.selection.collapsed` - only enable when focused with cursor (no selection).
-
----
-
-## Architecture Summary
-
-```
-MainActivity
-├── dispatchTouchEvent() → MutableStateFlow<Boolean> isFingerDown
-└── setContent
-    └── MainScreen(isFingerDown: StateFlow<Boolean>)
-        └── CurrentNoteScreen(isFingerDownFlow: StateFlow<Boolean>)
-            └── MainContentTextField(isFingerDownFlow: StateFlow<Boolean>)
-                ├── LaunchedEffect: watches selection changes, waits for finger up
-                ├── BasicTextField: wrapped in CompositionLocalProvider with empty TextToolbar
-                └── DropdownMenu: selection context menu
-```
-
-The key insight is that reliable finger-up detection requires Activity-level event interception because Compose's selection handles don't route events through the normal pointer input system.
+1. **Disabled**: System text toolbar/context menu not used
+2. **Custom implementation**: Selection handled via custom ImeConnection + BasicText
