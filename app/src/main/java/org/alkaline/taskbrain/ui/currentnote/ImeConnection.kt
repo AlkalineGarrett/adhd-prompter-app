@@ -150,13 +150,10 @@ class ImeState(
      * Called when IME deletes text around cursor.
      */
     fun deleteSurroundingText(beforeLength: Int, afterLength: Int) {
-        android.util.Log.d("ImeState", "deleteSurroundingText: before=$beforeLength, after=$afterLength, cursor=$cursorPosition, text='$text', hasCallback=${onBackspaceAtStartCallback != null}")
-
         if (beforeLength == 0 && afterLength == 0) return
 
         // Check if backspace at start with nothing to delete
         if (beforeLength > 0 && cursorPosition == 0 && text.isEmpty()) {
-            android.util.Log.d("ImeState", "Invoking onBackspaceAtStartCallback (empty text)")
             onBackspaceAtStartCallback?.invoke()
             return
         }
@@ -166,7 +163,6 @@ class ImeState(
 
         // Check if backspace would go past the start (nothing before cursor to delete)
         if (beforeLength > 0 && cursorPosition == 0) {
-            android.util.Log.d("ImeState", "Invoking onBackspaceAtStartCallback (cursor at start)")
             onBackspaceAtStartCallback?.invoke()
             return
         }
@@ -177,7 +173,6 @@ class ImeState(
         composingStart = -1
         composingEnd = -1
 
-        android.util.Log.d("ImeState", "Deleted text, new text='$newText', new cursor=$cursorPosition")
         onTextChangeCallback?.invoke(text, cursorPosition)
     }
 

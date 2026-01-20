@@ -1,10 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-
-private const val TAG = "EditorController"
 
 /**
  * Centralized controller for all editor state modifications.
@@ -33,8 +30,6 @@ class EditorController(
      * If there's a selection, replaces it.
      */
     fun insertText(lineIndex: Int, text: String) {
-        Log.d(TAG, "insertText: lineIndex=$lineIndex, text='$text'")
-
         // Handle newline specially
         if (text.contains('\n')) {
             val parts = text.split('\n')
@@ -74,8 +69,6 @@ class EditorController(
      * Delete backward (backspace) from the current cursor position.
      */
     fun deleteBackward(lineIndex: Int) {
-        Log.d(TAG, "deleteBackward: lineIndex=$lineIndex")
-
         // If there's a selection, delete it
         if (state.hasSelection) {
             state.deleteSelection()
@@ -111,8 +104,6 @@ class EditorController(
      * Delete forward from the current cursor position.
      */
     fun deleteForward(lineIndex: Int) {
-        Log.d(TAG, "deleteForward: lineIndex=$lineIndex")
-
         if (state.hasSelection) {
             state.deleteSelection()
             return
@@ -171,8 +162,6 @@ class EditorController(
      * Checked checkboxes become unchecked on the new line.
      */
     fun splitLine(lineIndex: Int) {
-        Log.d(TAG, "splitLine: lineIndex=$lineIndex")
-
         state.clearSelection()
         val line = state.lines.getOrNull(lineIndex) ?: return
         val cursor = line.cursorPosition
@@ -200,8 +189,6 @@ class EditorController(
      * Merge current line with previous line.
      */
     fun mergeToPreviousLine(lineIndex: Int) {
-        Log.d(TAG, "mergeToPreviousLine: lineIndex=$lineIndex")
-
         if (lineIndex <= 0) return
 
         state.clearSelection()
@@ -220,8 +207,6 @@ class EditorController(
      * Merge next line into current line.
      */
     fun mergeNextLine(lineIndex: Int) {
-        Log.d(TAG, "mergeNextLine: lineIndex=$lineIndex")
-
         if (lineIndex >= state.lines.lastIndex) return
 
         state.clearSelection()
@@ -243,8 +228,6 @@ class EditorController(
      * Set cursor position within a line.
      */
     fun setCursor(lineIndex: Int, position: Int) {
-        Log.d(TAG, "setCursor: lineIndex=$lineIndex, position=$position")
-
         val line = state.lines.getOrNull(lineIndex) ?: return
         line.updateFull(line.text, position.coerceIn(0, line.text.length))
         state.focusedLineIndex = lineIndex
@@ -256,8 +239,6 @@ class EditorController(
      * Set cursor from global character offset.
      */
     fun setCursorFromGlobalOffset(globalOffset: Int) {
-        Log.d(TAG, "setCursorFromGlobalOffset: globalOffset=$globalOffset")
-
         state.clearSelection()
         val (lineIndex, localOffset) = state.getLineAndLocalOffset(globalOffset)
         state.focusedLineIndex = lineIndex
@@ -279,9 +260,6 @@ class EditorController(
      * selection replacement here - that led to bugs.
      */
     fun updateLineContent(lineIndex: Int, newContent: String, contentCursor: Int) {
-        Log.d(TAG, "updateLineContent: lineIndex=$lineIndex, content='$newContent', cursor=$contentCursor, " +
-            "currentContent='${state.lines.getOrNull(lineIndex)?.content}'")
-
         val line = state.lines.getOrNull(lineIndex) ?: return
 
         // Check if this is a newline insertion
@@ -348,7 +326,6 @@ class EditorController(
      */
     fun replaceSelection(text: String) {
         if (state.hasSelection) {
-            Log.d(TAG, "replaceSelection: text='$text'")
             state.replaceSelection(text)
         }
     }
@@ -358,7 +335,6 @@ class EditorController(
      */
     fun deleteSelection() {
         if (state.hasSelection) {
-            Log.d(TAG, "deleteSelection")
             state.deleteSelection()
         }
     }
@@ -372,7 +348,6 @@ class EditorController(
      * Does not add or remove the checkbox, only toggles existing ones.
      */
     fun toggleCheckboxOnLine(lineIndex: Int) {
-        Log.d(TAG, "toggleCheckboxOnLine: lineIndex=$lineIndex")
         val line = state.lines.getOrNull(lineIndex) ?: return
         line.toggleCheckboxState()
         state.requestFocusUpdate()

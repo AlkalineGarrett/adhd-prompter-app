@@ -1,6 +1,5 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -9,7 +8,42 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 
-private const val TAG = "HandleDragState"
+/**
+ * Tracks drag state for a single selection handle.
+ */
+private class SingleHandleDragState {
+    var accumulator by mutableStateOf(Offset.Zero)
+        private set
+    var startPosition by mutableStateOf<HandlePosition?>(null)
+        private set
+    var fixedOffset by mutableIntStateOf(0)
+        private set
+
+    val isActive: Boolean get() = startPosition != null
+
+    fun initialize(position: HandlePosition?, fixedSelectionOffset: Int) {
+        startPosition = position
+        accumulator = Offset.Zero
+        fixedOffset = fixedSelectionOffset
+    }
+
+    fun addDelta(delta: Offset) {
+        accumulator += delta
+    }
+
+    fun reset() {
+        startPosition = null
+        accumulator = Offset.Zero
+    }
+
+    fun calculateNewScreenPos(): Offset? {
+        val pos = startPosition ?: return null
+        return Offset(
+            pos.offset.x + accumulator.x,
+            pos.offset.y + accumulator.y
+        )
+    }
+}
 
 /**
  * Manages the state for selection handle dragging.
@@ -21,15 +55,8 @@ private const val TAG = "HandleDragState"
  * - Keeps the opposite end of selection fixed during drag
  */
 class HandleDragState {
-    // Start handle drag state
-    private var startHandleDragAccumulator by mutableStateOf(Offset.Zero)
-    private var startHandleDragStartPos by mutableStateOf<HandlePosition?>(null)
-    private var startHandleFixedEnd by mutableIntStateOf(0)
-
-    // End handle drag state
-    private var endHandleDragAccumulator by mutableStateOf(Offset.Zero)
-    private var endHandleDragStartPos by mutableStateOf<HandlePosition?>(null)
-    private var endHandleFixedStart by mutableIntStateOf(0)
+    private val startHandle = SingleHandleDragState()
+    private val endHandle = SingleHandleDragState()
 
     /**
      * Updates selection based on handle drag delta.
@@ -47,71 +74,30 @@ class HandleDragState {
     ) {
         if (!state.hasSelection) return
 
-        Log.d(TAG, "updateSelectionFromDrag: isStartHandle=$isStartHandle, dragDelta=$dragDelta")
+        val handle = if (isStartHandle) startHandle else endHandle
 
+        // Initialize drag state if needed
+        if (!handle.isActive) {
+            val selectionOffset = if (isStartHandle) state.selection.start else state.selection.end
+            val fixedOffset = if (isStartHandle) state.selection.end else state.selection.start
+            handle.initialize(
+                calculateHandlePosition(selectionOffset, state, lineLayouts),
+                fixedOffset
+            )
+        }
+
+        // Accumulate and calculate new position
+        handle.addDelta(dragDelta)
+        val newScreenPos = handle.calculateNewScreenPos() ?: return
+
+        val newGlobalOffset = positionToGlobalOffset(newScreenPos, state, lineLayouts)
+
+        // Update selection: dragged handle moves, other end stays fixed
         if (isStartHandle) {
-            updateStartHandleDrag(dragDelta, state, lineLayouts)
+            state.setSelection(newGlobalOffset, handle.fixedOffset)
         } else {
-            updateEndHandleDrag(dragDelta, state, lineLayouts)
+            state.setSelection(handle.fixedOffset, newGlobalOffset)
         }
-    }
-
-    private fun updateStartHandleDrag(
-        dragDelta: Offset,
-        state: EditorState,
-        lineLayouts: List<LineLayoutInfo>
-    ) {
-        // Initialize drag start state if needed
-        if (startHandleDragStartPos == null) {
-            startHandleDragStartPos = calculateHandlePosition(state.selection.start, state, lineLayouts)
-            startHandleDragAccumulator = Offset.Zero
-            startHandleFixedEnd = state.selection.end
-            Log.d(TAG, "  Initialized start handle drag: startPos=${startHandleDragStartPos?.offset}, fixedEnd=$startHandleFixedEnd")
-        }
-
-        // Accumulate the delta
-        startHandleDragAccumulator += dragDelta
-        val startPos = startHandleDragStartPos ?: return
-
-        // Calculate new position from original + accumulated delta
-        val newScreenPos = Offset(
-            startPos.offset.x + startHandleDragAccumulator.x,
-            startPos.offset.y + startHandleDragAccumulator.y
-        )
-        Log.d(TAG, "  accumulated=$startHandleDragAccumulator, newScreenPos=$newScreenPos")
-
-        val newGlobalOffset = positionToGlobalOffset(newScreenPos, state, lineLayouts)
-        Log.d(TAG, "  newGlobalOffset=$newGlobalOffset, fixedEnd=$startHandleFixedEnd")
-        state.setSelection(newGlobalOffset, startHandleFixedEnd)
-    }
-
-    private fun updateEndHandleDrag(
-        dragDelta: Offset,
-        state: EditorState,
-        lineLayouts: List<LineLayoutInfo>
-    ) {
-        // Initialize drag start state if needed
-        if (endHandleDragStartPos == null) {
-            endHandleDragStartPos = calculateHandlePosition(state.selection.end, state, lineLayouts)
-            endHandleDragAccumulator = Offset.Zero
-            endHandleFixedStart = state.selection.start
-            Log.d(TAG, "  Initialized end handle drag: startPos=${endHandleDragStartPos?.offset}, fixedStart=$endHandleFixedStart")
-        }
-
-        // Accumulate the delta
-        endHandleDragAccumulator += dragDelta
-        val startPos = endHandleDragStartPos ?: return
-
-        // Calculate new position from original + accumulated delta
-        val newScreenPos = Offset(
-            startPos.offset.x + endHandleDragAccumulator.x,
-            startPos.offset.y + endHandleDragAccumulator.y
-        )
-        Log.d(TAG, "  accumulated=$endHandleDragAccumulator, newScreenPos=$newScreenPos")
-
-        val newGlobalOffset = positionToGlobalOffset(newScreenPos, state, lineLayouts)
-        Log.d(TAG, "  newGlobalOffset=$newGlobalOffset, fixedStart=$endHandleFixedStart")
-        state.setSelection(endHandleFixedStart, newGlobalOffset)
     }
 
     /**
@@ -121,11 +107,9 @@ class HandleDragState {
      */
     fun resetDragState(isStartHandle: Boolean) {
         if (isStartHandle) {
-            startHandleDragStartPos = null
-            startHandleDragAccumulator = Offset.Zero
+            startHandle.reset()
         } else {
-            endHandleDragStartPos = null
-            endHandleDragAccumulator = Offset.Zero
+            endHandle.reset()
         }
     }
 }

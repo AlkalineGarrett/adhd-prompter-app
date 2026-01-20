@@ -1,13 +1,10 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import android.view.KeyEvent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-
-private const val TAG = "LineImeState"
 
 /**
  * IME state for a single line that delegates all modifications to EditorController.
@@ -39,7 +36,6 @@ class LineImeState(
     fun syncFromController() {
         cachedContent = controller.getLineContent(lineIndex)
         cachedCursor = controller.getContentCursor(lineIndex)
-        Log.d(TAG, "syncFromController[$lineIndex]: content='$cachedContent', cursor=$cachedCursor")
     }
 
     // Read access for IME
@@ -56,9 +52,6 @@ class LineImeState(
     fun commitText(commitText: String, newCursorOffset: Int) {
         // Always sync from controller first to ensure fresh data
         syncFromController()
-
-        Log.d(TAG, "commitText[$lineIndex]: text='$commitText', offset=$newCursorOffset, " +
-            "composing=[$composingStart,$composingEnd], cached='$cachedContent', hasSelection=${controller.hasSelection()}")
 
         // If there's a selection, handle specially
         if (controller.hasSelection()) {
@@ -137,9 +130,6 @@ class LineImeState(
             syncFromController()
         }
 
-        Log.d(TAG, "setComposingText[$lineIndex]: text='$composingText', offset=$newCursorOffset, " +
-            "composing=[$composingStart,$composingEnd], cached='$cachedContent', hasSelection=${controller.hasSelection()}")
-
         // If there's a selection, replace it with the composing text
         if (controller.hasSelection()) {
             controller.replaceSelection(composingText)
@@ -174,7 +164,6 @@ class LineImeState(
      * Called when IME finishes composition.
      */
     fun finishComposingText() {
-        Log.d(TAG, "finishComposingText[$lineIndex]")
         composingStart = -1
         composingEnd = -1
     }
@@ -185,7 +174,6 @@ class LineImeState(
      */
     fun setComposingRegion(start: Int, end: Int) {
         syncFromController()
-        Log.d(TAG, "setComposingRegion[$lineIndex]: start=$start, end=$end, content='$cachedContent'")
         composingStart = start.coerceIn(0, cachedContent.length)
         composingEnd = end.coerceIn(0, cachedContent.length)
     }
@@ -195,7 +183,6 @@ class LineImeState(
      */
     fun deleteSurroundingText(beforeLength: Int, afterLength: Int) {
         syncFromController()
-        Log.d(TAG, "deleteSurroundingText[$lineIndex]: before=$beforeLength, after=$afterLength, cursor=$cachedCursor, content='$cachedContent', hasSelection=${controller.hasSelection()}")
 
         if (beforeLength == 0 && afterLength == 0) return
 
@@ -237,7 +224,6 @@ class LineImeState(
      * Called when IME sets selection/cursor.
      */
     fun setSelection(start: Int, end: Int) {
-        Log.d(TAG, "setSelection[$lineIndex]: start=$start, end=$end")
         // For our single-line case, we only care about cursor position
         controller.setCursor(lineIndex, controller.getLineContent(lineIndex).let { content ->
             // Convert to full line position

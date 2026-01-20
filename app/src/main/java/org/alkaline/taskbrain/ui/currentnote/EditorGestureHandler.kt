@@ -23,9 +23,6 @@ internal data class LineLayoutInfo(
     val prefixWidthPx: Float = 0f
 )
 
-private const val TAG = "EditorGestureHandler"
-private const val ESTIMATED_CHAR_WIDTH_PX = 20f
-
 // =============================================================================
 // Position Conversion Utilities
 // =============================================================================
@@ -53,7 +50,6 @@ internal fun findLineIndexAtY(
         if (layout.height <= 0f) continue
 
         if (y >= layout.yOffset && y < layout.yOffset + layout.height) {
-            android.util.Log.d(TAG, "findLineIndexAtY: y=$y -> exact match line $i (yOffset=${layout.yOffset}, height=${layout.height})")
             return i.coerceIn(0, maxLineIndex)
         }
     }
@@ -84,11 +80,9 @@ internal fun findLineIndexAtY(
 
     if (fallbackHeight > 0f) {
         val estimated = (y / fallbackHeight).toInt().coerceIn(0, maxLineIndex)
-        android.util.Log.d(TAG, "findLineIndexAtY: y=$y -> estimated line $estimated (fallbackHeight=$fallbackHeight)")
         return estimated
     }
 
-    android.util.Log.d(TAG, "findLineIndexAtY: y=$y -> closest line $closestLine")
     return closestLine.coerceIn(0, maxLineIndex)
 }
 
@@ -105,8 +99,6 @@ internal fun positionToGlobalOffset(
     val lineIndex = findLineIndexAtY(position.y, lineLayouts, state.lines.lastIndex)
     val lineState = state.lines.getOrNull(lineIndex) ?: return 0
     val layoutInfo = lineLayouts.getOrNull(lineIndex)
-
-    android.util.Log.d(TAG, "positionToGlobalOffset: position=$position, lineIndex=$lineIndex")
 
     val contentOffset = getCharacterOffsetInContent(
         position = position,
@@ -129,7 +121,7 @@ private fun getCharacterOffsetInContent(
     contentLength: Int,
     textLayout: TextLayoutResult?
 ): Int {
-    val prefixWidthPx = prefixLength * ESTIMATED_CHAR_WIDTH_PX
+    val prefixWidthPx = prefixLength * EditorConfig.EstimatedCharWidthPx
     val localX = (position.x - prefixWidthPx).coerceAtLeast(0f)
     val localY = (position.y - lineYOffset).coerceAtLeast(0f)
 
@@ -141,7 +133,7 @@ private fun getCharacterOffsetInContent(
         }
     }
 
-    return (localX / ESTIMATED_CHAR_WIDTH_PX).toInt().coerceIn(0, contentLength)
+    return (localX / EditorConfig.EstimatedCharWidthPx).toInt().coerceIn(0, contentLength)
 }
 
 private fun estimateCharacterOffset(
@@ -152,7 +144,7 @@ private fun estimateCharacterOffset(
     val avgCharWidth = if (textLayout.size.width > 0 && contentLength > 0) {
         textLayout.size.width.toFloat() / contentLength
     } else {
-        ESTIMATED_CHAR_WIDTH_PX
+        EditorConfig.EstimatedCharWidthPx
     }
     return (localX / avgCharWidth).toInt().coerceIn(0, contentLength)
 }

@@ -68,50 +68,12 @@ object EditorConfig {
 
     /** Color of the selection handle */
     val HandleColor: Color = Color(0xFF2196F3)
+
+    // ============================================
+    // Gesture Recognition
+    // ============================================
+
+    /** Estimated character width for hit testing (in pixels) */
+    const val EstimatedCharWidthPx = 20f
 }
 
-/**
- * Backward compatibility alias for EditorDefaults.
- * New code should use EditorConfig directly.
- */
-@Deprecated(
-    "Use EditorConfig instead",
-    ReplaceWith("EditorConfig", "org.alkaline.taskbrain.ui.currentnote.EditorConfig")
-)
-typealias EditorDefaults = EditorConfig
-
-/**
- * Backward compatibility aliases for gutter constants.
- */
-@Deprecated(
-    "Use EditorConfig.GutterWidth instead",
-    ReplaceWith("EditorConfig.GutterWidth")
-)
-val GutterWidth: Dp get() = EditorConfig.GutterWidth
-
-/**
- * Backward compatibility aliases for selection constants.
- */
-@Deprecated(
-    "Use EditorConfig.SelectionColor instead",
-    ReplaceWith("EditorConfig.SelectionColor")
-)
-val SelectionColor: Color get() = EditorConfig.SelectionColor
-
-@Deprecated(
-    "Use EditorConfig.NewlineSelectionColor instead",
-    ReplaceWith("EditorConfig.NewlineSelectionColor")
-)
-val NewlineSelectionColor: Color get() = EditorConfig.NewlineSelectionColor
-
-/**
- * Backward compatibility alias for SelectionHandleDefaults.
- */
-@Deprecated(
-    "Use EditorConfig instead",
-    ReplaceWith("EditorConfig", "org.alkaline.taskbrain.ui.currentnote.EditorConfig")
-)
-object SelectionHandleDefaults {
-    val HandleSize: Dp get() = EditorConfig.HandleSize
-    val HandleColor: Color get() = EditorConfig.HandleColor
-}

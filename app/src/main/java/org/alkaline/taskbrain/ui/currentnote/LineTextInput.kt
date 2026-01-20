@@ -1,6 +1,5 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -45,8 +44,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-
-private const val TAG = "LineTextInput"
 
 /**
  * A text input component for a single line that uses EditorController for state management.
@@ -256,7 +253,6 @@ private class LineInputConnection(
 ) : InputConnection {
 
     override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        Log.d(TAG, "InputConnection.commitText: '$text'")
         if (text != null) {
             state.commitText(text.toString(), newCursorPosition)
         }
@@ -264,7 +260,6 @@ private class LineInputConnection(
     }
 
     override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
-        Log.d(TAG, "InputConnection.setComposingText: '$text'")
         state.setComposingText(text?.toString() ?: "", newCursorPosition)
         return true
     }
@@ -275,7 +270,6 @@ private class LineInputConnection(
     }
 
     override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-        Log.d(TAG, "InputConnection.deleteSurroundingText: before=$beforeLength, after=$afterLength")
         state.deleteSurroundingText(beforeLength, afterLength)
         return true
     }
@@ -314,7 +308,6 @@ private class LineInputConnection(
     override fun performEditorAction(editorAction: Int): Boolean = true
 
     override fun setComposingRegion(start: Int, end: Int): Boolean {
-        Log.d(TAG, "InputConnection.setComposingRegion: start=$start, end=$end")
         state.setComposingRegion(start, end)
         return true
     }

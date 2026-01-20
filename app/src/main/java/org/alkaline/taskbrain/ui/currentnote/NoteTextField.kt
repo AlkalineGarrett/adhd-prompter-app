@@ -40,7 +40,7 @@ fun NoteTextField(
             .verticalScroll(scrollState)
     ) {
         val textStyle = TextStyle(
-            fontSize = EditorDefaults.FontSize,
+            fontSize = EditorConfig.FontSize,
             color = Color.Black
         )
 
@@ -63,8 +63,8 @@ fun NoteTextField(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = EditorDefaults.HorizontalPadding,
-                    vertical = EditorDefaults.VerticalPadding
+                    horizontal = EditorConfig.HorizontalPadding,
+                    vertical = EditorConfig.VerticalPadding
                 )
         )
     }

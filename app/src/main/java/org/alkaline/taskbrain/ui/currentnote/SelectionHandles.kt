@@ -1,6 +1,5 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
@@ -16,8 +15,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-
-private const val TAG = "SelectionHandles"
 
 /**
  * Data class representing the position of a selection handle.
@@ -145,16 +142,12 @@ fun SelectionHandles(
     val handleSize = EditorConfig.HandleSize
     val handleSizePx = with(density) { handleSize.toPx() }
 
-    Log.d(TAG, "SelectionHandles: startPosition=$startPosition, endPosition=$endPosition")
-    Log.d(TAG, "  handleSizePx=$handleSizePx")
-
     Box(modifier = modifier) {
         // Start handle - positioned so the point touches the selection start
         startPosition?.let { pos ->
             // Use Dp offset (not lambda IntOffset) so hit testing works at the drawn position
             val offsetXDp = with(density) { (pos.offset.x - handleSizePx).toDp() }
             val offsetYDp = with(density) { (pos.offset.y + pos.lineHeight).toDp() }
-            Log.d(TAG, "  START handle offset: x=$offsetXDp, y=$offsetYDp (from pos.offset=${pos.offset}, lineHeight=${pos.lineHeight})")
 
             SelectionHandle(
                 isStartHandle = true,
@@ -169,7 +162,6 @@ fun SelectionHandles(
             // Use Dp offset (not lambda IntOffset) so hit testing works at the drawn position
             val offsetXDp = with(density) { pos.offset.x.toDp() }
             val offsetYDp = with(density) { (pos.offset.y + pos.lineHeight).toDp() }
-            Log.d(TAG, "  END handle offset: x=$offsetXDp, y=$offsetYDp (from pos.offset=${pos.offset}, lineHeight=${pos.lineHeight})")
 
             SelectionHandle(
                 isStartHandle = false,
@@ -220,7 +212,6 @@ internal fun calculateHandlePosition(
     val cursorRect = try {
         textLayout.getCursorRect(contentOffset)
     } catch (e: Exception) {
-        Log.e(TAG, "getCursorRect failed for contentOffset=$contentOffset", e)
         return null
     }
 
@@ -231,12 +222,6 @@ internal fun calculateHandlePosition(
     val screenX = cursorRect.left + layoutInfo.prefixWidthPx
     val screenY = layoutInfo.yOffset + cursorRect.top
     val lineHeight = cursorRect.bottom - cursorRect.top
-
-    Log.d(TAG, "calculateHandlePosition: globalOffset=$globalOffset, lineIndex=$lineIndex, localOffset=$localOffset, forEndHandle=$forEndHandle")
-    Log.d(TAG, "  prefixLength=$prefixLength, contentOffset=$contentOffset, content='${lineState.content}'")
-    Log.d(TAG, "  cursorRect=$cursorRect, prefixWidthPx=${layoutInfo.prefixWidthPx}")
-    Log.d(TAG, "  layoutInfo: yOffset=${layoutInfo.yOffset}, height=${layoutInfo.height}")
-    Log.d(TAG, "  result: screenX=$screenX, screenY=$screenY, lineHeight=$lineHeight")
 
     return HandlePosition(
         offset = Offset(screenX, screenY),
