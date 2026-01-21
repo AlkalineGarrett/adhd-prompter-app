@@ -255,8 +255,7 @@ fun CurrentNoteScreen(
             isFingerDownFlow = isFingerDownFlow,
             onAlarmSymbolTap = { symbolInfo ->
                 // Get the line content for this line and show the alarm dialog
-                val lineStart = TextLineUtils.getLineStartOffset(textFieldValue.text, symbolInfo.lineIndex)
-                val lineContent = TextLineUtils.getLineContent(textFieldValue.text, lineStart)
+                val lineContent = editorState.lines.getOrNull(symbolInfo.lineIndex)?.text ?: ""
                 alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
                 alarmDialogLineIndex = symbolInfo.lineIndex
                 showAlarmDialog = true
@@ -282,13 +281,12 @@ fun CurrentNoteScreen(
             },
             isPasteEnabled = isMainContentFocused && !editorState.hasSelection,
             onAddAlarm = {
-                val cursorPos = textFieldValue.selection.start
-                val lineContent = TextLineUtils.getLineContent(textFieldValue.text, cursorPos)
+                val lineContent = editorState.currentLine?.text ?: ""
                 alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
-                alarmDialogLineIndex = TextLineUtils.getLineIndex(textFieldValue.text, cursorPos)
+                alarmDialogLineIndex = editorState.focusedLineIndex
                 showAlarmDialog = true
             },
-            isAlarmEnabled = isMainContentFocused && textFieldValue.selection.collapsed
+            isAlarmEnabled = isMainContentFocused && !editorState.hasSelection
         )
 
         AgentCommandSection(
