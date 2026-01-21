@@ -353,10 +353,27 @@ private class LineInputConnection(
     override fun getHandler(): android.os.Handler? = null
 
     override fun closeConnection() {
-        state.finishComposingText()
+        // Don't clear composing state here - it should persist across session restarts.
+        // The composing region is only cleared when:
+        // 1. finishComposingText() is explicitly called by the IME
+        // 2. commitText() successfully processes a composing region
+        // Clearing here causes issues with spelling corrections where setComposingRegion
+        // is called, then a session restart clears it, then commitText inserts instead of replaces.
     }
 
-    override fun commitCorrection(correctionInfo: android.view.inputmethod.CorrectionInfo?): Boolean = true
+    override fun commitCorrection(correctionInfo: android.view.inputmethod.CorrectionInfo?): Boolean {
+        if (correctionInfo != null) {
+            // The IME is telling us to replace oldText with newText at the given offset
+            val oldText = correctionInfo.oldText.toString()
+            val newText = correctionInfo.newText.toString()
+            val offset = correctionInfo.offset
+
+            // Set composing region to cover the old text, then commit the new text
+            state.setComposingRegion(offset, offset + oldText.length)
+            state.commitText(newText, 1)
+        }
+        return true
+    }
     override fun commitCompletion(text: android.view.inputmethod.CompletionInfo?): Boolean = true
 
     override fun commitContent(
@@ -375,14 +392,9 @@ private class LineInputConnection(
         newCursorPosition: Int,
         textAttribute: android.view.inputmethod.TextAttribute?
     ): Boolean {
-        // Replace the specified range
-        val currentText = state.text
-        val newText = buildString {
-            append(currentText.substring(0, start.coerceIn(0, currentText.length)))
-            append(text)
-            append(currentText.substring(end.coerceIn(0, currentText.length)))
-        }
-        val newCursor = start + text.length
+        // Set the composing region to the range being replaced, then commit
+        // This ensures commitText properly replaces the specified range
+        state.setComposingRegion(start, end)
         state.commitText(text.toString(), newCursorPosition)
         return true
     }

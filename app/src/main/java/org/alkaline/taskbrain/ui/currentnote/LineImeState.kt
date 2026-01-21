@@ -26,6 +26,11 @@ class LineImeState(
     var composingEnd by mutableIntStateOf(-1)
         private set
 
+    // IME-initiated selection (for spelling corrections, distinct from user selection)
+    // This is NOT the same as user selection - it doesn't trigger indent-on-space behavior
+    private var imeSelectionStart: Int = -1
+    private var imeSelectionEnd: Int = -1
+
     // Cache for IME queries - updated from controller
     private var cachedContent: String = ""
     private var cachedCursor: Int = 0
@@ -53,7 +58,29 @@ class LineImeState(
         // Always sync from controller first to ensure fresh data
         syncFromController()
 
-        // If there's a selection, handle specially
+        // Check for IME-initiated selection first (e.g., from spelling correction)
+        // This bypasses the space-indent feature since it's not a user selection
+        val hasImeSelection = imeSelectionStart >= 0 && imeSelectionEnd >= 0 && imeSelectionStart != imeSelectionEnd
+        if (hasImeSelection) {
+            val newContent = buildString {
+                append(cachedContent.substring(0, imeSelectionStart.coerceIn(0, cachedContent.length)))
+                append(commitText)
+                append(cachedContent.substring(imeSelectionEnd.coerceIn(0, cachedContent.length)))
+            }
+            val newCursor = imeSelectionStart + commitText.length
+
+            // Clear IME selection and composing
+            imeSelectionStart = -1
+            imeSelectionEnd = -1
+            composingStart = -1
+            composingEnd = -1
+
+            controller.updateLineContent(lineIndex, newContent, newCursor)
+            syncFromController()
+            return
+        }
+
+        // If there's a user selection, handle specially
         if (controller.hasSelection()) {
             composingStart = -1
             composingEnd = -1
@@ -222,16 +249,26 @@ class LineImeState(
 
     /**
      * Called when IME sets selection/cursor.
+     * If start != end, this tracks a local IME selection for text replacement.
+     * This is separate from user selection to avoid triggering indent-on-space behavior.
      */
     fun setSelection(start: Int, end: Int) {
-        // For our single-line case, we only care about cursor position
-        controller.setCursor(lineIndex, controller.getLineContent(lineIndex).let { content ->
-            // Convert to full line position
+        syncFromController()
+
+        if (start == end) {
+            // Just cursor positioning - convert to full line position and set cursor
             val prefix = controller.getLineText(lineIndex).let { text ->
                 LineState.extractPrefix(text)
             }
-            prefix.length + start.coerceIn(0, content.length)
-        })
+            controller.setCursor(lineIndex, prefix.length + start.coerceIn(0, cachedContent.length))
+            imeSelectionStart = -1
+            imeSelectionEnd = -1
+        } else {
+            // IME is creating a selection for replacement (e.g., spelling correction)
+            // Track locally - don't use editor selection to avoid indent-on-space
+            imeSelectionStart = start.coerceIn(0, cachedContent.length)
+            imeSelectionEnd = end.coerceIn(0, cachedContent.length)
+        }
         syncFromController()
     }
 

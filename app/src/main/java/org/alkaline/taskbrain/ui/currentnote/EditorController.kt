@@ -311,6 +311,42 @@ class EditorController(
     fun hasSelection(): Boolean = state.hasSelection
 
     /**
+     * Set selection range using global character offsets.
+     * If start == end, this clears selection and sets cursor.
+     */
+    fun setSelection(start: Int, end: Int) {
+        if (start == end) {
+            setCursorFromGlobalOffset(start)
+        } else {
+            state.setSelection(start, end)
+        }
+    }
+
+    /**
+     * Set selection within a line using local content positions.
+     * Converts local positions to global offsets and sets selection.
+     *
+     * @param lineIndex The line containing the selection
+     * @param contentStart Start position within content (0 = first char after prefix)
+     * @param contentEnd End position within content
+     */
+    fun setSelectionInLine(lineIndex: Int, contentStart: Int, contentEnd: Int) {
+        val line = state.lines.getOrNull(lineIndex) ?: return
+        val lineStart = state.getLineStartOffset(lineIndex)
+        val prefixLength = line.prefix.length
+        val contentLength = line.content.length
+
+        val globalStart = lineStart + prefixLength + contentStart.coerceIn(0, contentLength)
+        val globalEnd = lineStart + prefixLength + contentEnd.coerceIn(0, contentLength)
+
+        if (globalStart == globalEnd) {
+            setCursorFromGlobalOffset(globalStart)
+        } else {
+            state.setSelection(globalStart, globalEnd)
+        }
+    }
+
+    /**
      * Handles space key when there's a selection.
      * Single space indents, double-space (within 250ms) unindents.
      *
