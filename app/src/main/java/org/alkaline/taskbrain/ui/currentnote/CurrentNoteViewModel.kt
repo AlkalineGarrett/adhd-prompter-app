@@ -57,9 +57,26 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val _notificationPermissionWarning = MutableLiveData<Boolean>(false)
     val notificationPermissionWarning: LiveData<Boolean> = _notificationPermissionWarning
 
+    // Alarm undo/redo operation in progress - used to disable buttons during async operations
+    private val _isAlarmOperationPending = MutableLiveData<Boolean>(false)
+    val isAlarmOperationPending: LiveData<Boolean> = _isAlarmOperationPending
+
+    // Warning shown when alarm redo fails and document is rolled back
+    private val _redoRollbackWarning = MutableLiveData<RedoRollbackWarning?>()
+    val redoRollbackWarning: LiveData<RedoRollbackWarning?> = _redoRollbackWarning
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
+
+    // Expose current note ID for UI (e.g., undo state persistence)
+    private val _currentNoteIdLiveData = MutableLiveData<String>(currentNoteId)
+    val currentNoteIdLiveData: LiveData<String> = _currentNoteIdLiveData
+
+    /**
+     * Gets the current note ID synchronously.
+     */
+    fun getCurrentNoteId(): String = currentNoteId
 
     // Track lines with their corresponding note IDs
     private var lineTracker = NoteLineTracker(currentNoteId)
@@ -67,13 +84,14 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     fun loadContent(noteId: String? = null) {
         // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
         currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
-        
+        _currentNoteIdLiveData.value = currentNoteId
+
         // Save the current note as the last viewed note
         sharedPreferences.edit().putString(LAST_VIEWED_NOTE_KEY, currentNoteId).apply()
-        
+
         // Recreate line tracker with new parent note ID
         lineTracker = NoteLineTracker(currentNoteId)
-        
+
         _loadStatus.value = LoadStatus.Loading
 
         viewModelScope.launch {
@@ -312,9 +330,20 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     _schedulingWarning.value = scheduleResult.message
                 }
 
+                // Create alarm snapshot for undo/redo
+                val alarmSnapshot = AlarmSnapshot(
+                    id = alarmId,
+                    noteId = alarm.noteId,
+                    lineContent = alarm.lineContent,
+                    upcomingTime = alarm.upcomingTime,
+                    notifyTime = alarm.notifyTime,
+                    urgentTime = alarm.urgentTime,
+                    alarmTime = alarm.alarmTime
+                )
+
                 // Signal to insert alarm symbol (even if scheduling partially failed,
                 // the alarm exists in the DB)
-                _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent)
+                _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent, alarmSnapshot)
             },
             onFailure = { e ->
                 _alarmError.value = e
@@ -331,6 +360,68 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      */
     fun clearAlarmCreatedEvent() {
         _alarmCreated.value = null
+    }
+
+    /**
+     * Deletes an alarm permanently (for undo operation).
+     * This completely removes the alarm from Firestore and cancels any scheduled notifications.
+     * Sets isAlarmOperationPending during the operation to prevent race conditions.
+     */
+    fun deleteAlarmPermanently(alarmId: String, onComplete: (() -> Unit)? = null) {
+        _isAlarmOperationPending.value = true
+        viewModelScope.launch {
+            try {
+                alarmScheduler.cancelAlarm(alarmId)
+                alarmRepository.deleteAlarm(alarmId)
+                onComplete?.invoke()
+            } catch (e: Exception) {
+                Log.e("CurrentNoteViewModel", "Error deleting alarm: $alarmId", e)
+                _alarmError.value = e
+            } finally {
+                _isAlarmOperationPending.value = false
+            }
+        }
+    }
+
+    /**
+     * Recreates an alarm with the same configuration (for redo operation).
+     * The alarm will get a new ID. Calls onAlarmCreated with the new ID.
+     * Sets isAlarmOperationPending during the operation to prevent race conditions.
+     * Calls onFailure with the error message if alarm creation fails (e.g., to clean up the alarm symbol).
+     */
+    fun recreateAlarm(
+        alarmSnapshot: AlarmSnapshot,
+        onAlarmCreated: (String) -> Unit,
+        onFailure: ((String) -> Unit)? = null
+    ) {
+        _isAlarmOperationPending.value = true
+        viewModelScope.launch {
+            val alarm = Alarm(
+                noteId = alarmSnapshot.noteId,
+                lineContent = alarmSnapshot.lineContent,
+                upcomingTime = alarmSnapshot.upcomingTime,
+                notifyTime = alarmSnapshot.notifyTime,
+                urgentTime = alarmSnapshot.urgentTime,
+                alarmTime = alarmSnapshot.alarmTime
+            )
+
+            val result = alarmRepository.createAlarm(alarm)
+            result.fold(
+                onSuccess = { newAlarmId ->
+                    // Schedule the recreated alarm
+                    val createdAlarm = alarm.copy(id = newAlarmId)
+                    alarmScheduler.scheduleAlarm(createdAlarm)
+                    // Notify caller of new ID for future undo/redo cycles
+                    onAlarmCreated(newAlarmId)
+                },
+                onFailure = { e ->
+                    // Pass error message to callback instead of showing generic error dialog
+                    // The screen will show a specific redo rollback warning
+                    onFailure?.invoke(e.message ?: "Unknown error")
+                }
+            )
+            _isAlarmOperationPending.value = false
+        }
     }
 
     /**
@@ -352,6 +443,20 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      */
     fun clearNotificationPermissionWarning() {
         _notificationPermissionWarning.value = false
+    }
+
+    /**
+     * Shows a warning that alarm recreation failed during redo and the document was rolled back.
+     */
+    fun showRedoRollbackWarning(rollbackSucceeded: Boolean, errorMessage: String) {
+        _redoRollbackWarning.value = RedoRollbackWarning(rollbackSucceeded, errorMessage)
+    }
+
+    /**
+     * Clears the redo rollback warning after it has been shown.
+     */
+    fun clearRedoRollbackWarning() {
+        _redoRollbackWarning.value = null
     }
 
     // Call this when content is manually edited or when a save completes
@@ -389,5 +494,16 @@ sealed class LoadStatus {
  */
 data class AlarmCreatedEvent(
     val alarmId: String,
-    val lineContent: String
+    val lineContent: String,
+    val alarmSnapshot: AlarmSnapshot? = null
+)
+
+/**
+ * Warning shown when alarm recreation fails during redo and the document is rolled back.
+ * @param rollbackSucceeded true if the cleanup undo succeeded, false if document may be inconsistent
+ * @param errorMessage the underlying error message from the alarm creation failure
+ */
+data class RedoRollbackWarning(
+    val rollbackSucceeded: Boolean,
+    val errorMessage: String
 )

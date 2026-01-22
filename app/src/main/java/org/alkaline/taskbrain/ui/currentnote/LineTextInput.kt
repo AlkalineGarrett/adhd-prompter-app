@@ -100,7 +100,7 @@ internal fun LineTextInput(
             .onFocusChanged { focusState ->
                 onFocusChanged(focusState.isFocused)
             }
-            .lineImeConnection(imeState)
+            .lineImeConnection(imeState, contentCursor)
             .focusable(interactionSource = interactionSource)
     ) {
         BasicText(
@@ -144,9 +144,14 @@ internal fun LineTextInput(
 
 /**
  * Modifier element that creates IME connection for LineImeState.
+ *
+ * IMPORTANT: cursorPosition is included in this data class to trigger update() calls
+ * when the cursor changes externally (e.g., after undo/redo). Without this, the IME
+ * session would keep the stale cursor position because LineImeState reference doesn't change.
  */
 private data class LineImeConnectionElement(
-    val state: LineImeState
+    val state: LineImeState,
+    val cursorPosition: Int
 ) : ModifierNodeElement<LineImeConnectionNode>() {
 
     override fun create(): LineImeConnectionNode = LineImeConnectionNode(state)
@@ -237,9 +242,12 @@ private class LineImeConnectionNode(
 
 /**
  * Modifier that connects a line to the soft keyboard.
+ *
+ * @param state The IME state for this line
+ * @param cursorPosition The current cursor position (used to trigger IME session restarts when cursor changes)
  */
-private fun Modifier.lineImeConnection(state: LineImeState): Modifier =
-    this then LineImeConnectionElement(state)
+private fun Modifier.lineImeConnection(state: LineImeState, cursorPosition: Int): Modifier =
+    this then LineImeConnectionElement(state, cursorPosition)
 
 // =============================================================================
 // Input Connection

@@ -579,7 +579,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(0, 5)
-        val newCursor = state.deleteSelection()
+        val newCursor = state.deleteSelectionInternal()
         assertEquals(" world", state.text)
         assertEquals(0, newCursor)
     }
@@ -589,7 +589,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(5, 11)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         assertEquals("hello", state.text)
     }
 
@@ -598,7 +598,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("line1\nline2\nline3")
         state.setSelection(3, 14) // "e1\nline2\nli"
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         assertEquals("linne3", state.text)
     }
 
@@ -606,7 +606,7 @@ class EditorStateTest {
     fun `deleteSelection returns -1 when no selection`() {
         val state = EditorState()
         state.updateFromText("hello world")
-        val result = state.deleteSelection()
+        val result = state.deleteSelectionInternal()
         assertEquals(-1, result)
         assertEquals("hello world", state.text)
     }
@@ -616,7 +616,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(0, 5)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         assertFalse(state.hasSelection)
     }
 
@@ -626,7 +626,7 @@ class EditorStateTest {
         state.updateFromText("line1\nhello\nline3")
         // Select "hello" (the entire content of line2)
         state.setSelection(6, 11)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // The empty line should be removed
         assertEquals("line1\nline3", state.text)
         assertEquals(2, state.lines.size)
@@ -638,7 +638,7 @@ class EditorStateTest {
         state.updateFromText("line1\nhello")
         // Select "hello" (the entire content of line2, which is the last line)
         state.setSelection(6, 11)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // The last line should be kept even though it's empty
         assertEquals("line1\n", state.text)
         assertEquals(2, state.lines.size)
@@ -650,7 +650,7 @@ class EditorStateTest {
         state.updateFromText("line1\na\nb\nline4")
         // Select "a\nb" - this creates one empty line at the join point
         state.setSelection(6, 9)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // The empty line at cursor should be removed
         assertEquals("line1\nline4", state.text)
         assertEquals(2, state.lines.size)
@@ -663,7 +663,7 @@ class EditorStateTest {
         state.updateFromText("line1\n\nline3\nhello\nline5")
         // Select "hello" (line 4 content, positions 13-18)
         state.setSelection(13, 18)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // The pre-existing empty line at index 1 should be preserved
         // Only the empty line created at the cursor position should be removed
         assertEquals("line1\n\nline3\nline5", state.text)
@@ -677,7 +677,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3")
         // Select "line2" (positions 6-11, a full line)
         state.setSelection(6, 11)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // Should delete "line2\n" (including newline), leaving no empty line
         assertEquals("line1\nline3", state.text)
         assertEquals(2, state.lines.size)
@@ -689,7 +689,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3\nline4")
         // Select "line2\nline3" (positions 6-17, two full lines)
         state.setSelection(6, 17)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // Should delete "line2\nline3\n" (including trailing newline)
         assertEquals("line1\nline4", state.text)
         assertEquals(2, state.lines.size)
@@ -701,7 +701,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3")
         // Select "ine2" (positions 7-11, partial first line)
         state.setSelection(7, 11)
-        state.deleteSelection()
+        state.deleteSelectionInternal()
         // Should NOT extend, leaves "l" on line 2, then empty line cleanup removes it
         assertEquals("line1\nl\nline3", state.text)
     }
@@ -713,7 +713,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(0, 5)
-        val newCursor = state.replaceSelection("goodbye")
+        val newCursor = state.replaceSelectionInternal("goodbye")
         assertEquals("goodbye world", state.text)
         assertEquals(7, newCursor) // Position after "goodbye"
     }
@@ -723,7 +723,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(5, 11)
-        state.replaceSelection("")
+        state.replaceSelectionInternal("")
         assertEquals("hello", state.text)
     }
 
@@ -732,7 +732,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("line1\nline2\nline3")
         state.setSelection(0, 12) // "line1\nline2\n"
-        state.replaceSelection("new\n")
+        state.replaceSelectionInternal("new\n")
         assertEquals("new\nline3", state.text)
     }
 
@@ -741,7 +741,7 @@ class EditorStateTest {
         val state = EditorState()
         state.updateFromText("hello world")
         state.setSelection(0, 5)
-        state.replaceSelection("hi")
+        state.replaceSelectionInternal("hi")
         assertFalse(state.hasSelection)
     }
 
@@ -751,7 +751,7 @@ class EditorStateTest {
         state.updateFromText("line1\nhello\nline3")
         // Select "hello" (the entire content of line2)
         state.setSelection(6, 11)
-        state.replaceSelection("")
+        state.replaceSelectionInternal("")
         // The empty line should be removed
         assertEquals("line1\nline3", state.text)
         assertEquals(2, state.lines.size)
@@ -763,7 +763,7 @@ class EditorStateTest {
         state.updateFromText("line1\nhello")
         // Select "hello" (the entire content of last line)
         state.setSelection(6, 11)
-        state.replaceSelection("")
+        state.replaceSelectionInternal("")
         // Last line kept even though empty
         assertEquals("line1\n", state.text)
         assertEquals(2, state.lines.size)
@@ -776,7 +776,7 @@ class EditorStateTest {
         state.updateFromText("line1\n\nline3\nhello\nline5")
         // Select "hello" and replace with empty string
         state.setSelection(13, 18)
-        state.replaceSelection("")
+        state.replaceSelectionInternal("")
         // The pre-existing empty line should be preserved
         assertEquals("line1\n\nline3\nline5", state.text)
         assertEquals(4, state.lines.size)
@@ -830,7 +830,7 @@ class EditorStateTest {
     fun `indent adds tab to current line`() {
         val state = EditorState()
         state.updateFromText("hello")
-        state.indent()
+        state.indentInternal()
         assertEquals("\thello", state.text)
     }
 
@@ -838,7 +838,7 @@ class EditorStateTest {
     fun `unindent removes tab from current line`() {
         val state = EditorState()
         state.updateFromText("\thello")
-        state.unindent()
+        state.unindentInternal()
         assertEquals("hello", state.text)
     }
 
@@ -846,7 +846,7 @@ class EditorStateTest {
     fun `toggleBullet adds bullet to current line`() {
         val state = EditorState()
         state.updateFromText("item")
-        state.toggleBullet()
+        state.toggleBulletInternal()
         assertEquals("• item", state.text)
     }
 
@@ -854,7 +854,7 @@ class EditorStateTest {
     fun `toggleCheckbox adds checkbox to current line`() {
         val state = EditorState()
         state.updateFromText("task")
-        state.toggleCheckbox()
+        state.toggleCheckboxInternal()
         assertEquals("☐ task", state.text)
     }
 
@@ -864,7 +864,7 @@ class EditorStateTest {
     fun `handleSpaceWithSelection returns false when no selection`() {
         val state = EditorState()
         state.updateFromText("hello world")
-        val result = state.handleSpaceWithSelection()
+        val result = state.handleSpaceWithSelectionInternal()
         assertFalse(result)
         assertEquals("hello world", state.text) // Text unchanged
     }
@@ -875,7 +875,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3")
         // Select "line2" (positions 6-11)
         state.setSelection(6, 11)
-        val result = state.handleSpaceWithSelection()
+        val result = state.handleSpaceWithSelectionInternal()
         assertTrue(result)
         // line2 should be indented
         assertEquals("line1\n\tline2\nline3", state.text)
@@ -887,7 +887,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3\nline4")
         // Select across line2 and line3 (positions 6-17)
         state.setSelection(6, 17)
-        val result = state.handleSpaceWithSelection()
+        val result = state.handleSpaceWithSelectionInternal()
         assertTrue(result)
         // Both lines should be indented
         assertEquals("line1\n\tline2\n\tline3\nline4", state.text)
@@ -899,7 +899,7 @@ class EditorStateTest {
         state.updateFromText("line1\nline2\nline3")
         // Select "line2" (positions 6-11)
         state.setSelection(6, 11)
-        state.handleSpaceWithSelection()
+        state.handleSpaceWithSelectionInternal()
         // Selection should still exist and be adjusted
         assertTrue(state.hasSelection)
     }
@@ -913,11 +913,11 @@ class EditorStateTest {
         state.setSelection(6, 12)
 
         // First space - indents
-        state.handleSpaceWithSelection()
+        state.handleSpaceWithSelectionInternal()
         assertEquals("line1\n\t\tline2\nline3", state.text)
 
         // Second space within threshold - unindents twice (undo + go further)
-        state.handleSpaceWithSelection()
+        state.handleSpaceWithSelectionInternal()
         assertEquals("line1\nline2\nline3", state.text)
     }
 }

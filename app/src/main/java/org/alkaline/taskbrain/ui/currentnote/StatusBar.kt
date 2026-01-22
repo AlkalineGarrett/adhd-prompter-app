@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -22,12 +23,16 @@ import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.components.ActionButtonBar
 
 /**
- * A status bar showing save status and a save button.
+ * A status bar showing save status, save button, and undo/redo buttons.
  */
 @Composable
 fun StatusBar(
     isSaved: Boolean,
-    onSaveClick: () -> Unit
+    onSaveClick: () -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndoClick: () -> Unit = {},
+    onRedoClick: () -> Unit = {}
 ) {
     ActionButtonBar {
         Button(
@@ -69,5 +74,36 @@ fun StatusBar(
             tint = if (isSaved) Color(0xFF4CAF50) else Color(0xFFFFC107),
             modifier = Modifier.size(Dimens.StatusIconSize)
         )
+
+        // Flexible spacer pushes undo/redo to right
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Undo button
+        IconButton(
+            onClick = onUndoClick,
+            enabled = canUndo,
+            modifier = Modifier.size(Dimens.StatusBarButtonHeight)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_undo),
+                contentDescription = stringResource(id = R.string.action_undo),
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = if (canUndo) Color.Black else Color.Gray
+            )
+        }
+
+        // Redo button
+        IconButton(
+            onClick = onRedoClick,
+            enabled = canRedo,
+            modifier = Modifier.size(Dimens.StatusBarButtonHeight)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_redo),
+                contentDescription = stringResource(id = R.string.action_redo),
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = if (canRedo) Color.Black else Color.Gray
+            )
+        }
     }
 }

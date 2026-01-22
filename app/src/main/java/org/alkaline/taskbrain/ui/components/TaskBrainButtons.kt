@@ -57,7 +57,7 @@ fun ActionButton(
 @Composable
 fun ActionButtonBar(
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
+    content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit
 ) {
     Row(
         modifier = modifier

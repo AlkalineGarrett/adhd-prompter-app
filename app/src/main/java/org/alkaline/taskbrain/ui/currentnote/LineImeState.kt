@@ -92,8 +92,8 @@ class LineImeState(
                 return
             }
 
-            // Other text: replace selection as normal
-            controller.replaceSelection(commitText)
+            // Other text: replace selection as normal (no undo - focus change handles it)
+            controller.replaceSelectionNoUndo(commitText)
             syncFromController()
             return
         }
@@ -157,9 +157,9 @@ class LineImeState(
             syncFromController()
         }
 
-        // If there's a selection, replace it with the composing text
+        // If there's a selection, replace it with the composing text (no undo - focus change handles it)
         if (controller.hasSelection()) {
-            controller.replaceSelection(composingText)
+            controller.replaceSelectionNoUndo(composingText)
             syncFromController()
             // Set up composing region for the just-inserted text
             composingStart = cachedCursor - composingText.length
@@ -213,9 +213,9 @@ class LineImeState(
 
         if (beforeLength == 0 && afterLength == 0) return
 
-        // If there's a selection, delete it instead of surrounding text
+        // If there's a selection, delete it instead of surrounding text (no undo - focus change handles it)
         if (controller.hasSelection()) {
-            controller.deleteSelection()
+            controller.deleteSelectionNoUndo()
             syncFromController()
             return
         }

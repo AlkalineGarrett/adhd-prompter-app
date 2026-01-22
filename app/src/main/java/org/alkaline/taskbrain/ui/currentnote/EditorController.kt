@@ -2,6 +2,28 @@ package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.ClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+
+/**
+ * Operation types for discrete editing actions.
+ *
+ * NOTE: TYPING, ENTER, and LINE_MERGE are NOT in this enum because they have
+ * specialized handling:
+ * - TYPING: Implicit via focus changes (already works correctly)
+ * - ENTER: Already correctly handled in splitLine()
+ * - LINE_MERGE: Already correctly handled in mergeToPreviousLine()/mergeNextLine()
+ */
+enum class OperationType {
+    COMMAND_BULLET,   // Each press is separate undo step
+    COMMAND_CHECKBOX, // Each press is separate undo step
+    COMMAND_INDENT,   // Consecutive indent/unindent are grouped
+    PASTE,            // Always own undo step
+    CUT,              // Always own undo step
+    DELETE_SELECTION, // Always own undo step
+    CHECKBOX_TOGGLE,  // Gutter checkbox toggle - same as COMMAND_CHECKBOX
+    ALARM_SYMBOL,     // Alarm symbol insertion - commits pending, captures state
+}
 
 /**
  * Centralized controller for all editor state modifications.
@@ -19,8 +41,272 @@ import androidx.compose.runtime.remember
  * - State changes automatically trigger recomposition via stateVersion
  */
 class EditorController(
-    private val state: EditorState
+    internal val state: EditorState,
+    val undoManager: UndoManager = UndoManager()
 ) {
+    // =========================================================================
+    // Undo/Redo Operations
+    // =========================================================================
+
+    val canUndo: Boolean get() = undoManager.canUndo
+    val canRedo: Boolean get() = undoManager.canRedo
+
+    /**
+     * Commits any pending undo state. Call at undo boundaries:
+     * - Focus changes to different line
+     * - Save button clicked
+     * - Undo/redo button clicked
+     * - Navigate away from screen
+     *
+     * @param continueEditing If true, sets up a new pending snapshot for subsequent
+     *        typing on the current line. Use this for save operations where the user
+     *        continues editing. Don't use for navigate-away or undo/redo (which handle
+     *        this separately).
+     */
+    fun commitUndoState(continueEditing: Boolean = false) {
+        undoManager.commitPendingUndoState(state)
+        if (continueEditing) {
+            undoManager.beginEditingLine(state, state.focusedLineIndex)
+        }
+    }
+
+    /**
+     * Records a command bar action for undo grouping.
+     * Bullet/Checkbox: Each is a separate undo step.
+     * Indent/Unindent: Consecutive presses are grouped.
+     */
+    fun recordCommand(type: CommandType) {
+        undoManager.recordCommand(state, type)
+    }
+
+    /**
+     * Call after command completes for commands that should immediately commit.
+     */
+    fun commitAfterCommand(type: CommandType) {
+        undoManager.commitAfterCommand(state, type)
+    }
+
+    /**
+     * Records that an alarm was created, for undo/redo tracking.
+     * Ensures there's an undo entry to attach the alarm to.
+     */
+    fun recordAlarmCreation(alarm: AlarmSnapshot) {
+        undoManager.recordAlarmCreation(alarm, state)
+    }
+
+    /**
+     * Performs undo and restores the snapshot.
+     * Returns the snapshot for alarm handling (caller deletes createdAlarm if present).
+     */
+    fun undo(): UndoSnapshot? {
+        val snapshot = undoManager.undo(state) ?: return null
+        restoreFromSnapshot(snapshot)
+        // Set up pending state for subsequent typing on the restored line
+        undoManager.beginEditingLine(state, state.focusedLineIndex)
+        return snapshot
+    }
+
+    /**
+     * Performs redo and restores the snapshot.
+     * Returns the snapshot for alarm handling (caller recreates createdAlarm if present).
+     */
+    fun redo(): UndoSnapshot? {
+        val snapshot = undoManager.redo(state) ?: return null
+        restoreFromSnapshot(snapshot)
+        // Set up pending state for subsequent typing on the restored line
+        undoManager.beginEditingLine(state, state.focusedLineIndex)
+        return snapshot
+    }
+
+    /**
+     * Updates the alarm ID after redo recreates an alarm with a new ID.
+     */
+    fun updateLastUndoAlarmId(newId: String) {
+        undoManager.updateLastUndoAlarmId(newId)
+    }
+
+    /**
+     * Restores editor state from a snapshot.
+     */
+    private fun restoreFromSnapshot(snapshot: UndoSnapshot) {
+        state.lines.clear()
+        snapshot.lineContents.forEach { lineText ->
+            state.lines.add(LineState(lineText))
+        }
+        state.focusedLineIndex = snapshot.focusedLineIndex.coerceIn(0, state.lines.lastIndex.coerceAtLeast(0))
+        state.lines.getOrNull(state.focusedLineIndex)?.let { line ->
+            line.updateFull(line.text, snapshot.cursorPosition.coerceIn(0, line.text.length))
+        }
+        state.clearSelection()
+        state.requestFocusUpdate()
+        state.notifyChange()
+    }
+
+    /**
+     * Resets undo history. Call when loading a new note.
+     */
+    fun resetUndoHistory() {
+        undoManager.reset()
+    }
+
+    // =========================================================================
+    // Operation Executor (centralizes undo boundary management)
+    // =========================================================================
+
+    /**
+     * Executes an operation with proper undo boundary handling.
+     * Pre-operation: Sets up appropriate undo state based on operation type
+     * Post-operation: Commits or continues pending state as appropriate
+     */
+    private fun <T> executeOperation(type: OperationType, action: () -> T): T {
+        handlePreOperation(type)
+        val result = action()
+        handlePostOperation(type)
+        return result
+    }
+
+    private fun handlePreOperation(type: OperationType) {
+        when (type) {
+            OperationType.COMMAND_BULLET, OperationType.COMMAND_CHECKBOX,
+            OperationType.CHECKBOX_TOGGLE -> {
+                undoManager.recordCommand(state, commandTypeFor(type))
+            }
+            OperationType.COMMAND_INDENT -> {
+                undoManager.recordCommand(state, CommandType.INDENT)
+            }
+            OperationType.PASTE, OperationType.CUT, OperationType.DELETE_SELECTION -> {
+                undoManager.captureStateBeforeChange(state)
+            }
+            OperationType.ALARM_SYMBOL -> {
+                undoManager.commitPendingUndoState(state)
+                undoManager.captureStateBeforeChange(state)
+            }
+        }
+    }
+
+    private fun handlePostOperation(type: OperationType) {
+        when (type) {
+            OperationType.COMMAND_BULLET, OperationType.COMMAND_CHECKBOX,
+            OperationType.CHECKBOX_TOGGLE -> {
+                undoManager.commitAfterCommand(state, commandTypeFor(type))
+            }
+            OperationType.PASTE, OperationType.CUT, OperationType.DELETE_SELECTION -> {
+                undoManager.beginEditingLine(state, state.focusedLineIndex)
+            }
+            OperationType.COMMAND_INDENT, OperationType.ALARM_SYMBOL -> {
+                // Nothing - stays pending for grouping or alarm recording happens separately
+            }
+        }
+    }
+
+    private fun commandTypeFor(type: OperationType): CommandType = when (type) {
+        OperationType.COMMAND_BULLET -> CommandType.BULLET
+        OperationType.COMMAND_CHECKBOX, OperationType.CHECKBOX_TOGGLE -> CommandType.CHECKBOX
+        OperationType.COMMAND_INDENT -> CommandType.INDENT
+        else -> CommandType.OTHER
+    }
+
+    // =========================================================================
+    // Command Operations (moved from EditorState, wrapped with undo handling)
+    // =========================================================================
+
+    /**
+     * Toggles bullet prefix on the current line.
+     * Each press is a separate undo step.
+     */
+    fun toggleBullet() = executeOperation(OperationType.COMMAND_BULLET) {
+        state.toggleBulletInternal()
+    }
+
+    /**
+     * Toggles checkbox prefix on the current line.
+     * Cycles: nothing → unchecked → checked → removed
+     * Each press is a separate undo step.
+     */
+    fun toggleCheckbox() = executeOperation(OperationType.COMMAND_CHECKBOX) {
+        state.toggleCheckboxInternal()
+    }
+
+    /**
+     * Indents selected lines or current line.
+     * Consecutive indent/unindent presses are grouped into one undo step.
+     */
+    fun indent() = executeOperation(OperationType.COMMAND_INDENT) {
+        state.indentInternal()
+    }
+
+    /**
+     * Unindents selected lines or current line.
+     * Consecutive indent/unindent presses are grouped into one undo step.
+     */
+    fun unindent() = executeOperation(OperationType.COMMAND_INDENT) {
+        state.unindentInternal()
+    }
+
+    /**
+     * Pastes text, replacing selection if present.
+     * Always creates its own undo step.
+     */
+    fun paste(text: String) = executeOperation(OperationType.PASTE) {
+        state.replaceSelectionInternal(text)
+    }
+
+    /**
+     * Cuts selected text to clipboard.
+     * Always creates its own undo step.
+     * Returns the cut text, or null if nothing was selected.
+     */
+    fun cutSelection(clipboard: ClipboardManager): String? {
+        if (!state.hasSelection) return null
+        return executeOperation(OperationType.CUT) {
+            val text = state.getSelectedText()
+            if (text.isNotEmpty()) {
+                clipboard.setText(AnnotatedString(text))
+                state.deleteSelectionInternal()
+            }
+            text.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    /**
+     * Deletes selected text.
+     * Always creates its own undo step.
+     */
+    fun deleteSelectionWithUndo() {
+        if (!state.hasSelection) return
+        executeOperation(OperationType.DELETE_SELECTION) {
+            state.deleteSelectionInternal()
+        }
+    }
+
+    /**
+     * Inserts text at the end of the current line (for alarm symbol).
+     * Commits pending state and creates an undo point.
+     */
+    fun insertAtEndOfCurrentLine(text: String) =
+        executeOperation(OperationType.ALARM_SYMBOL) {
+            state.insertAtEndOfCurrentLineInternal(text)
+        }
+
+    /**
+     * Copies selected text to clipboard without modifying state.
+     */
+    fun copySelection(clipboard: ClipboardManager) {
+        val text = state.getSelectedText()
+        if (text.isNotEmpty()) {
+            clipboard.setText(AnnotatedString(text))
+        }
+    }
+
+    /**
+     * Clears selection and positions cursor at selection start.
+     */
+    fun clearSelection() {
+        val selectionStart = state.selection.min
+        state.clearSelection()
+        setCursorFromGlobalOffset(selectionStart)
+    }
+
     // =========================================================================
     // Text Input Operations
     // =========================================================================
@@ -46,7 +332,7 @@ class EditorController(
 
         // If there's a selection, replace it
         if (state.hasSelection) {
-            state.replaceSelection(text)
+            state.replaceSelectionInternal(text)
             return
         }
 
@@ -71,7 +357,8 @@ class EditorController(
     fun deleteBackward(lineIndex: Int) {
         // If there's a selection, delete it
         if (state.hasSelection) {
-            state.deleteSelection()
+            state.deleteSelectionInternal()
+            undoManager.markContentChanged()
             return
         }
 
@@ -86,8 +373,9 @@ class EditorController(
                 line.updateFull(newPrefix + line.content, newPrefix.length)
                 state.requestFocusUpdate()
                 state.notifyChange()
+                undoManager.markContentChanged()
             } else if (lineIndex > 0) {
-                // Merge with previous line
+                // Merge with previous line (creates its own undo boundary)
                 mergeToPreviousLine(lineIndex)
             }
             return
@@ -98,6 +386,7 @@ class EditorController(
         line.updateFull(newText, cursor - 1)
         state.requestFocusUpdate()
         state.notifyChange()
+        undoManager.markContentChanged()
     }
 
     /**
@@ -105,14 +394,15 @@ class EditorController(
      */
     fun deleteForward(lineIndex: Int) {
         if (state.hasSelection) {
-            state.deleteSelection()
+            state.deleteSelectionInternal()
+            undoManager.markContentChanged()
             return
         }
 
         val line = state.lines.getOrNull(lineIndex) ?: return
         val cursor = line.cursorPosition
 
-        // At end of line - merge with next line
+        // At end of line - merge with next line (creates its own undo boundary)
         if (cursor >= line.text.length) {
             if (lineIndex < state.lines.lastIndex) {
                 mergeNextLine(lineIndex)
@@ -125,6 +415,7 @@ class EditorController(
         line.updateFull(newText, cursor)
         state.requestFocusUpdate()
         state.notifyChange()
+        undoManager.markContentChanged()
     }
 
     // =========================================================================
@@ -160,8 +451,14 @@ class EditorController(
      * Split line at cursor (Enter key).
      * Continues the prefix (indentation + bullet/checkbox) on the new line.
      * Checked checkboxes become unchecked on the new line.
+     *
+     * Undo behavior: Enter + any subsequent typing on the new line are grouped
+     * as one undo step. Typing before Enter is a separate undo step.
      */
     fun splitLine(lineIndex: Int) {
+        // Prepare for structural change - commits prior typing, captures pre-split state
+        undoManager.prepareForStructuralChange(state)
+
         state.clearSelection()
         val line = state.lines.getOrNull(lineIndex) ?: return
         val cursor = line.cursorPosition
@@ -183,13 +480,20 @@ class EditorController(
             state.requestFocusUpdate()
             state.notifyChange()
         }
+
+        // Continue pending state on new line (groups Enter + subsequent typing)
+        undoManager.continueAfterStructuralChange(state.focusedLineIndex)
     }
 
     /**
      * Merge current line with previous line.
+     * Creates an undo boundary before the merge.
      */
     fun mergeToPreviousLine(lineIndex: Int) {
         if (lineIndex <= 0) return
+
+        // Always capture state before merge - line merge is always undoable
+        undoManager.captureStateBeforeChange(state)
 
         state.clearSelection()
         val currentLine = state.lines.getOrNull(lineIndex) ?: return
@@ -201,13 +505,20 @@ class EditorController(
         state.focusedLineIndex = lineIndex - 1
         state.requestFocusUpdate()
         state.notifyChange()
+
+        // Begin editing the merged line
+        undoManager.beginEditingLine(state, state.focusedLineIndex)
     }
 
     /**
      * Merge next line into current line.
+     * Creates an undo boundary before the merge.
      */
     fun mergeNextLine(lineIndex: Int) {
         if (lineIndex >= state.lines.lastIndex) return
+
+        // Always capture state before merge - line merge is always undoable
+        undoManager.captureStateBeforeChange(state)
 
         state.clearSelection()
         val currentLine = state.lines.getOrNull(lineIndex) ?: return
@@ -218,6 +529,9 @@ class EditorController(
         state.lines.removeAt(lineIndex + 1)
         state.requestFocusUpdate()
         state.notifyChange()
+
+        // Begin editing the merged line
+        undoManager.beginEditingLine(state, state.focusedLineIndex)
     }
 
     // =========================================================================
@@ -226,22 +540,38 @@ class EditorController(
 
     /**
      * Set cursor position within a line.
+     * Properly handles undo state when focus changes.
      */
     fun setCursor(lineIndex: Int, position: Int) {
         val line = state.lines.getOrNull(lineIndex) ?: return
+        // Handle undo state when changing lines
+        if (lineIndex != state.focusedLineIndex) {
+            undoManager.commitPendingUndoState(state)
+            state.focusedLineIndex = lineIndex
+            undoManager.beginEditingLine(state, lineIndex)
+        } else {
+            state.focusedLineIndex = lineIndex
+        }
         line.updateFull(line.text, position.coerceIn(0, line.text.length))
-        state.focusedLineIndex = lineIndex
         state.clearSelection()
         state.requestFocusUpdate()
     }
 
     /**
      * Set cursor from global character offset.
+     * Properly handles undo state when focus changes.
      */
     fun setCursorFromGlobalOffset(globalOffset: Int) {
         state.clearSelection()
         val (lineIndex, localOffset) = state.getLineAndLocalOffset(globalOffset)
-        state.focusedLineIndex = lineIndex
+        // Handle undo state when changing lines
+        if (lineIndex != state.focusedLineIndex) {
+            undoManager.commitPendingUndoState(state)
+            state.focusedLineIndex = lineIndex
+            undoManager.beginEditingLine(state, lineIndex)
+        } else {
+            state.focusedLineIndex = lineIndex
+        }
         val line = state.lines.getOrNull(lineIndex) ?: return
         line.updateFull(line.text, localOffset)
         state.requestFocusUpdate()
@@ -264,6 +594,9 @@ class EditorController(
 
         // Check if this is a newline insertion
         if (newContent.contains('\n')) {
+            // Prepare for structural change - commits prior typing, captures pre-split state
+            undoManager.prepareForStructuralChange(state)
+
             state.clearSelection()
             val newlineIndex = newContent.indexOf('\n')
             val beforeNewline = newContent.substring(0, newlineIndex)
@@ -274,6 +607,9 @@ class EditorController(
 
             // Create new line with prefix continuation
             createNewLineWithPrefix(lineIndex, afterNewline, line.prefix)
+
+            // Continue pending state on new line (groups Enter + subsequent typing)
+            undoManager.continueAfterStructuralChange(state.focusedLineIndex)
             return
         }
 
@@ -285,6 +621,9 @@ class EditorController(
         // Normal content update
         line.updateContent(newContent, contentCursor)
         state.notifyChange()
+
+        // Mark that content has changed so canUndo reflects uncommitted edits
+        undoManager.markContentChanged()
     }
 
     // =========================================================================
@@ -293,10 +632,17 @@ class EditorController(
 
     /**
      * Set focus to a specific line.
+     * Triggers undo boundary when focus changes to a different line.
      */
     fun focusLine(lineIndex: Int) {
         if (lineIndex in state.lines.indices) {
-            state.focusedLineIndex = lineIndex
+            if (lineIndex != state.focusedLineIndex) {
+                undoManager.commitPendingUndoState(state)
+                state.focusedLineIndex = lineIndex
+                undoManager.beginEditingLine(state, lineIndex)
+            } else {
+                state.focusedLineIndex = lineIndex
+            }
             state.requestFocusUpdate()
         }
     }
@@ -349,29 +695,35 @@ class EditorController(
     /**
      * Handles space key when there's a selection.
      * Single space indents, double-space (within 250ms) unindents.
+     * Creates an undo point so the indent/unindent can be undone.
      *
      * @return true if the space was handled (there was a selection), false otherwise
      */
     fun handleSpaceWithSelection(): Boolean {
-        return state.handleSpaceWithSelection()
+        if (!state.hasSelection) return false
+        // Use indent command type for grouping - consecutive space presses are grouped
+        undoManager.recordCommand(state, CommandType.INDENT)
+        return state.handleSpaceWithSelectionInternal()
     }
 
     /**
-     * Replace the current selection with text.
+     * Replace the current selection with text (no undo handling).
      * If there's no selection, this is a no-op.
+     * INTERNAL: Use paste() for proper undo handling.
      */
-    fun replaceSelection(text: String) {
+    internal fun replaceSelectionNoUndo(text: String) {
         if (state.hasSelection) {
-            state.replaceSelection(text)
+            state.replaceSelectionInternal(text)
         }
     }
 
     /**
-     * Delete the current selection.
+     * Delete the current selection (no undo handling).
+     * INTERNAL: Use deleteSelectionWithUndo() for proper undo handling.
      */
-    fun deleteSelection() {
+    internal fun deleteSelectionNoUndo() {
         if (state.hasSelection) {
-            state.deleteSelection()
+            state.deleteSelectionInternal()
         }
     }
 
@@ -382,10 +734,15 @@ class EditorController(
     /**
      * Toggle checkbox state on a specific line (checked ↔ unchecked).
      * Does not add or remove the checkbox, only toggles existing ones.
+     * Creates an undo point so the toggle can be undone.
+     * Uses same undo pattern as command bar checkbox for consistency.
      */
     fun toggleCheckboxOnLine(lineIndex: Int) {
         val line = state.lines.getOrNull(lineIndex) ?: return
+        // Use same undo pattern as command bar checkbox toggle
+        undoManager.recordCommand(state, CommandType.CHECKBOX)
         line.toggleCheckboxState()
+        undoManager.commitAfterCommand(state, CommandType.CHECKBOX)
         state.requestFocusUpdate()
         state.notifyChange()
     }

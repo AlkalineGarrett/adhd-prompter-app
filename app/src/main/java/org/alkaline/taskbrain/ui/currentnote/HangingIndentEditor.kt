@@ -121,6 +121,7 @@ fun HangingIndentEditor(
     onTextChange: (String) -> Unit,
     textStyle: TextStyle = TextStyle(fontSize = EditorConfig.FontSize, color = Color.Black),
     state: EditorState = rememberEditorState(),
+    controller: EditorController,
     externalFocusRequester: FocusRequester? = null,
     onEditorFocusChanged: ((Boolean) -> Unit)? = null,
     scrollState: ScrollState? = null,
@@ -134,8 +135,7 @@ fun HangingIndentEditor(
     }
     state.onTextChange = onTextChange
 
-    // Create EditorController - the SINGLE CHANNEL for all state modifications
-    val controller = rememberEditorController(state)
+    // Use the provided EditorController - the SINGLE CHANNEL for all state modifications
 
     // Core state
     val lineCount = state.lines.size
@@ -163,8 +163,10 @@ fun HangingIndentEditor(
     }
 
     // Focus management - triggers when focusedLineIndex or stateVersion changes
+    // Only request focus when stateVersion > 0 to avoid focusing before content loads.
+    // stateVersion starts at 0 and is incremented by requestFocusUpdate() after content loads.
     LaunchedEffect(externalFocusRequester, state.focusedLineIndex, state.stateVersion) {
-        if (state.focusedLineIndex in focusRequesters.indices) {
+        if (state.stateVersion > 0 && state.focusedLineIndex in focusRequesters.indices) {
             focusRequesters[state.focusedLineIndex].requestFocus()
         }
     }
@@ -343,6 +345,7 @@ private fun SelectionOverlay(
         menuOffset = contextMenuState.position,
         actions = createMenuActions(
             state = state,
+            controller = controller,
             clipboardManager = clipboardManager,
             onDismiss = { contextMenuState.isVisible = false },
             onCursorPositioned = controller::setCursorFromGlobalOffset
@@ -496,21 +499,17 @@ private fun ControlledLineViewWrapper(
 
 private fun createMenuActions(
     state: EditorState,
+    controller: EditorController,
     clipboardManager: ClipboardManager,
     onDismiss: () -> Unit,
-    onCursorPositioned: (Int) -> Unit
+    @Suppress("UNUSED_PARAMETER") onCursorPositioned: (Int) -> Unit
 ): SelectionMenuActions = SelectionMenuActions(
     onCopy = {
-        state.getSelectedText().takeIf { it.isNotEmpty() }?.let {
-            clipboardManager.setText(AnnotatedString(it))
-        }
+        controller.copySelection(clipboardManager)
         onDismiss()
     },
     onCut = {
-        state.getSelectedText().takeIf { it.isNotEmpty() }?.let {
-            clipboardManager.setText(AnnotatedString(it))
-            state.deleteSelection()
-        }
+        controller.cutSelection(clipboardManager)
         onDismiss()
     },
     onSelectAll = {
@@ -518,13 +517,11 @@ private fun createMenuActions(
         onDismiss()
     },
     onUnselect = {
-        val selectionStart = state.selection.min
-        state.clearSelection()
-        onCursorPositioned(selectionStart)
+        controller.clearSelection()
         onDismiss()
     },
     onDelete = {
-        state.deleteSelection()
+        controller.deleteSelectionWithUndo()
         onDismiss()
     }
 )

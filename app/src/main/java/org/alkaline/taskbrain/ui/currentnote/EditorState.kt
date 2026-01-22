@@ -352,7 +352,10 @@ class EditorState {
         return fullText.substring(selStart, selEnd)
     }
 
-    fun deleteSelection(): Int {
+    /**
+     * Internal: Use EditorController.deleteSelectionWithUndo() for proper undo handling.
+     */
+    internal fun deleteSelectionInternal(): Int {
         if (!hasSelection) return -1
 
         val fullText = text
@@ -377,8 +380,9 @@ class EditorState {
      * Replaces the current selection with new text.
      * If no selection, inserts at the current cursor position.
      * Returns the new cursor position (at the end of inserted text).
+     * Internal: Use EditorController.paste() for proper undo handling.
      */
-    fun replaceSelection(replacement: String): Int {
+    internal fun replaceSelectionInternal(replacement: String): Int {
         val fullText = text
         val insertPos: Int
         val newText: String
@@ -426,10 +430,11 @@ class EditorState {
      * - Double space (within 250ms): undo the indent and unindent instead
      *
      * Uses the same indent/unindent methods as the command buttons.
+     * Called via EditorController which handles undo tracking.
      *
      * @return true if the space was handled (there was a selection), false otherwise
      */
-    fun handleSpaceWithSelection(): Boolean {
+    internal fun handleSpaceWithSelectionInternal(): Boolean {
         if (!hasSelection) return false
 
         val now = System.currentTimeMillis()
@@ -438,19 +443,19 @@ class EditorState {
         if (timeSinceLastIndent <= DOUBLE_SPACE_THRESHOLD_MS && lastSpaceIndentTime > 0) {
             // Double-space: undo the indent and unindent
             // First undo the indent we just did by unindenting twice
-            unindent()
-            unindent()
+            unindentInternal()
+            unindentInternal()
             lastSpaceIndentTime = 0L // Reset so triple-space doesn't re-trigger
         } else {
             // Single space: indent
-            indent()
+            indentInternal()
             lastSpaceIndentTime = now
         }
 
         return true
     }
 
-    fun indent() {
+    internal fun indentInternal() {
         val linesToIndent = getSelectedLineIndices()
         val hadSelection = hasSelection
         val oldSelStart = selection.start
@@ -479,7 +484,7 @@ class EditorState {
         notifyChange()
     }
 
-    fun unindent() {
+    internal fun unindentInternal() {
         val linesToUnindent = getSelectedLineIndices()
         val hadSelection = hasSelection
         val oldSelStart = selection.start
@@ -526,13 +531,13 @@ class EditorState {
         return (startLine..endLine).toList()
     }
 
-    fun toggleBullet() {
+    internal fun toggleBulletInternal() {
         currentLine?.toggleBullet()
         requestFocusUpdate()
         notifyChange()
     }
 
-    fun toggleCheckbox() {
+    internal fun toggleCheckboxInternal() {
         currentLine?.toggleCheckbox()
         requestFocusUpdate()
         notifyChange()
@@ -541,8 +546,9 @@ class EditorState {
     /**
      * Inserts text at the end of the current line.
      * Adds a space before the text if the line doesn't end with whitespace.
+     * Internal: Use EditorController.insertAtEndOfCurrentLine() for proper undo handling.
      */
-    fun insertAtEndOfCurrentLine(textToInsert: String) {
+    internal fun insertAtEndOfCurrentLineInternal(textToInsert: String) {
         val line = currentLine ?: return
         val lineText = line.text
 

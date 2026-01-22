@@ -73,40 +73,50 @@ Versions managed in `gradle/libs.versions.toml`. Key stack:
 
 See `TODO_RELEASE.md` for signing configuration. Requires environment variables: `RELEASE_STORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
 
-## BANNED: BasicTextField
-
-**DO NOT USE `BasicTextField` in this codebase.**
-
-### Why It's Banned
-
-1. **Single-field selection model** - BasicTextField's selection is confined to one field. Our editor needs multi-line selection spanning multiple fields. This is a fundamental architectural mismatch.
-
-2. **Undisableable UI behaviors** - Magnifier bubble, selection handles, and gesture handling cannot be fully disabled, even with `NoOpTextToolbar`, transparent `TextSelectionColors`, and consuming pointer events.
-
-### What To Use Instead
-
-`ImeConnection` modifier + `BasicText` (see `ui/currentnote/ImeConnection.kt`):
-
-```kotlin
-// CORRECT
-Box(modifier = Modifier.focusable().imeConnection(state = imeState)) {
-    BasicText(text = text) // Display only
-}
-
-// WRONG - DO NOT USE
-BasicTextField(state = textFieldState)
-```
-
-### Mining BasicTextField for Parts
-
-Our `ImeConnection` was built by studying BasicTextField's internals. For future enhancements, mine the source:
-- [BasicTextField.kt](https://raw.githubusercontent.com/androidx/androidx/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/text/BasicTextField.kt)
-- [TextFieldDecoratorModifier.kt](https://raw.githubusercontent.com/androidx/androidx/androidx-main/compose/foundation/foundation/src/commonMain/kotlin/androidx/compose/foundation/text/input/internal/TextFieldDecoratorModifier.kt)
-- [StatelessInputConnection.android.kt](https://raw.githubusercontent.com/androidx/androidx/androidx-main/compose/foundation/foundation/src/androidMain/kotlin/androidx/compose/foundation/text/input/internal/StatelessInputConnection.android.kt)
-
-See `docs/compose-ime-learnings.md` for full explanation and more source links.
-
 ## Development guidance
+
+### Project requirements
+
+Consult the following files to understand project requirements:
+
+- .md files under docs/
+- files name requirements.md in the source tree
+
+### Undo/Redo Considerations
+
+**Architecture**: All discrete editing operations must flow through `EditorController`, which handles undo boundary management via an operation-based system:
+
+1. **EditorController** is the single channel for state modifications (mutation methods on `EditorState` are `internal`)
+2. **OperationType enum** classifies operations: `COMMAND_BULLET`, `COMMAND_CHECKBOX`, `COMMAND_INDENT`, `PASTE`, `CUT`, `DELETE_SELECTION`, `CHECKBOX_TOGGLE`, `ALARM_SYMBOL`
+3. **Operation executor** (`executeOperation`) wraps operations with proper pre/post undo handling
+
+**When adding new operations that modify editor content:**
+- Add a new `OperationType` if it has distinct undo semantics
+- Add a method to `EditorController` that wraps the operation with `executeOperation()`
+- Call the controller method from UI code (never call `EditorState` mutation methods directly)
+
+**Key questions to ask the developer:**
+- Should this operation create its own undo boundary, or be grouped with adjacent edits?
+- For command bar buttons: should consecutive presses be grouped (like indent) or separate (like bullet)?
+- If the operation creates side effects (like alarms), should those be undoable?
+- Does the operation need special handling for redo (e.g., recreating external resources)?
+
+See `ui/currentnote/requirements.md` for full undo/redo specification and implementation details.
+
+### Error Handling and User Feedback
+
+The app should generally inform users when problems occur rather than silently failing or recovering:
+- **Show warning dialogs** when operations fail or produce unexpected results, even if the app can recover automatically
+- **Explain what happened** in user-friendly terms, including what automatic recovery was attempted
+- **Indicate potential inconsistency** if recovery may have left things in a partial state (e.g., "Consider saving and reloading")
+- Use `AlertDialog` for warnings; see existing patterns in `CurrentNoteScreen.kt` (e.g., `redoRollbackWarning`, `schedulingWarning`)
+
+This principle applies especially to:
+- Failed async operations (Firebase, alarms, etc.)
+- Automatic rollbacks or cleanup after failures
+- Permission issues that affect functionality
+
+### Refactoring
 
 - Do the following when refactoring:
   - Look to make the code and design "elegant"

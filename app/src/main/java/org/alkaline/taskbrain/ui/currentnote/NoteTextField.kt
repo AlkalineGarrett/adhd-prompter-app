@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * @param editorState State holder for the editor that exposes operations like indent/unindent.
  *        Create with rememberHangingIndentEditorState() and use for CommandBar operations.
+ * @param controller The EditorController for managing state modifications.
+ *        Create with rememberEditorController(editorState) and use for undo/redo operations.
  */
 @Composable
 fun NoteTextField(
@@ -28,6 +30,7 @@ fun NoteTextField(
     focusRequester: FocusRequester,
     onFocusChanged: (Boolean) -> Unit,
     editorState: HangingIndentEditorState = rememberHangingIndentEditorState(),
+    controller: EditorController,
     isFingerDownFlow: StateFlow<Boolean>? = null,
     onAlarmSymbolTap: ((AlarmSymbolInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -56,6 +59,7 @@ fun NoteTextField(
             },
             textStyle = textStyle,
             state = editorState,
+            controller = controller,
             externalFocusRequester = focusRequester,
             onEditorFocusChanged = onFocusChanged,
             scrollState = scrollState,
