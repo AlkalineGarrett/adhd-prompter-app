@@ -408,6 +408,20 @@ fun CurrentNoteScreen(
             onToggleCheckbox = { controller.toggleCheckbox() },
             onIndent = { controller.indent() },
             onUnindent = { controller.unindent() },
+            onMoveUp = {
+                if (controller.moveUp()) {
+                    userContent = editorState.text
+                    isSaved = false
+                }
+            },
+            onMoveDown = {
+                if (controller.moveDown()) {
+                    userContent = editorState.text
+                    isSaved = false
+                }
+            },
+            moveUpState = controller.getMoveUpState(),
+            moveDownState = controller.getMoveDownState(),
             onPaste = { clipText -> controller.paste(clipText) },
             isPasteEnabled = isMainContentFocused && !editorState.hasSelection,
             onAddAlarm = {

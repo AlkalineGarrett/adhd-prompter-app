@@ -23,7 +23,16 @@ enum class OperationType {
     DELETE_SELECTION, // Always own undo step
     CHECKBOX_TOGGLE,  // Gutter checkbox toggle - same as COMMAND_CHECKBOX
     ALARM_SYMBOL,     // Alarm symbol insertion - commits pending, captures state
+    MOVE_LINES,       // Consecutive moves of same lines are grouped
 }
+
+/**
+ * State for move up/down buttons.
+ */
+data class MoveButtonState(
+    val isEnabled: Boolean,
+    val isWarning: Boolean
+)
 
 /**
  * Centralized controller for all editor state modifications.
@@ -181,6 +190,9 @@ class EditorController(
                 undoManager.commitPendingUndoState(state)
                 undoManager.captureStateBeforeChange(state)
             }
+            OperationType.MOVE_LINES -> {
+                // Move lines has its own undo handling via recordMoveCommand
+            }
         }
     }
 
@@ -195,6 +207,9 @@ class EditorController(
             }
             OperationType.COMMAND_INDENT, OperationType.ALARM_SYMBOL -> {
                 // Nothing - stays pending for grouping or alarm recording happens separately
+            }
+            OperationType.MOVE_LINES -> {
+                // Move lines has its own undo handling via recordMoveCommand/updateMoveRange
             }
         }
     }
@@ -287,6 +302,80 @@ class EditorController(
         executeOperation(OperationType.ALARM_SYMBOL) {
             state.insertAtEndOfCurrentLineInternal(text)
         }
+
+    // =========================================================================
+    // Move Lines Operations
+    // =========================================================================
+
+    /**
+     * Gets the current state of the move up button.
+     */
+    fun getMoveUpState(): MoveButtonState {
+        val target = state.getMoveTarget(moveUp = true)
+        return MoveButtonState(
+            isEnabled = target != null,
+            isWarning = state.wouldOrphanChildren()
+        )
+    }
+
+    /**
+     * Gets the current state of the move down button.
+     */
+    fun getMoveDownState(): MoveButtonState {
+        val target = state.getMoveTarget(moveUp = false)
+        return MoveButtonState(
+            isEnabled = target != null,
+            isWarning = state.wouldOrphanChildren()
+        )
+    }
+
+    /**
+     * Moves the current line/selection up.
+     * Consecutive moves of the same lines are grouped into one undo step.
+     * @return true if the move was performed, false if at boundary
+     */
+    fun moveUp(): Boolean {
+        val range = if (state.hasSelection) state.getSelectedLineRange() else state.getLogicalBlock(state.focusedLineIndex)
+        val target = state.getMoveTarget(moveUp = true) ?: return false
+
+        // Record for undo grouping (uses range BEFORE move for grouping check)
+        undoManager.recordMoveCommand(state, range)
+
+        // Perform the move
+        val newRange = state.moveLinesInternal(range, target)
+        if (newRange != null) {
+            // Update the tracked move range to the new position
+            undoManager.updateMoveRange(newRange)
+            // Mark content as changed so canUndo returns true
+            undoManager.markContentChanged()
+        }
+
+        return newRange != null
+    }
+
+    /**
+     * Moves the current line/selection down.
+     * Consecutive moves of the same lines are grouped into one undo step.
+     * @return true if the move was performed, false if at boundary
+     */
+    fun moveDown(): Boolean {
+        val range = if (state.hasSelection) state.getSelectedLineRange() else state.getLogicalBlock(state.focusedLineIndex)
+        val target = state.getMoveTarget(moveUp = false) ?: return false
+
+        // Record for undo grouping (uses range BEFORE move for grouping check)
+        undoManager.recordMoveCommand(state, range)
+
+        // Perform the move
+        val newRange = state.moveLinesInternal(range, target)
+        if (newRange != null) {
+            // Update the tracked move range to the new position
+            undoManager.updateMoveRange(newRange)
+            // Mark content as changed so canUndo returns true
+            undoManager.markContentChanged()
+        }
+
+        return newRange != null
+    }
 
     /**
      * Copies selected text to clipboard without modifying state.

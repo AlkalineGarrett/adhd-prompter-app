@@ -128,6 +128,12 @@ object UndoStatePersistence {
             put("pendingSnapshot", state.pendingSnapshot?.let { serializeSnapshot(it) })
             put("editingLineIndex", state.editingLineIndex ?: JSONObject.NULL)
             put("lastCommandType", state.lastCommandType?.name ?: JSONObject.NULL)
+            put("lastMoveLineRange", state.lastMoveLineRange?.let {
+                JSONObject().apply {
+                    put("first", it.first)
+                    put("last", it.last)
+                }
+            } ?: JSONObject.NULL)
         }
     }
 
@@ -143,7 +149,11 @@ object UndoStatePersistence {
             editingLineIndex = if (json.isNull("editingLineIndex")) null
                 else json.getInt("editingLineIndex"),
             lastCommandType = if (json.isNull("lastCommandType")) null
-                else CommandType.valueOf(json.getString("lastCommandType"))
+                else CommandType.valueOf(json.getString("lastCommandType")),
+            lastMoveLineRange = if (!json.has("lastMoveLineRange") || json.isNull("lastMoveLineRange")) null
+                else json.getJSONObject("lastMoveLineRange").let { rangeJson ->
+                    rangeJson.getInt("first")..rangeJson.getInt("last")
+                }
         )
     }
 
@@ -222,5 +232,6 @@ data class UndoManagerState(
     val pendingSnapshot: UndoSnapshot?,
     val editingLineIndex: Int?,
     val lastCommandType: CommandType?,
+    val lastMoveLineRange: IntRange? = null,
     val hasUncommittedChanges: Boolean = false
 )

@@ -543,6 +543,279 @@ class EditorState {
         notifyChange()
     }
 
+    // =========================================================================
+    // Move Lines Operations
+    // =========================================================================
+
+    /**
+     * Gets the indentation level of a line (number of leading tabs).
+     * Empty lines have indent level 0.
+     */
+    fun getIndentLevel(lineIndex: Int): Int {
+        val text = lines.getOrNull(lineIndex)?.text ?: return 0
+        if (text.isEmpty()) return 0
+        return text.takeWhile { it == '\t' }.length
+    }
+
+    /**
+     * Gets the logical block for a line: the line itself plus all deeper-indented children below it.
+     */
+    fun getLogicalBlock(startIndex: Int): IntRange {
+        if (startIndex !in lines.indices) return startIndex..startIndex
+        val startIndent = getIndentLevel(startIndex)
+        var endIndex = startIndex
+        for (i in (startIndex + 1) until lines.size) {
+            if (getIndentLevel(i) <= startIndent) break
+            endIndex = i
+        }
+        return startIndex..endIndex
+    }
+
+    /**
+     * Gets the line indices covered by the current selection.
+     * Returns the focused line if there's no selection.
+     *
+     * If the selection ends exactly at position 0 of a line (e.g., gutter selection
+     * that includes the trailing newline), the previous line is used as the end.
+     */
+    fun getSelectedLineRange(): IntRange {
+        if (!hasSelection) {
+            return focusedLineIndex..focusedLineIndex
+        }
+        val startLine = getLineAndLocalOffset(selection.min).first
+        val (endLine, endLocal) = getLineAndLocalOffset(selection.max)
+
+        // If selection ends at the very start of a line (offset 0),
+        // consider the previous line as the actual end of the range
+        val adjustedEndLine = if (endLocal == 0 && endLine > startLine) {
+            endLine - 1
+        } else {
+            endLine
+        }
+
+        return startLine..adjustedEndLine
+    }
+
+    /**
+     * Finds the target position for moving a range up.
+     * Returns null if at document boundary.
+     */
+    fun findMoveUpTarget(lineRange: IntRange): Int? {
+        if (lineRange.first <= 0) return null
+        val firstIndent = getIndentLevel(lineRange.first)
+        var target = lineRange.first - 1
+
+        // Find the head of the previous group at same-or-less indent.
+        // Skip over any deeper lines (children of a previous group).
+        while (target > 0 && getIndentLevel(target) > firstIndent) {
+            target--
+        }
+
+        // target is now at the head of the previous group (same-or-less indent)
+        return target
+    }
+
+    /**
+     * Finds the target position for moving a range down.
+     * Returns null if at document boundary.
+     */
+    fun findMoveDownTarget(lineRange: IntRange): Int? {
+        if (lineRange.last >= lines.lastIndex) return null
+        val firstIndent = getIndentLevel(lineRange.first)
+        var target = lineRange.last + 1
+        val targetIndent = getIndentLevel(target)
+
+        // Find end of target's logical block (at same-or-less indent)
+        if (targetIndent <= firstIndent) {
+            // Target is at same/less indent - find end of its block
+            while (target < lines.lastIndex && getIndentLevel(target + 1) > targetIndent) {
+                target++
+            }
+        }
+        // Target position is after the block
+        return target + 1
+    }
+
+    /**
+     * Gets the move target for the current state.
+     * Handles both selection and no-selection cases, including the special case
+     * where selected lines span different indent levels.
+     */
+    fun getMoveTarget(moveUp: Boolean): Int? {
+        val range = if (hasSelection) getSelectedLineRange() else getLogicalBlock(focusedLineIndex)
+
+        if (hasSelection) {
+            // Check if first selected line is the shallowest
+            val shallowest = range.minOfOrNull { getIndentLevel(it) } ?: 0
+            val firstIndent = getIndentLevel(range.first)
+            if (firstIndent > shallowest) {
+                // First line isn't shallowest - move one line only
+                return if (moveUp) {
+                    if (range.first > 0) range.first - 1 else null
+                } else {
+                    if (range.last < lines.lastIndex) range.last + 2 else null
+                }
+            }
+        }
+        return if (moveUp) findMoveUpTarget(range) else findMoveDownTarget(range)
+    }
+
+    /**
+     * Checks if moving with the current selection would break parent-child relationships.
+     * Returns true when:
+     * 1. Selection excludes children of the first selected line (orphaning children below)
+     * 2. First selected line isn't the shallowest in selection (selecting children without parent)
+     */
+    fun wouldOrphanChildren(): Boolean {
+        if (!hasSelection) return false
+        val selectedRange = getSelectedLineRange()
+
+        // Check if first line isn't the shallowest (selecting children without their context)
+        val shallowest = selectedRange.minOfOrNull { getIndentLevel(it) } ?: 0
+        val firstIndent = getIndentLevel(selectedRange.first)
+        if (firstIndent > shallowest) {
+            return true
+        }
+
+        // Check if selection excludes children of the first line
+        val logicalBlock = getLogicalBlock(selectedRange.first)
+        return selectedRange.last < logicalBlock.last
+    }
+
+    /**
+     * Moves lines from sourceRange to targetIndex.
+     * Adjusts focused line and selection to follow the moved lines.
+     * Returns the new range of the moved lines, or null if move failed.
+     */
+    internal fun moveLinesInternal(sourceRange: IntRange, targetIndex: Int): IntRange? {
+        // Validate parameters
+        if (sourceRange.first < 0 || sourceRange.last >= lines.size) return null
+        if (targetIndex < 0 || targetIndex > lines.size) return null
+        // No-op if target is within or adjacent to source
+        if (targetIndex >= sourceRange.first && targetIndex <= sourceRange.last + 1) return null
+
+        // Track focused line for adjustment
+        val oldFocusedLine = focusedLineIndex
+
+        // IMPORTANT: Capture selection info BEFORE modifying lines array
+        val hadSelection = hasSelection
+        val selStartLine: Int
+        val selStartLocal: Int
+        val selEndLine: Int
+        val selEndLocal: Int
+        if (hadSelection) {
+            val (sl, slo) = getLineAndLocalOffset(selection.start)
+            val (el, elo) = getLineAndLocalOffset(selection.end)
+            selStartLine = sl
+            selStartLocal = slo
+            selEndLine = el
+            selEndLocal = elo
+        } else {
+            selStartLine = -1
+            selStartLocal = 0
+            selEndLine = -1
+            selEndLocal = 0
+        }
+
+        // Extract lines to move
+        val linesToMove = sourceRange.map { lines[it] }
+        val moveCount = linesToMove.size
+
+        // Remove lines (in reverse to maintain indices)
+        for (i in sourceRange.last downTo sourceRange.first) {
+            lines.removeAt(i)
+        }
+
+        // Adjust target index if we removed lines before it
+        val adjustedTarget = if (targetIndex > sourceRange.first) {
+            targetIndex - moveCount
+        } else {
+            targetIndex
+        }
+
+        // Insert lines at new position
+        linesToMove.forEachIndexed { index, line ->
+            lines.add(adjustedTarget + index, line)
+        }
+
+        // Calculate the new range of moved lines
+        val newRange = adjustedTarget until (adjustedTarget + moveCount)
+
+        // Adjust focused line index
+        focusedLineIndex = when {
+            oldFocusedLine in sourceRange -> {
+                // Focus was in moved block - follow it
+                val offsetInBlock = oldFocusedLine - sourceRange.first
+                adjustedTarget + offsetInBlock
+            }
+            targetIndex <= oldFocusedLine && sourceRange.first > oldFocusedLine -> {
+                // Moved lines inserted before focus, after their original position
+                oldFocusedLine + moveCount
+            }
+            sourceRange.first <= oldFocusedLine && targetIndex > oldFocusedLine -> {
+                // Moved lines removed before focus, inserted after
+                oldFocusedLine - moveCount
+            }
+            else -> oldFocusedLine
+        }
+
+        // Adjust selection using the line info captured BEFORE the move
+        if (hadSelection) {
+            val newStartLine = adjustLineIndexForMove(selStartLine, sourceRange, adjustedTarget, moveCount)
+
+            // If selection ends at offset 0 of a line, it conceptually means "end of previous line".
+            // We need to adjust the previous line (which may have moved) and then reference the next line.
+            val newEndLine: Int
+            val newEndLocal: Int
+            if (selEndLocal == 0 && selEndLine > 0) {
+                val adjustedPrevLine = adjustLineIndexForMove(selEndLine - 1, sourceRange, adjustedTarget, moveCount)
+                newEndLine = adjustedPrevLine + 1
+                newEndLocal = 0
+            } else {
+                newEndLine = adjustLineIndexForMove(selEndLine, sourceRange, adjustedTarget, moveCount)
+                newEndLocal = selEndLocal
+            }
+
+            val newSelStart = getLineStartOffset(newStartLine) +
+                selStartLocal.coerceAtMost(lines.getOrNull(newStartLine)?.text?.length ?: 0)
+            val newSelEnd = getLineStartOffset(newEndLine) +
+                newEndLocal.coerceAtMost(lines.getOrNull(newEndLine)?.text?.length ?: 0)
+
+            selection = EditorSelection(newSelStart, newSelEnd)
+        }
+
+        requestFocusUpdate()
+        notifyChange()
+        return newRange
+    }
+
+    /**
+     * Helper to adjust a line index after a move operation.
+     */
+    private fun adjustLineIndexForMove(
+        lineIndex: Int,
+        sourceRange: IntRange,
+        targetIndex: Int,
+        moveCount: Int
+    ): Int {
+        return when {
+            lineIndex in sourceRange -> {
+                // Line was in moved block - calculate new position
+                val offsetInBlock = lineIndex - sourceRange.first
+                targetIndex + offsetInBlock
+            }
+            targetIndex <= lineIndex && sourceRange.first > lineIndex -> {
+                // Moved lines inserted before this line, from after it
+                lineIndex + moveCount
+            }
+            sourceRange.first <= lineIndex && targetIndex > lineIndex -> {
+                // Moved lines removed before this line, inserted after it
+                lineIndex - moveCount
+            }
+            else -> lineIndex
+        }
+    }
+
     /**
      * Inserts text at the end of the current line.
      * Adds a space before the text if the line doesn't end with whitespace.

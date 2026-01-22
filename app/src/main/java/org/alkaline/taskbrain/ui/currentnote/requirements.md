@@ -107,8 +107,10 @@
 2. **Checkbox toggle**: Toggles checkbox on current/selected lines
 3. **Indent**: Indents current/selected lines
 4. **Unindent**: Unindents current/selected lines
-5. **Paste**: Pastes clipboard content at cursor position
-6. **Alarm**: Opens alarm configuration dialog
+5. **Move up**: Moves current line/block or selected lines up
+6. **Move down**: Moves current line/block or selected lines down
+7. **Paste**: Pastes clipboard content at cursor position
+8. **Alarm**: Opens alarm configuration dialog
 
 ### Paste Button State
 1. **Enabled**: Only when editor is focused AND no selection (just cursor)
@@ -118,6 +120,32 @@
 ### Alarm Button State
 1. **Enabled**: Only when editor is focused AND no selection (just cursor)
 2. **Disabled**: When not focused or when there's a selection
+
+## Move Lines Up/Down
+
+### What Gets Moved
+1. **Without selection**: Moves the cursor line plus all deeper-indented children below it (the "logical block")
+2. **With selection**: Moves exactly the selected lines (can orphan children from parents)
+
+### Jump Distance
+1. **Same-or-less indent**: Hops over the previous/next group at same-or-less indentation level
+2. **Empty lines**: Treated as indent level 0, forming their own single-line groups
+3. **Selection with mixed indents**: If the first selected line isn't the shallowest in the selection, moves one line at a time instead of hopping
+
+### Button States
+1. **Disabled**: When at document boundary (can't move further in that direction)
+2. **Warning (orange)**: When selection would break parent-child relationships:
+   - Selection excludes children of the first selected line
+   - First selected line is deeper than other lines in the selection
+
+### Selection Behavior
+1. **Selection follows**: After move, selection is adjusted to still cover the same moved lines
+2. **Gutter selection**: Selecting lines via gutter correctly identifies line range (trailing newline doesn't extend to next line)
+
+### Undo Behavior
+1. **Consecutive moves grouped**: Repeated moves of the same lines are grouped into one undo step
+2. **Grouping broken by**: Any other action, including cursor movement or typing
+3. **Immediate activation**: Undo button activates immediately after a move (doesn't require focus change)
 
 ## System Menu
 
@@ -162,7 +190,8 @@ Saving creates an undo point while allowing continued editing on the same line:
 3. **Indent**: Consecutive presses are grouped into one undo step
 4. **Unindent**: Consecutive presses are grouped with indent
 5. **Indent/Unindent sequence**: Any sequence of indent/unindent is one undo step
-6. **Sequence broken by**: Typing, focus change, or other command breaks the sequence
+6. **Move up/down**: Consecutive moves of the same lines are grouped into one undo step
+7. **Sequence broken by**: Typing, focus change, or other command breaks the sequence
 
 ### Selection Menu Actions
 1. **Cut**: Creates an undo step before copying to clipboard and deleting selection
@@ -220,6 +249,9 @@ Undo history is persisted while the app is backgrounded but is cleared when the 
 **Command Bar Grouping Inconsistency (indent grouped, bullet/checkbox not grouped)**
 Consecutive indent/unindent presses are grouped into a single undo step, but consecutive bullet/checkbox toggles are NOT grouped (each press is a separate undo step). Rationale: Indent is incremental (each press adds one level), so grouping makes sense—users often want to undo all indent changes at once. Bullet/checkbox is binary state toggle, so each press is a meaningful discrete action that users may want to undo individually.
 
+**Move Lines Grouping (consecutive moves of same lines grouped)**
+Consecutive move up/down presses on the same set of lines are grouped into a single undo step. The grouping tracks which lines were moved (by their new position after each move). Grouping is broken when: (1) a different set of lines is moved, (2) any other editing action occurs, or (3) the cursor moves to a different line. Rationale: Users often tap move multiple times to position content, and grouping allows undoing the entire repositioning in one step.
+
 **Selection Cleared on Undo**
 When undo/redo is performed, any existing text selection is cleared. The selection is not stored in snapshots. Rationale: Selections are transient UI state, not document state. Restoring a selection when the underlying content has changed doesn't make semantic sense—the selected range may not correspond to the same text anymore.
 
@@ -235,6 +267,7 @@ All discrete editing operations (commands, clipboard, etc.) flow through `Editor
    - `PASTE`, `CUT`, `DELETE_SELECTION`: Always create their own undo step
    - `CHECKBOX_TOGGLE`: Gutter checkbox tap (same as COMMAND_CHECKBOX)
    - `ALARM_SYMBOL`: Commits pending state, creates undo point
+   - `MOVE_LINES`: Consecutive moves of same lines are grouped (uses separate tracking via `lastMoveLineRange`)
 3. **Operation executor** (`executeOperation`) wraps operations with proper pre/post undo handling
 4. **EditorState internal methods**: Mutation methods on EditorState are `internal` to prevent direct access from UI code (must go through EditorController)
 

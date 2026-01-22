@@ -16,8 +16,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import org.alkaline.taskbrain.R
 
+// Color constants for button states
+private val EnabledTint = Color(0xFF616161)   // Dark gray
+private val DisabledTint = Color(0xFFBDBDBD)  // Light gray
+private val WarningTint = Color(0xFFFF9800)   // Orange
+
 /**
- * A bottom toolbar with buttons for bullet/checkbox toggle, indent/unindent, paste, and alarm.
+ * A bottom toolbar with buttons for bullet/checkbox toggle, indent/unindent, move lines, paste, and alarm.
  */
 @Composable
 fun CommandBar(
@@ -25,6 +30,10 @@ fun CommandBar(
     onToggleCheckbox: () -> Unit,
     onIndent: () -> Unit,
     onUnindent: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    moveUpState: MoveButtonState,
+    moveDownState: MoveButtonState,
     onPaste: (String) -> Unit,
     isPasteEnabled: Boolean,
     onAddAlarm: () -> Unit,
@@ -48,7 +57,7 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_list_bulleted),
                 contentDescription = "Toggle bullet",
-                tint = Color(0xFF616161),
+                tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -61,7 +70,7 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_check_box_outline),
                 contentDescription = "Toggle checkbox",
-                tint = Color(0xFF616161),
+                tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -74,7 +83,7 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_indent_decrease),
                 contentDescription = "Unindent",
-                tint = Color(0xFF616161),
+                tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -87,7 +96,43 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_indent_increase),
                 contentDescription = "Indent",
-                tint = Color(0xFF616161),
+                tint = EnabledTint,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Move up button
+        IconButton(
+            onClick = onMoveUp,
+            enabled = moveUpState.isEnabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_arrow_up),
+                contentDescription = "Move lines up",
+                tint = when {
+                    !moveUpState.isEnabled -> DisabledTint
+                    moveUpState.isWarning -> WarningTint
+                    else -> EnabledTint
+                },
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        // Move down button
+        IconButton(
+            onClick = onMoveDown,
+            enabled = moveDownState.isEnabled,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_arrow_down),
+                contentDescription = "Move lines down",
+                tint = when {
+                    !moveDownState.isEnabled -> DisabledTint
+                    moveDownState.isWarning -> WarningTint
+                    else -> EnabledTint
+                },
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -106,7 +151,7 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_paste),
                 contentDescription = "Paste",
-                tint = if (isPasteEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
+                tint = if (isPasteEnabled) EnabledTint else DisabledTint,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -120,7 +165,7 @@ fun CommandBar(
             Icon(
                 painter = painterResource(id = R.drawable.ic_alarm),
                 contentDescription = "Add alarm",
-                tint = if (isAlarmEnabled) Color(0xFF616161) else Color(0xFFBDBDBD),
+                tint = if (isAlarmEnabled) EnabledTint else DisabledTint,
                 modifier = Modifier.size(24.dp)
             )
         }

@@ -38,6 +38,7 @@ enum class CommandType {
     CHECKBOX,
     INDENT,
     UNINDENT,
+    MOVE,
     OTHER
 }
 
@@ -71,6 +72,9 @@ class UndoManager(private val maxHistorySize: Int = 50) {
 
     // Last command type for grouping indent/unindent
     private var lastCommandType: CommandType? = null
+
+    // Tracks the line range after the last move operation (for grouping consecutive moves)
+    private var lastMoveLineRange: IntRange? = null
 
     // Tracks whether there are uncommitted edits (content changed since pendingSnapshot was captured)
     // This allows canUndo to return true as soon as the user starts typing, even before
@@ -144,8 +148,9 @@ class UndoManager(private val maxHistorySize: Int = 50) {
             pendingSnapshot = captureSnapshot(state)
             editingLineIndex = lineIndex
         }
-        // Reset command type when starting to edit a new line
+        // Reset command type and move tracking when starting to edit a new line
         lastCommandType = null
+        lastMoveLineRange = null
     }
 
     /**
@@ -166,6 +171,7 @@ class UndoManager(private val maxHistorySize: Int = 50) {
         pendingSnapshot = null
         editingLineIndex = null
         lastCommandType = null
+        lastMoveLineRange = null
         hasUncommittedChanges = false
     }
 
@@ -238,6 +244,10 @@ class UndoManager(private val maxHistorySize: Int = 50) {
                 // Only commit if last command was NOT indent/unindent
                 lastCommandType !in listOf(CommandType.INDENT, CommandType.UNINDENT)
             }
+            CommandType.MOVE -> {
+                // Move uses recordMoveCommand instead - shouldn't reach here
+                true
+            }
             CommandType.OTHER -> {
                 true
             }
@@ -267,6 +277,34 @@ class UndoManager(private val maxHistorySize: Int = 50) {
                 editingLineIndex = null
             }
         }
+    }
+
+    /**
+     * Records a move command for undo grouping.
+     * Consecutive moves of the same line range are grouped into one undo step.
+     * Returns true if a new undo boundary was created (not grouped).
+     */
+    fun recordMoveCommand(state: EditorState, newRange: IntRange): Boolean {
+        val isSameGroup = lastCommandType == CommandType.MOVE &&
+                          lastMoveLineRange == newRange
+
+        if (!isSameGroup) {
+            commitPendingUndoState(state)
+            pendingSnapshot = captureSnapshot(state)
+            editingLineIndex = state.focusedLineIndex
+        }
+
+        lastMoveLineRange = newRange
+        lastCommandType = CommandType.MOVE
+        return !isSameGroup
+    }
+
+    /**
+     * Updates the tracked move range after a move operation completes.
+     * Call this after the move is performed with the new line range.
+     */
+    fun updateMoveRange(newRange: IntRange) {
+        lastMoveLineRange = newRange
     }
 
     /**
@@ -396,6 +434,7 @@ class UndoManager(private val maxHistorySize: Int = 50) {
         pendingSnapshot = null
         editingLineIndex = null
         lastCommandType = null
+        lastMoveLineRange = null
         hasUncommittedChanges = false
         notifyStateChanged()
     }
@@ -412,6 +451,7 @@ class UndoManager(private val maxHistorySize: Int = 50) {
             pendingSnapshot = pendingSnapshot,
             editingLineIndex = editingLineIndex,
             lastCommandType = lastCommandType,
+            lastMoveLineRange = lastMoveLineRange,
             hasUncommittedChanges = hasUncommittedChanges
         )
     }
@@ -429,6 +469,7 @@ class UndoManager(private val maxHistorySize: Int = 50) {
         pendingSnapshot = state.pendingSnapshot
         editingLineIndex = state.editingLineIndex
         lastCommandType = state.lastCommandType
+        lastMoveLineRange = state.lastMoveLineRange
         hasUncommittedChanges = state.hasUncommittedChanges
         notifyStateChanged()
     }
