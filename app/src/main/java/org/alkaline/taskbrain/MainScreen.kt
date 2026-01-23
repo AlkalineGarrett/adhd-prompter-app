@@ -188,11 +188,34 @@ fun MainScreen(
                 })
             ) { backStackEntry ->
                 val noteId = backStackEntry.arguments?.getString("noteId")
-                CurrentNoteScreen(noteId = noteId, isFingerDownFlow = isFingerDown)
+                CurrentNoteScreen(
+                    noteId = noteId,
+                    isFingerDownFlow = isFingerDown,
+                    onNavigateBack = {
+                        navController.navigate(Screen.NoteList.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             // Keep the basic route for direct navigation (tab clicks)
             composable(Screen.CurrentNote.route) {
-                CurrentNoteScreen(isFingerDownFlow = isFingerDown)
+                CurrentNoteScreen(
+                    isFingerDownFlow = isFingerDown,
+                    onNavigateBack = {
+                        navController.navigate(Screen.NoteList.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
             }
             composable(Screen.NoteList.route) {
                 NoteListScreen(

@@ -33,6 +33,7 @@ fun NoteTextField(
     controller: EditorController,
     isFingerDownFlow: StateFlow<Boolean>? = null,
     onAlarmSymbolTap: ((AlarmSymbolInfo) -> Unit)? = null,
+    textColor: Color = Color.Black,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -44,7 +45,7 @@ fun NoteTextField(
     ) {
         val textStyle = TextStyle(
             fontSize = EditorConfig.FontSize,
-            color = Color.Black
+            color = textColor
         )
 
         HangingIndentEditor(

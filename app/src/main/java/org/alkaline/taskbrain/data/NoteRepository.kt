@@ -239,6 +239,64 @@ class NoteRepository(
     }.onFailure { Log.e(TAG, "Error loading notes", it) }
 
     /**
+     * Loads all top-level notes for the current user, including deleted ones.
+     */
+    suspend fun loadAllUserNotes(): Result<List<Note>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = notesCollection.whereEqualTo("userId", userId).get().await()
+
+            result.mapNotNull { doc ->
+                try {
+                    doc.toObject(Note::class.java).copy(id = doc.id)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing note", e)
+                    null
+                }
+            }.filter { it.parentNoteId == null }
+        }
+    }.onFailure { Log.e(TAG, "Error loading all notes", it) }
+
+    /**
+     * Checks if a note is deleted.
+     */
+    suspend fun isNoteDeleted(noteId: String): Result<Boolean> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            val document = noteRef(noteId).get().await()
+            if (!document.exists()) return@withContext false
+            val note = document.toObject(Note::class.java)
+            note?.state == "deleted"
+        }
+    }.onFailure { Log.e(TAG, "Error checking note state", it) }
+
+    /**
+     * Soft-deletes a note by setting its state to "deleted".
+     */
+    suspend fun softDeleteNote(noteId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            noteRef(noteId).update(
+                mapOf("state" to "deleted", "updatedAt" to FieldValue.serverTimestamp())
+            ).await()
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error soft-deleting note", it) }
+
+    /**
+     * Restores a deleted note by clearing its state.
+     */
+    suspend fun undeleteNote(noteId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            noteRef(noteId).update(
+                mapOf("state" to null, "updatedAt" to FieldValue.serverTimestamp())
+            ).await()
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error undeleting note", it) }
+
+    /**
      * Creates a new empty note.
      */
     suspend fun createNote(): Result<String> = runCatching {

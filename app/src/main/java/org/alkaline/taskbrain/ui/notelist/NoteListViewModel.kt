@@ -13,9 +13,12 @@ import org.alkaline.taskbrain.data.NoteRepository
 class NoteListViewModel : ViewModel() {
 
     private val repository = NoteRepository()
-    
+
     private val _notes = MutableLiveData<List<Note>>()
     val notes: LiveData<List<Note>> = _notes
+
+    private val _deletedNotes = MutableLiveData<List<Note>>()
+    val deletedNotes: LiveData<List<Note>> = _deletedNotes
 
     private val _loadStatus = MutableLiveData<LoadStatus>()
     val loadStatus: LiveData<LoadStatus> = _loadStatus
@@ -27,11 +30,13 @@ class NoteListViewModel : ViewModel() {
         _loadStatus.value = LoadStatus.Loading
 
         viewModelScope.launch {
-            val result = repository.loadUserNotes()
+            val result = repository.loadAllUserNotes()
             result.fold(
                 onSuccess = { notesList ->
-                    val filteredAndSorted = NoteFilteringUtils.filterAndSortNotes(notesList)
-                    _notes.value = filteredAndSorted
+                    val activeNotes = NoteFilteringUtils.filterAndSortNotes(notesList)
+                    val deletedNotes = NoteFilteringUtils.filterAndSortDeletedNotes(notesList)
+                    _notes.value = activeNotes
+                    _deletedNotes.value = deletedNotes
                     _loadStatus.value = LoadStatus.Success
                 },
                 onFailure = { exception ->

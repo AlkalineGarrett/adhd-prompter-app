@@ -27,5 +27,21 @@ object NoteFilteringUtils {
     fun filterAndSortNotes(notes: List<Note>): List<Note> {
         return sortByUpdatedAtDescending(filterTopLevelNotes(notes))
     }
+
+    /**
+     * Filters notes to only include deleted top-level notes.
+     */
+    fun filterDeletedNotes(notes: List<Note>): List<Note> {
+        return notes.filter { note ->
+            note.parentNoteId == null && note.state == "deleted"
+        }
+    }
+
+    /**
+     * Filters and sorts deleted notes in one operation.
+     */
+    fun filterAndSortDeletedNotes(notes: List<Note>): List<Note> {
+        return sortByUpdatedAtDescending(filterDeletedNotes(notes))
+    }
 }
 

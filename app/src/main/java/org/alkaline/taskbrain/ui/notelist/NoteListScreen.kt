@@ -40,6 +40,7 @@ fun NoteListScreen(
     onNoteClick: (String) -> Unit = {}
 ) {
     val notes by noteListViewModel.notes.observeAsState(emptyList())
+    val deletedNotes by noteListViewModel.deletedNotes.observeAsState(emptyList())
     val loadStatus by noteListViewModel.loadStatus.observeAsState()
     val createNoteStatus by noteListViewModel.createNoteStatus.observeAsState()
 
@@ -93,7 +94,7 @@ fun NoteListScreen(
                     )
                 }
                 else -> {
-                    if (notes.isEmpty() && loadStatus is LoadStatus.Success) {
+                    if (notes.isEmpty() && deletedNotes.isEmpty() && loadStatus is LoadStatus.Success) {
                         Text(
                             text = "No notes found",
                             modifier = Modifier.align(Alignment.Center)
@@ -106,6 +107,20 @@ fun NoteListScreen(
                             items(notes) { note ->
                                 NoteItem(note = note, onClick = { onNoteClick(note.id) })
                                 HorizontalDivider()
+                            }
+
+                            if (deletedNotes.isNotEmpty()) {
+                                item {
+                                    DeletedNotesHeader()
+                                }
+                                items(deletedNotes) { note ->
+                                    NoteItem(
+                                        note = note,
+                                        onClick = { onNoteClick(note.id) },
+                                        isDeleted = true
+                                    )
+                                    HorizontalDivider()
+                                }
                             }
                         }
                     }
@@ -135,7 +150,7 @@ fun NoteListTopBar(onAddNoteClick: () -> Unit) {
 }
 
 @Composable
-fun NoteItem(note: Note, onClick: () -> Unit) {
+fun NoteItem(note: Note, onClick: () -> Unit, isDeleted: Boolean = false) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -144,12 +159,23 @@ fun NoteItem(note: Note, onClick: () -> Unit) {
     ) {
         // Display only the first line of the note
         val firstLine = note.content.lines().firstOrNull() ?: ""
-        
+
         Text(
             text = firstLine.ifEmpty { "Empty Note" },
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            color = if (isDeleted) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface
         )
     }
+}
+
+@Composable
+fun DeletedNotesHeader() {
+    Text(
+        text = stringResource(R.string.section_deleted_notes),
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.outline,
+        modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+    )
 }

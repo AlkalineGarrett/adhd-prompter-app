@@ -1,7 +1,9 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +36,7 @@ import org.alkaline.taskbrain.ui.components.ErrorDialog
 fun CurrentNoteScreen(
     noteId: String? = null,
     isFingerDownFlow: StateFlow<Boolean>? = null,
+    onNavigateBack: () -> Unit = {},
     currentNoteViewModel: CurrentNoteViewModel = viewModel()
 ) {
     val saveStatus by currentNoteViewModel.saveStatus.observeAsState()
@@ -47,6 +50,7 @@ fun CurrentNoteScreen(
     val schedulingWarning by currentNoteViewModel.schedulingWarning.observeAsState()
     val isAlarmOperationPending by currentNoteViewModel.isAlarmOperationPending.observeAsState(false)
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
+    val isNoteDeleted by currentNoteViewModel.isNoteDeleted.observeAsState(false)
 
     var userContent by remember { mutableStateOf("") }
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -334,7 +338,14 @@ fun CurrentNoteScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    val deletedNoteBackground = Color(0xFFF0F0F0)
+    val deletedNoteTextColor = Color(0xFF666666)
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isNoteDeleted) deletedNoteBackground else Color.White)
+    ) {
         StatusBar(
             isSaved = isSaved,
             onSaveClick = {
@@ -382,6 +393,13 @@ fun CurrentNoteScreen(
                         )
                     }
                 }
+            },
+            isDeleted = isNoteDeleted,
+            onDeleteClick = {
+                currentNoteViewModel.deleteCurrentNote(onSuccess = onNavigateBack)
+            },
+            onUndeleteClick = {
+                currentNoteViewModel.undeleteCurrentNote(onSuccess = {})
             }
         )
 
@@ -400,6 +418,7 @@ fun CurrentNoteScreen(
                 alarmDialogLineIndex = symbolInfo.lineIndex
                 showAlarmDialog = true
             },
+            textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
             modifier = Modifier.weight(1f)
         )
 

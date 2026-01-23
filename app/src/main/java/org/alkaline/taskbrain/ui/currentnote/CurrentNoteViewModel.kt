@@ -65,6 +65,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val _redoRollbackWarning = MutableLiveData<RedoRollbackWarning?>()
     val redoRollbackWarning: LiveData<RedoRollbackWarning?> = _redoRollbackWarning
 
+    // Whether the current note is deleted
+    private val _isNoteDeleted = MutableLiveData<Boolean>(false)
+    val isNoteDeleted: LiveData<Boolean> = _isNoteDeleted
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
@@ -95,6 +99,12 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         _loadStatus.value = LoadStatus.Loading
 
         viewModelScope.launch {
+            // Check if note is deleted
+            repository.isNoteDeleted(currentNoteId).fold(
+                onSuccess = { isDeleted -> _isNoteDeleted.value = isDeleted },
+                onFailure = { _isNoteDeleted.value = false }
+            )
+
             val result = repository.loadNoteWithChildren(currentNoteId)
             result.fold(
                 onSuccess = { loadedLines ->
@@ -473,6 +483,46 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     fun clearLoadError() {
         if (_loadStatus.value is LoadStatus.Error) {
             _loadStatus.value = null
+        }
+    }
+
+    /**
+     * Soft-deletes the current note.
+     */
+    fun deleteCurrentNote(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            val result = repository.softDeleteNote(currentNoteId)
+            result.fold(
+                onSuccess = {
+                    Log.d(TAG, "Note deleted successfully: $currentNoteId")
+                    _isNoteDeleted.value = true
+                    onSuccess()
+                },
+                onFailure = { e ->
+                    Log.e(TAG, "Error deleting note", e)
+                    _saveStatus.value = SaveStatus.Error(e)
+                }
+            )
+        }
+    }
+
+    /**
+     * Restores the current note from deleted state.
+     */
+    fun undeleteCurrentNote(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            val result = repository.undeleteNote(currentNoteId)
+            result.fold(
+                onSuccess = {
+                    Log.d(TAG, "Note restored successfully: $currentNoteId")
+                    _isNoteDeleted.value = false
+                    onSuccess()
+                },
+                onFailure = { e ->
+                    Log.e(TAG, "Error restoring note", e)
+                    _saveStatus.value = SaveStatus.Error(e)
+                }
+            )
         }
     }
 }
