@@ -61,19 +61,57 @@ fun CurrentNoteScreen(
     val schedulingWarning by currentNoteViewModel.schedulingWarning.observeAsState()
     val isAlarmOperationPending by currentNoteViewModel.isAlarmOperationPending.observeAsState(false)
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
-    val isNoteDeleted by currentNoteViewModel.isNoteDeleted.observeAsState(false)
+    val isNoteDeletedFromVm by currentNoteViewModel.isNoteDeleted.observeAsState(false)
     val recentTabs by recentTabsViewModel.tabs.observeAsState(emptyList())
     val tabsError by recentTabsViewModel.error.observeAsState()
 
-    var userContent by remember { mutableStateOf("") }
-    var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
-    var isSaved by remember { mutableStateOf(true) }
+    // Internal note ID state - allows tab switching without navigation
+    // Initialize from route parameter, but can be updated internally for tab switches
+    var displayedNoteId by remember { mutableStateOf(noteId) }
+
+    // Sync with route parameter when it changes (external navigation)
+    LaunchedEffect(noteId) {
+        if (noteId != displayedNoteId) {
+            displayedNoteId = noteId
+        }
+    }
+
+    // Get cached content for immediate initialization (prevents flashing on tab switch)
+    val cachedContent = remember(displayedNoteId) {
+        displayedNoteId?.let { recentTabsViewModel.getCachedContent(it) }
+    }
+    val initialContent = cachedContent?.noteLines?.joinToString("\n") { it.content } ?: ""
+    val initialIsDeleted = cachedContent?.isDeleted ?: false
+
+    // Track deleted state keyed on displayedNoteId, initialized from cache to prevent background flash
+    // ViewModel will update this via effect when it loads
+    var isNoteDeleted by remember(displayedNoteId) { mutableStateOf(initialIsDeleted) }
+
+    // Sync with ViewModel when it updates (ViewModel is authoritative)
+    LaunchedEffect(isNoteDeletedFromVm) {
+        isNoteDeleted = isNoteDeletedFromVm
+    }
+
+    // Key states on displayedNoteId to reset when switching tabs, but initialize with cache
+    var userContent by remember(displayedNoteId) { mutableStateOf(initialContent) }
+    var textFieldValue by remember(displayedNoteId) {
+        mutableStateOf(TextFieldValue(initialContent, TextRange(initialContent.length)))
+    }
+    var isSaved by remember(displayedNoteId) { mutableStateOf(true) }
     var agentCommand by remember { mutableStateOf("") }
     var isAgentSectionExpanded by remember { mutableStateOf(false) }
 
     val mainContentFocusRequester = remember { FocusRequester() }
     var isMainContentFocused by remember { mutableStateOf(false) }
-    val editorState = rememberHangingIndentEditorState()
+
+    // Key editor state on displayedNoteId and initialize with cached content to prevent flashing
+    val editorState = remember(displayedNoteId) {
+        EditorState().apply {
+            if (initialContent.isNotEmpty()) {
+                updateFromText(initialContent)
+            }
+        }
+    }
     val controller = rememberEditorController(editorState)
 
     // Context and coroutine scope for undo state persistence
@@ -124,23 +162,29 @@ fun CurrentNoteScreen(
         }
     }
 
-    // Handle initial data loading
-    LaunchedEffect(noteId) {
-        currentNoteViewModel.loadContent(noteId)
+    // Handle data loading when displayed note changes (either from navigation or tab click)
+    LaunchedEffect(displayedNoteId) {
+        currentNoteViewModel.loadContent(displayedNoteId, recentTabsViewModel)
     }
 
     // Update content when loaded from VM
+    // Skip redundant updates if we already initialized with identical cached content
     LaunchedEffect(loadStatus) {
         if (loadStatus is LoadStatus.Success) {
             val loadedContent = (loadStatus as LoadStatus.Success).content
-            userContent = loadedContent
-            textFieldValue = TextFieldValue(loadedContent, TextRange(loadedContent.length))
-            // CRITICAL: Update editorState BEFORE setBaseline() below!
-            // Without this line, editorState is empty when baseline is captured,
-            // which means undo can restore to empty state and LOSE USER DATA.
-            // See UndoManagerTest: "CRITICAL - baseline must contain actual content"
-            editorState.updateFromText(loadedContent)
-            // Try to restore persisted undo state, or reset if none exists
+            val needsContentUpdate = loadedContent != userContent
+
+            if (needsContentUpdate) {
+                userContent = loadedContent
+                textFieldValue = TextFieldValue(loadedContent, TextRange(loadedContent.length))
+                // CRITICAL: Update editorState BEFORE setBaseline() below!
+                // Without this line, editorState is empty when baseline is captured,
+                // which means undo can restore to empty state and LOSE USER DATA.
+                // See UndoManagerTest: "CRITICAL - baseline must contain actual content"
+                editorState.updateFromText(loadedContent)
+            }
+
+            // Always set up undo state (needed even for cached content on initial load)
             val noteIdForRestore = currentNoteViewModel.getCurrentNoteId()
             val restored = UndoStatePersistence.restoreState(context, noteIdForRestore, controller.undoManager)
             if (!restored) {
@@ -176,10 +220,15 @@ fun CurrentNoteScreen(
 
     // React to content modification signal (e.g. from Agent)
     // Clear undo history since externally modified content would have stale snapshots
+    // Invalidate cache since content changed externally
     LaunchedEffect(contentModified) {
         if (contentModified) {
             isSaved = false
             controller.resetUndoHistory()
+            // Invalidate cache - AI modified content is not yet saved
+            currentNoteId?.let { noteId ->
+                recentTabsViewModel.invalidateCache(noteId)
+            }
         }
     }
 
@@ -188,9 +237,12 @@ fun CurrentNoteScreen(
         if (saveStatus is SaveStatus.Success) {
             isSaved = true
             currentNoteViewModel.markAsSaved()
-            // Update tab display text after save
             currentNoteId?.let { noteId ->
+                // Update tab display text after save
                 recentTabsViewModel.updateTabDisplayText(noteId, userContent)
+                // Update cache with latest tracked lines (includes new note IDs)
+                val trackedLines = currentNoteViewModel.getTrackedLines()
+                recentTabsViewModel.cacheNoteContent(noteId, trackedLines, isNoteDeleted)
             }
         }
     }
@@ -395,21 +447,28 @@ fun CurrentNoteScreen(
     ) {
         RecentTabsBar(
             tabs = recentTabs,
-            currentNoteId = currentNoteId ?: "",
-            onTabClick = { targetNoteId -> onNavigateToNote(targetNoteId) },
+            currentNoteId = displayedNoteId ?: "",
+            onTabClick = { targetNoteId ->
+                // Save current note before switching (if needed)
+                if (!isSaved && userContent.isNotEmpty()) {
+                    currentNoteViewModel.saveContent(userContent)
+                }
+                // Switch tabs internally - no navigation, no screen recreation
+                displayedNoteId = targetNoteId
+            },
             onTabClose = { targetNoteId ->
-                val isClosingCurrentTab = targetNoteId == currentNoteId
+                val isClosingCurrentTab = targetNoteId == displayedNoteId
                 recentTabsViewModel.closeTab(targetNoteId)
                 if (isClosingCurrentTab) {
-                    // Find the next tab to navigate to
+                    // Find the next tab to switch to
                     val currentIndex = recentTabs.indexOfFirst { it.noteId == targetNoteId }
                     val remainingTabs = recentTabs.filter { it.noteId != targetNoteId }
                     if (remainingTabs.isEmpty()) {
                         onNavigateBack()
                     } else {
-                        // Navigate to next tab, or previous if we closed the last one
+                        // Switch to next tab, or previous if we closed the last one
                         val nextIndex = minOf(currentIndex, remainingTabs.size - 1)
-                        onNavigateToNote(remainingTabs[nextIndex].noteId)
+                        displayedNoteId = remainingTabs[nextIndex].noteId
                     }
                 }
             }

@@ -1,18 +1,20 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -46,22 +48,32 @@ fun RecentTabsBar(
         return
     }
 
-    Row(
+    LazyRow(
         modifier = modifier
             .background(TabBarBackgroundColor)
-            .horizontalScroll(rememberScrollState())
             .padding(horizontal = TabBarHorizontalPadding, vertical = TabBarVerticalPadding),
-        verticalAlignment = Alignment.CenterVertically
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TabSpacing)
     ) {
-        tabs.forEach { tab ->
+        items(
+            items = tabs,
+            key = { tab -> tab.noteId }
+        ) { tab ->
             val isCurrentTab = tab.noteId == currentNoteId
             TabItem(
                 tab = tab,
                 isCurrentTab = isCurrentTab,
                 onClick = { if (!isCurrentTab) onTabClick(tab.noteId) },
-                onClose = { onTabClose(tab.noteId) }
+                onClose = { onTabClose(tab.noteId) },
+                modifier = Modifier.animateItem(
+                    placementSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    ),
+                    fadeInSpec = tween(durationMillis = 200),
+                    fadeOutSpec = tween(durationMillis = 200)
+                )
             )
-            Spacer(modifier = Modifier.width(TabSpacing))
         }
     }
 }
@@ -71,7 +83,8 @@ private fun TabItem(
     tab: RecentTab,
     isCurrentTab: Boolean,
     onClick: () -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val backgroundColor = if (isCurrentTab) {
         colorResource(R.color.action_button_background)
@@ -81,7 +94,7 @@ private fun TabItem(
     val textColor = if (isCurrentTab) Color.White else Color.Black
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(TabHeight)
             .widthIn(max = TabMaxWidth)
             .clip(RoundedCornerShape(TabCornerRadius))

@@ -86,7 +86,13 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     // Track lines with their corresponding note IDs
     private var lineTracker = NoteLineTracker(currentNoteId)
 
-    fun loadContent(noteId: String? = null) {
+    /**
+     * Gets the current tracked lines for cache updates.
+     * Returns a copy to prevent external modification.
+     */
+    fun getTrackedLines(): List<NoteLine> = lineTracker.getTrackedLines()
+
+    fun loadContent(noteId: String? = null, recentTabsViewModel: RecentTabsViewModel? = null) {
         // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
         currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
         _currentNoteIdLiveData.value = currentNoteId
@@ -97,6 +103,20 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         // Recreate line tracker with new parent note ID
         lineTracker = NoteLineTracker(currentNoteId)
 
+        // Check cache first for instant tab switching
+        val cached = recentTabsViewModel?.getCachedContent(currentNoteId)
+        if (cached != null) {
+            // Use cached content - instant!
+            _isNoteDeleted.value = cached.isDeleted
+            lineTracker.setTrackedLines(cached.noteLines)
+            val fullContent = cached.noteLines.joinToString("\n") { it.content }
+            _loadStatus.value = LoadStatus.Success(fullContent)
+            // Still update lastAccessedAt in background
+            viewModelScope.launch { repository.updateLastAccessed(currentNoteId) }
+            return
+        }
+
+        // Cache miss - fetch from Firebase
         _loadStatus.value = LoadStatus.Loading
 
         viewModelScope.launch {
@@ -115,6 +135,13 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     lineTracker.setTrackedLines(loadedLines)
                     val fullContent = loadedLines.joinToString("\n") { it.content }
                     _loadStatus.value = LoadStatus.Success(fullContent)
+
+                    // Cache the loaded content for future tab switches
+                    recentTabsViewModel?.cacheNoteContent(
+                        currentNoteId,
+                        loadedLines,
+                        _isNoteDeleted.value ?: false
+                    )
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error loading note", e)

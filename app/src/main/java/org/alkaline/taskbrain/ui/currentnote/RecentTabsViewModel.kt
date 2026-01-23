@@ -7,12 +7,22 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.RecentTab
 import org.alkaline.taskbrain.data.RecentTabsRepository
 
 /**
+ * Cached note content for instant tab switching.
+ */
+data class CachedNoteContent(
+    val noteLines: List<NoteLine>,
+    val isDeleted: Boolean = false
+)
+
+/**
  * ViewModel for managing the recent tabs bar.
  * Coordinates between tab UI and Firebase persistence.
+ * Also maintains an in-memory cache of note content for instant tab switching.
  */
 class RecentTabsViewModel : ViewModel() {
 
@@ -27,8 +37,32 @@ class RecentTabsViewModel : ViewModel() {
     private val _error = MutableLiveData<TabsError?>(null)
     val error: LiveData<TabsError?> = _error
 
+    // In-memory cache of note content for instant tab switching
+    // Cache is bounded by max tabs (5) so memory usage is naturally limited
+    private val noteCache = mutableMapOf<String, CachedNoteContent>()
+
     fun clearError() {
         _error.value = null
+    }
+
+    /**
+     * Gets cached note content if available.
+     */
+    fun getCachedContent(noteId: String): CachedNoteContent? = noteCache[noteId]
+
+    /**
+     * Caches note content for instant tab switching.
+     */
+    fun cacheNoteContent(noteId: String, noteLines: List<NoteLine>, isDeleted: Boolean = false) {
+        noteCache[noteId] = CachedNoteContent(noteLines, isDeleted)
+    }
+
+    /**
+     * Invalidates cache for a specific note.
+     * Call this when external changes occur (e.g., AI modification).
+     */
+    fun invalidateCache(noteId: String) {
+        noteCache.remove(noteId)
     }
 
     /**
@@ -55,23 +89,35 @@ class RecentTabsViewModel : ViewModel() {
 
     /**
      * Called when a note is opened. Adds or updates the tab.
+     * Uses optimistic update for immediate UI animation.
      * @param noteId The ID of the note being opened
      * @param content The note content (first line will be used as display text)
      */
     fun onNoteOpened(noteId: String, content: String) {
         val displayText = extractDisplayText(content)
+
+        // OPTIMISTIC UPDATE: Immediately move/add tab to front for instant animation
+        _tabs.value = _tabs.value?.let { currentTabs ->
+            val existingTab = currentTabs.find { it.noteId == noteId }
+            if (existingTab != null) {
+                // Move existing tab to front with updated display text
+                listOf(existingTab.copy(displayText = displayText)) +
+                    currentTabs.filter { it.noteId != noteId }
+            } else {
+                // Add new tab at front
+                listOf(RecentTab(noteId = noteId, displayText = displayText)) + currentTabs
+            }
+        } ?: listOf(RecentTab(noteId = noteId, displayText = displayText))
+
+        // Persist to Firestore in background (no loadTabs() call on success)
         viewModelScope.launch {
             val result = repository.addOrUpdateTab(noteId, displayText)
-            result.fold(
-                onSuccess = {
-                    // Reload tabs to get updated order
-                    loadTabs()
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "Error adding tab for note: $noteId", e)
-                    _error.value = TabsError("Failed to add tab", e)
-                }
-            )
+            result.onFailure { e ->
+                Log.e(TAG, "Error adding tab for note: $noteId", e)
+                // Sync with Firebase on error to recover correct state
+                loadTabs()
+                _error.value = TabsError("Failed to sync tab", e)
+            }
         }
     }
 
@@ -79,6 +125,9 @@ class RecentTabsViewModel : ViewModel() {
      * Called when user closes a tab with the X button.
      */
     fun closeTab(noteId: String) {
+        // Clear cache for this note
+        noteCache.remove(noteId)
+
         viewModelScope.launch {
             val result = repository.removeTab(noteId)
             result.fold(
@@ -98,6 +147,9 @@ class RecentTabsViewModel : ViewModel() {
      * Called when a note is deleted. Removes its tab immediately.
      */
     fun onNoteDeleted(noteId: String) {
+        // Clear cache for deleted note
+        noteCache.remove(noteId)
+
         viewModelScope.launch {
             val result = repository.removeTab(noteId)
             result.onFailure { e ->
