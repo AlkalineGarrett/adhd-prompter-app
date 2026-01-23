@@ -8,6 +8,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
@@ -31,6 +34,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     
     private val _saveStatus = MutableLiveData<SaveStatus>()
     val saveStatus: LiveData<SaveStatus> = _saveStatus
+
+    // Event emitted when a save completes successfully - allows other screens to refresh
+    private val _saveCompleted = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val saveCompleted: SharedFlow<Unit> = _saveCompleted.asSharedFlow()
 
     private val _loadStatus = MutableLiveData<LoadStatus>()
     val loadStatus: LiveData<LoadStatus> = _loadStatus
@@ -181,6 +188,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
                     Log.d("CurrentNoteViewModel", "Note saved successfully with structure.")
                     _saveStatus.value = SaveStatus.Success
+                    _saveCompleted.tryEmit(Unit)
                     markAsSaved()
                 },
                 onFailure = { e ->
@@ -297,6 +305,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     }
                     syncAlarmLineContent(trackedLines)
                     _saveStatus.value = SaveStatus.Success
+                    _saveCompleted.tryEmit(Unit)
                     markAsSaved()
 
                     // Now create the alarm with correct note ID

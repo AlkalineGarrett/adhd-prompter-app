@@ -47,6 +47,29 @@ class NoteListViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Refreshes the notes list without showing loading indicator.
+     * Used for background updates (e.g., when a save completes on another screen).
+     */
+    fun refreshNotes() {
+        viewModelScope.launch {
+            val result = repository.loadAllUserNotes()
+            result.fold(
+                onSuccess = { notesList ->
+                    val activeNotes = NoteFilteringUtils.filterAndSortNotesByLastAccessed(notesList)
+                    val deletedNotes = NoteFilteringUtils.filterAndSortDeletedNotes(notesList)
+                    _notes.value = activeNotes
+                    _deletedNotes.value = deletedNotes
+                    // Don't change loadStatus - keep showing the list
+                },
+                onFailure = { exception ->
+                    Log.d("NoteListViewModel", "Error refreshing notes: ", exception)
+                    // Silently fail - don't show error for background refresh
+                }
+            )
+        }
+    }
+
     fun createNote(onSuccess: (String) -> Unit) {
         _createNoteStatus.value = CreateNoteStatus.Loading
 

@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
+import kotlinx.coroutines.flow.SharedFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,7 +38,8 @@ import org.alkaline.taskbrain.ui.components.ErrorDialog
 @Composable
 fun NoteListScreen(
     noteListViewModel: NoteListViewModel = viewModel(),
-    onNoteClick: (String) -> Unit = {}
+    onNoteClick: (String) -> Unit = {},
+    onSaveCompleted: SharedFlow<Unit>? = null
 ) {
     val notes by noteListViewModel.notes.observeAsState(emptyList())
     val deletedNotes by noteListViewModel.deletedNotes.observeAsState(emptyList())
@@ -46,6 +48,13 @@ fun NoteListScreen(
 
     LaunchedEffect(Unit) {
         noteListViewModel.loadNotes()
+    }
+
+    // Refresh when a note is saved from CurrentNoteScreen (silent refresh, no loading indicator)
+    LaunchedEffect(onSaveCompleted) {
+        onSaveCompleted?.collect {
+            noteListViewModel.refreshNotes()
+        }
     }
 
     // Show error dialogs

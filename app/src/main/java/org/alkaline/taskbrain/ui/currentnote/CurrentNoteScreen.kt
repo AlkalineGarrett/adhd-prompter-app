@@ -147,6 +147,7 @@ fun CurrentNoteScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentUserContent by rememberUpdatedState(userContent)
     val currentIsSaved by rememberUpdatedState(isSaved)
+    val currentIsNoteDeleted by rememberUpdatedState(isNoteDeleted)
 
     // Track current note ID for persistence (using rememberUpdatedState for lifecycle access)
     val currentNoteIdForPersistence by rememberUpdatedState(currentNoteId)
@@ -168,6 +169,26 @@ fun CurrentNoteScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            // Also save when composable is removed from composition (e.g., bottom nav switch)
+            // ON_STOP only fires when app goes to background, not for in-app navigation
+            controller.commitUndoState()
+            currentNoteIdForPersistence?.let { noteId ->
+                UndoStatePersistence.saveStateBlocking(context, noteId, controller.undoManager)
+            }
+            if (!currentIsSaved && currentUserContent.isNotEmpty()) {
+                // Update tracked lines and cache BEFORE save, so when we come back
+                // the cache has the latest content (save is async and may complete after
+                // the screen is already showing again)
+                currentNoteViewModel.updateTrackedLines(currentUserContent)
+                val trackedLines = currentNoteViewModel.getTrackedLines()
+                recentTabsViewModel.cacheNoteContent(
+                    currentNoteIdForPersistence!!,
+                    trackedLines,
+                    currentIsNoteDeleted
+                )
+                recentTabsViewModel.updateTabDisplayText(currentNoteIdForPersistence!!, currentUserContent)
+                currentNoteViewModel.saveContent(currentUserContent)
+            }
         }
     }
 

@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
+import org.alkaline.taskbrain.ui.currentnote.CurrentNoteViewModel
 import org.alkaline.taskbrain.ui.currentnote.RecentTabsViewModel
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
 import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
@@ -70,8 +71,10 @@ fun MainScreen(
 ) {
     val navController = rememberNavController()
 
-    // Create RecentTabsViewModel at MainScreen level so it's shared across all CurrentNoteScreen instances
+    // Create ViewModels at MainScreen level so they're shared across all CurrentNoteScreen instances
+    // (both the "current_note" and "current_note?noteId={noteId}" routes)
     val recentTabsViewModel: RecentTabsViewModel = viewModel()
+    val currentNoteViewModel: CurrentNoteViewModel = viewModel()
 
     // Determine the start destination based on sign-in status
     val startDestination = if (isUserSignedIn) Screen.CurrentNote.route else Screen.Login.route
@@ -215,6 +218,7 @@ fun MainScreen(
                             restoreState = true
                         }
                     },
+                    currentNoteViewModel = currentNoteViewModel,
                     recentTabsViewModel = recentTabsViewModel
                 )
             }
@@ -240,6 +244,7 @@ fun MainScreen(
                             restoreState = true
                         }
                     },
+                    currentNoteViewModel = currentNoteViewModel,
                     recentTabsViewModel = recentTabsViewModel
                 )
             }
@@ -253,7 +258,8 @@ fun MainScreen(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    onSaveCompleted = currentNoteViewModel.saveCompleted
                 )
             }
             composable(Screen.Notifications.route) {
