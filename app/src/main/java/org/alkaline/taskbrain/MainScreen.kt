@@ -42,12 +42,14 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
+import org.alkaline.taskbrain.ui.currentnote.RecentTabsViewModel
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
 import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
 
@@ -67,7 +69,10 @@ fun MainScreen(
     isFingerDown: StateFlow<Boolean>
 ) {
     val navController = rememberNavController()
-    
+
+    // Create RecentTabsViewModel at MainScreen level so it's shared across all CurrentNoteScreen instances
+    val recentTabsViewModel: RecentTabsViewModel = viewModel()
+
     // Determine the start destination based on sign-in status
     val startDestination = if (isUserSignedIn) Screen.CurrentNote.route else Screen.Login.route
 
@@ -208,7 +213,8 @@ fun MainScreen(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    recentTabsViewModel = recentTabsViewModel
                 )
             }
             // Keep the basic route for direct navigation (tab clicks)
@@ -232,7 +238,8 @@ fun MainScreen(
                             launchSingleTop = true
                             restoreState = true
                         }
-                    }
+                    },
+                    recentTabsViewModel = recentTabsViewModel
                 )
             }
             composable(Screen.NoteList.route) {
