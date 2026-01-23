@@ -1,6 +1,11 @@
 package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.runtime.Composable
+import org.alkaline.taskbrain.ui.currentnote.undo.CommandType
+import org.alkaline.taskbrain.ui.currentnote.undo.UndoManager
+import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
+import org.alkaline.taskbrain.ui.currentnote.undo.UndoSnapshot
+import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.text.AnnotatedString

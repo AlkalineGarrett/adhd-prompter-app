@@ -18,6 +18,7 @@ import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
+import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 
 class CurrentNoteViewModel(application: Application) : AndroidViewModel(application) {

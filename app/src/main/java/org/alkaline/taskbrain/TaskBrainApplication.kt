@@ -2,7 +2,7 @@ package org.alkaline.taskbrain
 
 import android.app.Application
 import org.alkaline.taskbrain.service.NotificationChannels
-import org.alkaline.taskbrain.ui.currentnote.UndoStatePersistence
+import org.alkaline.taskbrain.ui.currentnote.undo.UndoStatePersistence
 
 /**
  * Application class for TaskBrain.

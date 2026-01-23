@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.runtime.Composable
+import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf

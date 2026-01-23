@@ -1,6 +1,10 @@
 package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.foundation.background
+import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
+import org.alkaline.taskbrain.ui.currentnote.util.ClipboardHtmlConverter
+import org.alkaline.taskbrain.ui.currentnote.undo.UndoStatePersistence
+import org.alkaline.taskbrain.ui.currentnote.util.TextLineUtils
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.graphics.Color
@@ -27,6 +31,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.ui.components.ErrorDialog
+import org.alkaline.taskbrain.ui.currentnote.components.AgentCommandSection
+import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
+import org.alkaline.taskbrain.ui.currentnote.components.CommandBar
+import org.alkaline.taskbrain.ui.currentnote.components.NoteTextField
+import org.alkaline.taskbrain.ui.currentnote.components.StatusBar
 
 /**
  * Main screen for viewing and editing a note.

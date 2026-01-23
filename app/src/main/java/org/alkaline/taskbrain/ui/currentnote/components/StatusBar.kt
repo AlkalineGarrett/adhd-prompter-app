@@ -1,0 +1,175 @@
+package org.alkaline.taskbrain.ui.currentnote.components
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import org.alkaline.taskbrain.R
+import org.alkaline.taskbrain.ui.Dimens
+import org.alkaline.taskbrain.ui.components.ActionButtonBar
+
+/**
+ * A status bar showing save status, save button, undo/redo buttons, and overflow menu.
+ */
+@Composable
+fun StatusBar(
+    isSaved: Boolean,
+    onSaveClick: () -> Unit,
+    canUndo: Boolean = false,
+    canRedo: Boolean = false,
+    onUndoClick: () -> Unit = {},
+    onRedoClick: () -> Unit = {},
+    isDeleted: Boolean = false,
+    onDeleteClick: () -> Unit = {},
+    onUndeleteClick: () -> Unit = {}
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    ActionButtonBar {
+        Button(
+            onClick = onSaveClick,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = colorResource(R.color.action_button_background),
+                contentColor = Color.White
+            ),
+            shape = RoundedCornerShape(Dimens.StatusBarButtonCornerRadius),
+            contentPadding = PaddingValues(horizontal = Dimens.StatusBarButtonHorizontalPadding, vertical = 0.dp),
+            modifier = Modifier.height(Dimens.StatusBarButtonHeight)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_save),
+                contentDescription = stringResource(id = R.string.action_save),
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = Color.White
+            )
+            Spacer(modifier = Modifier.width(Dimens.StatusBarButtonIconTextSpacing))
+            Text(
+                text = stringResource(id = R.string.action_save),
+                fontSize = Dimens.StatusBarButtonTextSize
+            )
+        }
+
+        Spacer(modifier = Modifier.width(Dimens.StatusBarItemSpacing))
+
+        Text(
+            text = if (isSaved) stringResource(id = R.string.status_saved) else stringResource(id = R.string.status_unsaved),
+            color = Color.Black,
+            fontSize = Dimens.StatusTextSize
+        )
+
+        Spacer(modifier = Modifier.width(Dimens.StatusTextIconSpacing))
+
+        Icon(
+            painter = if (isSaved) painterResource(id = R.drawable.ic_check_circle) else painterResource(id = R.drawable.ic_warning),
+            contentDescription = null,
+            tint = if (isSaved) Color(0xFF4CAF50) else Color(0xFFFFC107),
+            modifier = Modifier.size(Dimens.StatusIconSize)
+        )
+
+        // Flexible spacer pushes undo/redo to right
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Undo button
+        IconButton(
+            onClick = onUndoClick,
+            enabled = canUndo,
+            modifier = Modifier.size(Dimens.StatusBarButtonHeight)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_undo),
+                contentDescription = stringResource(id = R.string.action_undo),
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = if (canUndo) Color.Black else Color.Gray
+            )
+        }
+
+        // Redo button
+        IconButton(
+            onClick = onRedoClick,
+            enabled = canRedo,
+            modifier = Modifier.size(Dimens.StatusBarButtonHeight)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_redo),
+                contentDescription = stringResource(id = R.string.action_redo),
+                modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                tint = if (canRedo) Color.Black else Color.Gray
+            )
+        }
+
+        // Overflow menu
+        Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
+            IconButton(
+                onClick = { showMenu = !showMenu },
+                modifier = Modifier.size(Dimens.StatusBarButtonHeight)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = stringResource(id = R.string.action_more_options),
+                    modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
+                    tint = Color.Black
+                )
+            }
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                if (isDeleted) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(id = R.string.action_restore_note)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_restore),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onUndeleteClick()
+                        }
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(id = R.string.action_delete_note)) },
+                        leadingIcon = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.ic_delete),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        onClick = {
+                            showMenu = false
+                            onDeleteClick()
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
