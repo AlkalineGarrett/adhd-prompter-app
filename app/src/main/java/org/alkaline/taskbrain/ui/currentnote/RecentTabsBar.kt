@@ -31,11 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.RecentTab
 
 /**
@@ -96,11 +94,11 @@ private fun TabItem(
     var showMenu by remember { mutableStateOf(false) }
 
     val backgroundColor = if (isCurrentTab) {
-        colorResource(R.color.action_button_background)
+        TabSelectedBackgroundColor
     } else {
         TabInactiveBackgroundColor
     }
-    val textColor = if (isCurrentTab) Color.White else Color.Black
+    val textColor = Color.Black
 
     Box(
         modifier = modifier
@@ -153,6 +151,7 @@ private fun TabItem(
 
 // Tab bar styling constants
 private val TabBarBackgroundColor = Color(0xFFF5F5F5)
+private val TabSelectedBackgroundColor = Color(0xFF9CC8F5)  // Matches text selection color
 private val TabInactiveBackgroundColor = Color(0xFFE0E0E0)
 private val TabBarHorizontalPadding = 8.dp
 private val TabBarVerticalPadding = 4.dp
