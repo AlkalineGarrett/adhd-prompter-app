@@ -105,6 +105,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 onFailure = { _isNoteDeleted.value = false }
             )
 
+            // Update lastAccessedAt (fire-and-forget, doesn't block loading)
+            launch { repository.updateLastAccessed(currentNoteId) }
+
             val result = repository.loadNoteWithChildren(currentNoteId)
             result.fold(
                 onSuccess = { loadedLines ->

@@ -37,7 +37,9 @@ fun CurrentNoteScreen(
     noteId: String? = null,
     isFingerDownFlow: StateFlow<Boolean>? = null,
     onNavigateBack: () -> Unit = {},
-    currentNoteViewModel: CurrentNoteViewModel = viewModel()
+    onNavigateToNote: (String) -> Unit = {},
+    currentNoteViewModel: CurrentNoteViewModel = viewModel(),
+    recentTabsViewModel: RecentTabsViewModel = viewModel()
 ) {
     val saveStatus by currentNoteViewModel.saveStatus.observeAsState()
     val loadStatus by currentNoteViewModel.loadStatus.observeAsState()
@@ -51,6 +53,8 @@ fun CurrentNoteScreen(
     val isAlarmOperationPending by currentNoteViewModel.isAlarmOperationPending.observeAsState(false)
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
     val isNoteDeleted by currentNoteViewModel.isNoteDeleted.observeAsState(false)
+    val recentTabs by recentTabsViewModel.tabs.observeAsState(emptyList())
+    val tabsError by recentTabsViewModel.error.observeAsState()
 
     var userContent by remember { mutableStateOf("") }
     var textFieldValue by remember { mutableStateOf(TextFieldValue("")) }
@@ -147,6 +151,20 @@ fun CurrentNoteScreen(
         }
     }
 
+    // Load tabs on initial composition
+    LaunchedEffect(Unit) {
+        recentTabsViewModel.loadTabs()
+    }
+
+    // Update tab when note is loaded
+    LaunchedEffect(loadStatus, currentNoteId) {
+        val noteId = currentNoteId
+        if (loadStatus is LoadStatus.Success && noteId != null) {
+            val content = (loadStatus as LoadStatus.Success).content
+            recentTabsViewModel.onNoteOpened(noteId, content)
+        }
+    }
+
     // React to content modification signal (e.g. from Agent)
     // Clear undo history since externally modified content would have stale snapshots
     LaunchedEffect(contentModified) {
@@ -161,6 +179,18 @@ fun CurrentNoteScreen(
         if (saveStatus is SaveStatus.Success) {
             isSaved = true
             currentNoteViewModel.markAsSaved()
+            // Update tab display text after save
+            currentNoteId?.let { noteId ->
+                recentTabsViewModel.updateTabDisplayText(noteId, userContent)
+            }
+        }
+    }
+
+    // Remove tab when note is deleted
+    LaunchedEffect(isNoteDeleted, currentNoteId) {
+        val noteId = currentNoteId
+        if (isNoteDeleted && noteId != null) {
+            recentTabsViewModel.onNoteDeleted(noteId)
         }
     }
 
@@ -193,6 +223,14 @@ fun CurrentNoteScreen(
             title = "Load Error",
             throwable = (loadStatus as LoadStatus.Error).throwable,
             onDismiss = { currentNoteViewModel.clearLoadError() }
+        )
+    }
+
+    tabsError?.let { error ->
+        ErrorDialog(
+            title = "Tabs Error",
+            throwable = error.cause,
+            onDismiss = { recentTabsViewModel.clearError() }
         )
     }
 
@@ -346,6 +384,28 @@ fun CurrentNoteScreen(
             .fillMaxSize()
             .background(if (isNoteDeleted) deletedNoteBackground else Color.White)
     ) {
+        RecentTabsBar(
+            tabs = recentTabs,
+            currentNoteId = currentNoteId ?: "",
+            onTabClick = { targetNoteId -> onNavigateToNote(targetNoteId) },
+            onTabClose = { targetNoteId ->
+                val isClosingCurrentTab = targetNoteId == currentNoteId
+                recentTabsViewModel.closeTab(targetNoteId)
+                if (isClosingCurrentTab) {
+                    // Find the next tab to navigate to
+                    val currentIndex = recentTabs.indexOfFirst { it.noteId == targetNoteId }
+                    val remainingTabs = recentTabs.filter { it.noteId != targetNoteId }
+                    if (remainingTabs.isEmpty()) {
+                        onNavigateBack()
+                    } else {
+                        // Navigate to next tab, or previous if we closed the last one
+                        val nextIndex = minOf(currentIndex, remainingTabs.size - 1)
+                        onNavigateToNote(remainingTabs[nextIndex].noteId)
+                    }
+                }
+            }
+        )
+
         StatusBar(
             isSaved = isSaved,
             onSaveClick = {

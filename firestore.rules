@@ -42,5 +42,11 @@ service cloud.firestore {
     match /users/{userId}/alarms/{alarmId} {
       allow read, write: if isAuthenticated() && userOwnsPath(userId);
     }
+
+    // ==================== Open Tabs Collection ====================
+
+    match /users/{userId}/openTabs/{tabId} {
+      allow read, write: if isAuthenticated() && userOwnsPath(userId);
+    }
   }
 }

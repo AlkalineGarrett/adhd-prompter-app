@@ -199,6 +199,15 @@ fun MainScreen(
                             launchSingleTop = true
                             restoreState = true
                         }
+                    },
+                    onNavigateToNote = { targetNoteId ->
+                        navController.navigate("${Screen.CurrentNote.route}?noteId=$targetNoteId") {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 )
             }
@@ -208,6 +217,15 @@ fun MainScreen(
                     isFingerDownFlow = isFingerDown,
                     onNavigateBack = {
                         navController.navigate(Screen.NoteList.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onNavigateToNote = { targetNoteId ->
+                        navController.navigate("${Screen.CurrentNote.route}?noteId=$targetNoteId") {
                             popUpTo(navController.graph.findStartDestination().id) {
                                 saveState = true
                             }

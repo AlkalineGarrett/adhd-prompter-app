@@ -13,6 +13,7 @@ Path: `/notes/{noteId}`
   "content": "String: The main text content.",
   "createdAt": "Timestamp: Server timestamp of creation",
   "updatedAt": "Timestamp: Server timestamp of last update",
+  "lastAccessedAt": "Timestamp [optional]: Server timestamp of last access (for recent tabs)",
   "tags": [
     "String",
     "String"
@@ -45,3 +46,20 @@ Path: `/notes/{noteId}`
 
 ### Explanations
 - **resources**: Array of objects for external media. `caption` is omitted as it lives in `content`.
+
+## Collection: `openTabs` (per user)
+Path: `/users/{userId}/openTabs/{noteId}`
+
+### Document Structure
+```json
+{
+  "noteId": "String: the note ID this tab represents",
+  "displayText": "String: first line of note content (truncated for display)",
+  "lastAccessedAt": "Timestamp: when this tab was last accessed"
+}
+```
+
+### Field Explanations
+- **noteId**: References the note document. Used as document ID for easy lookup/update.
+- **displayText**: Cached first line of note content for quick display without loading full note.
+- **lastAccessedAt**: Used to order tabs (most recent first) and enforce 5-tab limit.

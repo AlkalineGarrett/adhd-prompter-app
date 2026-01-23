@@ -342,6 +342,20 @@ class NoteRepository(
         }
     }.onFailure { Log.e(TAG, "Error creating multi-line note", it) }
 
+    /**
+     * Updates the lastAccessedAt timestamp for a note.
+     * Used to track recently accessed notes for the tabs bar.
+     * This is a fire-and-forget operation - failures are logged but don't block UI.
+     */
+    suspend fun updateLastAccessed(noteId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            noteRef(noteId).update("lastAccessedAt", FieldValue.serverTimestamp()).await()
+            Log.d(TAG, "Updated lastAccessedAt for note: $noteId")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error updating lastAccessedAt", it) }
+
     companion object {
         private const val TAG = "NoteRepository"
     }

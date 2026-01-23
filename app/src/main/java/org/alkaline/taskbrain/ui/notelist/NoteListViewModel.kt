@@ -33,7 +33,7 @@ class NoteListViewModel : ViewModel() {
             val result = repository.loadAllUserNotes()
             result.fold(
                 onSuccess = { notesList ->
-                    val activeNotes = NoteFilteringUtils.filterAndSortNotes(notesList)
+                    val activeNotes = NoteFilteringUtils.filterAndSortNotesByLastAccessed(notesList)
                     val deletedNotes = NoteFilteringUtils.filterAndSortDeletedNotes(notesList)
                     _notes.value = activeNotes
                     _deletedNotes.value = deletedNotes
