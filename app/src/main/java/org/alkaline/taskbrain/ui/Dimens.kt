@@ -5,7 +5,8 @@ import androidx.compose.ui.unit.sp
 
 object Dimens {
     // Top App Bar
-    val TopAppBarTitleTextSize = 18.sp
+    val TopAppBarHeight = 60.dp
+    val TopAppBarTitleTextSize = 16.sp
 
     // Bottom Navigation Bar
     val NavigationBarLabelTextSize = 10.sp

@@ -103,7 +103,8 @@ fun MainScreen(
                 var showMenu by remember { mutableStateOf(false) }
 
                 TopAppBar(
-                    title = { 
+                    modifier = Modifier.height(Dimens.TopAppBarHeight),
+                    title = {
                         Text(
                             text = stringResource(R.string.app_name),
                             fontSize = Dimens.TopAppBarTitleTextSize
