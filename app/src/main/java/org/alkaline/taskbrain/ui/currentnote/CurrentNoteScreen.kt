@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -120,6 +121,14 @@ fun CurrentNoteScreen(
 
     // Track current note ID for undo state persistence (observed from ViewModel)
     val currentNoteId by currentNoteViewModel.currentNoteIdLiveData.observeAsState()
+
+    // Sync displayedNoteId with ViewModel's currentNoteId on initial load
+    // This handles the case where displayedNoteId is null and ViewModel loads a default note
+    LaunchedEffect(currentNoteId) {
+        if (displayedNoteId == null && currentNoteId != null) {
+            displayedNoteId = currentNoteId
+        }
+    }
 
     // Track undo/redo button states - need to observe state versions to trigger recomposition
     @Suppress("UNUSED_VARIABLE")
@@ -531,24 +540,29 @@ fun CurrentNoteScreen(
             }
         )
 
-        NoteTextField(
-            textFieldValue = textFieldValue,
-            onTextFieldValueChange = updateTextFieldValue,
-            focusRequester = mainContentFocusRequester,
-            onFocusChanged = { isFocused -> isMainContentFocused = isFocused },
-            editorState = editorState,
-            controller = controller,
-            isFingerDownFlow = isFingerDownFlow,
-            onAlarmSymbolTap = { symbolInfo ->
-                // Get the line content for this line and show the alarm dialog
-                val lineContent = editorState.lines.getOrNull(symbolInfo.lineIndex)?.text ?: ""
-                alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
-                alarmDialogLineIndex = symbolInfo.lineIndex
-                showAlarmDialog = true
-            },
-            textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
-            modifier = Modifier.weight(1f)
-        )
+        // Key on displayedNoteId to force full recreation of editor tree when switching tabs.
+        // Without this, Compose reuses composables by position, causing stale state in
+        // remember blocks (like interactionSource) that breaks touch handling.
+        key(displayedNoteId) {
+            NoteTextField(
+                textFieldValue = textFieldValue,
+                onTextFieldValueChange = updateTextFieldValue,
+                focusRequester = mainContentFocusRequester,
+                onFocusChanged = { isFocused -> isMainContentFocused = isFocused },
+                editorState = editorState,
+                controller = controller,
+                isFingerDownFlow = isFingerDownFlow,
+                onAlarmSymbolTap = { symbolInfo ->
+                    // Get the line content for this line and show the alarm dialog
+                    val lineContent = editorState.lines.getOrNull(symbolInfo.lineIndex)?.text ?: ""
+                    alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
+                    alarmDialogLineIndex = symbolInfo.lineIndex
+                    showAlarmDialog = true
+                },
+                textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
+                modifier = Modifier.weight(1f)
+            )
+        }
 
         CommandBar(
             onToggleBullet = { controller.toggleBullet() },
