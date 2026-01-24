@@ -1,18 +1,34 @@
 package org.alkaline.taskbrain.ui.currentnote.components
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolInfo
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorController
@@ -43,40 +59,93 @@ fun NoteTextField(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    var editorHeightDp by remember { mutableStateOf(0.dp) }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .verticalScroll(scrollState)
-    ) {
-        val textStyle = TextStyle(
-            fontSize = EditorConfig.FontSize,
-            color = textColor
-        )
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val viewportHeight = maxHeight
 
-        HangingIndentEditor(
-            text = textFieldValue.text,
-            onTextChange = { newText ->
-                // Convert string change back to TextFieldValue
-                // Place cursor at end of text by default
-                onTextFieldValueChange(TextFieldValue(
-                    text = newText,
-                    selection = TextRange(newText.length)
-                ))
-            },
-            textStyle = textStyle,
-            state = editorState,
-            controller = controller,
-            externalFocusRequester = focusRequester,
-            onEditorFocusChanged = onFocusChanged,
-            scrollState = scrollState,
-            showGutter = true,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+        ) {
+            val textStyle = TextStyle(
+                fontSize = EditorConfig.FontSize,
+                color = textColor
+            )
+
+            // Use a Column to stack editor and blank area spacer
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = viewportHeight)
+            ) {
+                HangingIndentEditor(
+                    text = textFieldValue.text,
+                    onTextChange = { newText ->
+                        // Convert string change back to TextFieldValue
+                        // Place cursor at end of text by default
+                        onTextFieldValueChange(TextFieldValue(
+                            text = newText,
+                            selection = TextRange(newText.length)
+                        ))
+                    },
+                    textStyle = textStyle,
+                    state = editorState,
+                    controller = controller,
+                    externalFocusRequester = focusRequester,
+                    onEditorFocusChanged = onFocusChanged,
+                    scrollState = scrollState,
+                    showGutter = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = EditorConfig.HorizontalPadding,
+                            vertical = EditorConfig.VerticalPadding
+                        )
+                        .onGloballyPositioned { coordinates ->
+                            editorHeightDp = with(density) { coordinates.size.height.toDp() }
+                        }
+                )
+
+                // Tappable spacer below editor content - fills remaining viewport space
+                BlankAreaSpacer(
+                    viewportHeight = viewportHeight,
+                    editorHeight = editorHeightDp,
+                    onTap = {
+                        // Move cursor to end of last line
+                        val lastLineIndex = editorState.lines.lastIndex
+                        if (lastLineIndex >= 0) {
+                            val lastLine = editorState.lines[lastLineIndex]
+                            controller.setCursor(lastLineIndex, lastLine.text.length)
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Spacer that fills the remaining viewport space below the editor.
+ * Tapping it moves cursor to end of last line.
+ */
+@Composable
+private fun BlankAreaSpacer(
+    viewportHeight: Dp,
+    editorHeight: Dp,
+    onTap: () -> Unit
+) {
+    val spacerHeight = (viewportHeight - editorHeight).coerceAtLeast(0.dp)
+    if (spacerHeight > 0.dp) {
+        Spacer(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(
-                    horizontal = EditorConfig.HorizontalPadding,
-                    vertical = EditorConfig.VerticalPadding
-                )
+                .height(spacerHeight)
+                .pointerInput(Unit) {
+                    detectTapGestures { onTap() }
+                }
         )
     }
 }
