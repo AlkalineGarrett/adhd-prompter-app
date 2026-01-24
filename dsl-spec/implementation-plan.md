@@ -90,7 +90,9 @@ app/src/main/java/org/alkaline/taskbrain/dsl/
 | `LBRACKET` | `[` |
 | `RBRACKET` | `]` |
 | `NUMBER` | `[0-9]+(\.[0-9]+)?` |
-| `STRING` | `"([^"\\]|\\.)*"` |
+| `STRING` | `"[^"]*"` |
+
+**Note:** Strings have no escape sequences (mobile-friendly). All characters between quotes are literal. Special characters are inserted via character constants (`qt`, `nl`, `tab`, `ret`) with the `string()` function in later milestones.
 
 ### Parser
 - `parseDirective()` → expects `[`, expression, `]`
@@ -175,6 +177,15 @@ data class IdentifierExpr(val name: String) : Expression()  // For variables lat
 }
 ```
 
+### Builtins: CharacterConstants.kt
+Character constants for mobile-friendly string building (no escape sequences):
+```kotlin
+"qt" to { args, env -> StringVal("\"") }   // Quote character
+"nl" to { args, env -> StringVal("\n") }   // Newline
+"tab" to { args, env -> StringVal("\t") }  // Tab
+"ret" to { args, env -> StringVal("\r") }  // Carriage return
+```
+
 ### Types Additions
 ```kotlin
 data class DateVal(val value: LocalDate) : DslValue()
@@ -186,6 +197,9 @@ data class DateTimeVal(val value: LocalDateTime) : DslValue()
 - `[date]` returns today's date
 - `[iso8601 date]` returns formatted string
 - Right-to-left nesting works correctly
+- `[qt]` returns `"`
+- `[nl]` returns newline character
+- `[tab]` returns tab character
 
 ---
 

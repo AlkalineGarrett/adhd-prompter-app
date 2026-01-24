@@ -21,6 +21,8 @@ A domain-specific language for executable note directives in TaskBrain.
 | Number | Numeric sequence | `1234`, `42` |
 | String | Double quotes | `"hello world"` |
 
+**Strings have no escape sequences** (mobile-friendly design). All characters between quotes are literal. To include special characters like quotes or newlines, use the `string()` function with character constants (`qt`, `nl`, `tab`, `ret`). See [String Operations](#string-operations).
+
 ### Escaping Literal Brackets
 
 - `[[` produces a literal `[`
@@ -105,7 +107,7 @@ Semicolon separates multiple statements within a directive:
 
 ### Reserved Words
 
-All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `now`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
+All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `now`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
 
 ### The Dot Operator: Current Note Reference
 
@@ -351,13 +353,26 @@ Inside `string()`, tokens are concatenated. Function calls require explicit pare
 # Concatenates: "Hello " + name + ", today is " + iso8601(date)
 ```
 
-**`qt`** - Quote character:
+**Character constants** - For special characters (mobile-friendly, no escape sequences):
 
-Use `qt` to insert literal double-quote characters within strings:
+| Constant | Character | Description |
+|----------|-----------|-------------|
+| `qt` | `"` | Double quote |
+| `nl` | newline | Line break |
+| `tab` | tab | Tab character |
+| `ret` | carriage return | Carriage return |
+
+Examples:
 
 ```
 [string("He said " qt "hello" qt " to me")]
 # Produces: He said "hello" to me
+
+[string("Line 1" nl "Line 2")]
+# Produces two lines of text
+
+[string("Col1" tab "Col2" tab "Col3")]
+# Produces tab-separated columns
 ```
 
 ### List Operations
