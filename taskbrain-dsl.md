@@ -31,7 +31,18 @@ A domain-specific language for executable note directives in TaskBrain.
 Directives are enclosed in square brackets: `[...]`
 
 - Directives may span multiple lines (ends at closing `]`)
+- Multi-line directives: lines before closing `]` should be indented for readability
 - Multiple directives allowed per line: `text [dir1] more text [dir2]`
+
+### Comments
+
+Hash comments are supported within directives:
+```
+[x: 5  # this assigns 5 to x
+ y: 10 # this assigns 10 to y
+ add(x, y)]
+```
+Everything after `#` to end of line is ignored.
 
 ### Expression Parsing: Right-to-Left Nesting
 
@@ -51,9 +62,12 @@ Parentheses override the default nesting:
 ```
 [a(b, c)]        # Call a with two arguments: b and c
 [a(b(c, d))]     # Call b with c and d, pass result to a
+[a(b c, d)]      # Space-nesting inside parens: a(b(c), d)
 ```
 
 **Rule**: If a function takes 2+ arguments, parentheses are required.
+
+Space-separated nesting still applies inside parentheses: `[a(b c, d)]` means `a(b(c), d)`.
 
 ### Invalid Syntax
 
@@ -64,7 +78,7 @@ Parentheses override the default nesting:
 
 ### The Colon Operator (Context-Dependent)
 
-The colon `:` has two meanings based on context:
+The colon `:` has two meanings based on context. Whitespace around `:` is allowed and ignored.
 
 **Variable definition** (standalone):
 ```
@@ -76,6 +90,7 @@ The colon `:` has two meanings based on context:
 **Named argument** (after function name):
 ```
 [fcn param1:arg1]                    # Call fcn with named param
+[fcn param1: arg1]                   # Space after colon is allowed
 [fcn(param1:arg1, param2:arg2)]      # Multiple named params
 ```
 
@@ -87,6 +102,10 @@ Semicolon separates multiple statements within a directive:
 ```
 
 **Variable scope**: Local variables exist only within their enclosing `[...]` directive.
+
+### Reserved Words
+
+All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `now`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
 
 ### The Dot Operator: Current Note Reference
 
@@ -104,8 +123,9 @@ Semicolon separates multiple statements within a directive:
 - **Number**: Integer or decimal values
 - **String**: Text enclosed in double quotes
 - **Boolean**: Result of comparison functions (`true`/`false`)
-- **Date**: Date value (from `date` function or parsing)
-- **Time**: Time value (from `time` function)
+- **Datetime**: Combined date and time value (from `now` or `datetime()`)
+- **Date**: Date-only value (from `date` function or parsing)
+- **Time**: Time value with full precision including seconds/ms (from `time` function); supports same arithmetic as dates
 
 ### Composite Types
 
@@ -139,6 +159,10 @@ Notes have the following read/write properties:
 | `modified` | Date | Last modification timestamp |
 | `viewed` | Date | Last viewed timestamp |
 
+**Path character restrictions**: Paths are URL-safe only—alphanumeric characters, `-`, `_`, and `/` (for hierarchy). No spaces, brackets, or quotes.
+
+**Current note reference**: The dot operator `[.]` always refers to the note containing the directive, even when that note's content is displayed via `view` in another note.
+
 Example:
 ```
 [.path]                    # Read current note's path
@@ -149,6 +173,25 @@ Example:
 ---
 
 ## Deferred Execution
+
+### Auto-Propagation
+
+When a function receives a deferred value as input, it automatically returns a deferred result. This allows natural composition:
+
+```
+[iso8601 later date]       # Returns deferred string (iso8601 of future date)
+```
+
+The `iso8601` function sees a deferred date, so it returns a deferred string that will format the date when eventually evaluated.
+
+### Variable Capture
+
+Variables are captured at definition time. In a deferred expression, captured variables retain their values (which may themselves be deferred):
+
+```
+[x: later date; schedule(daily_at("9:00"), later[iso8601 x])]
+# x captures a deferred date; when schedule runs, x resolves to that day's date
+```
 
 ### `later` - Defer Next Token
 
@@ -164,16 +207,18 @@ Example:
 Square brackets after `later` create a deferred scope where nothing inside executes:
 
 ```
-[later[.append iso8601 date]]    # Entire expression is deferred
+[later[.append iso8601(date)]]    # Entire expression is deferred
 ```
 
 ### `run` - Force Evaluation in Deferred Scope
 
-Use `run` to evaluate something immediately within a deferred scope:
+Use `run` to evaluate the next token immediately within a deferred scope:
 
 ```
-[later[.append iso8601 run date]]    # date evaluates NOW; .append and iso8601 deferred
+[later[.append iso8601(run date)]]    # date evaluates NOW; .append and iso8601 deferred
 ```
+
+**Note**: `run` evaluates only the next token. `run a b` evaluates `a`; `b` remains deferred.
 
 ### `lambda[...]` - Lambda with Implicit Parameter
 
@@ -181,12 +226,14 @@ Creates a single-argument function where `i` is the implicit parameter:
 
 ```
 [lambda[gt(i.modified, add_days(date, -1))]]    # Lambda checking if modified after yesterday
-[lambda[parse_date i.path]]                     # Lambda extracting date from path
+[lambda[parse_date(i.path)]]                    # Lambda extracting date from path
 ```
+
+**Note**: The implicit parameter `i` is only available in this form.
 
 ### `lambda(params)[...]` - Lambda with Named Parameters
 
-Creates a multi-argument function with explicit parameter names:
+Creates a multi-argument function with explicit parameter names. The implicit `i` is not available in this form:
 
 ```
 [lambda(a, b)[gt(a.modified, b.modified)]]    # Compare two notes by modified date
@@ -198,15 +245,26 @@ Creates a multi-argument function with explicit parameter names:
 Schedules a one-time or recurring execution:
 
 ```
-[schedule(daily, later[.append iso8601 date])]
+[schedule(daily_at("9:00"), later[.append iso8601(date)])]
+[schedule(at(datetime(date, "14:30")), later[.append "Reminder!"])]
 ```
 
-- **Parameter 1**: Date/time rule (e.g., `daily`)
+- **Parameter 1**: Date/time rule (see scheduling rules below)
 - **Parameter 2**: A deferred reference; all nested `later` expressions resolve at execution time
 
 **Execution environment**: Hybrid - cloud function for reliability, device background job as offline fallback.
 
+**Schedule identity**: A schedule's identity is the hash of its directive text. This means:
+- Saving a note multiple times doesn't create duplicate schedules
+- Moving a directive to a different note preserves the same schedule
+- Copying a directive to another note shows an error ("schedule already exists")
+- Changing the directive text creates a new schedule (old one is cancelled)
+
 **On note deletion**: User is warned about active schedules; if confirmed, schedules are cancelled.
+
+**Retry policy**: Failed executions use exponential backoff (1m, 5m, 30m, etc.). Failures are visible in the schedule view.
+
+**Schedule view**: A global screen shows all active schedules across notes. Individual notes with schedules also show an indicator; tapping reveals that note's schedule status.
 
 ### `refresh` - Reactive Re-execution
 
@@ -216,7 +274,9 @@ Re-executes when underlying data changes:
 [refresh view(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)))]
 ```
 
-**Dependency tracking**: Automatic - the system tracks all note reads/finds in the expression and re-executes when any dependency changes.
+**Dependency tracking**: Static analysis at parse time identifies `find` patterns and note references. When any matching note changes, the directive re-executes on next view.
+
+**Re-execution timing**: Refresh directives re-execute when the note is viewed, not immediately when dependencies change.
 
 ---
 
@@ -250,14 +310,23 @@ Re-executes when underlying data changes:
 
 | Function | Description |
 |----------|-------------|
-| `date` | Returns current date |
-| `time` | Returns current time |
-| `iso8601(date)` | Formats date as "yyyy-MM-dd" |
+| `now` | Returns current datetime |
+| `date` | Returns current date (date-only, no time) |
+| `time` | Returns current time (full precision with seconds/ms) |
+| `datetime(date, time)` | Combines date and time into datetime |
+| `parse_datetime(string)` | Parses datetime from string (e.g., "2026-01-15 09:00") |
 | `parse_date(string)` | Parses a date from string |
+| `iso8601(date)` | Formats date as "yyyy-MM-dd" |
 | `add_days(date, n)` | Add n days to date (use negative n for past dates) |
 | `diff_days(d1, d2)` | Difference in days between dates |
 | `before(d1, d2)` | True if d1 is before d2 |
 | `after(d1, d2)` | True if d1 is after d2 |
+
+**Timezone**: All date/time functions use device local timezone by default. Use optional `tz:` parameter for different timezone:
+```
+[date(tz: "America/New_York")]
+[now(tz: "UTC")]
+```
 
 **Note**: Relative dates are derived via arithmetic, not constants:
 - Yesterday: `add_days(date, -1)`
@@ -268,17 +337,27 @@ Re-executes when underlying data changes:
 
 | Rule | Description |
 |------|-------------|
-| `daily` | Triggers once a day in the first hour |
+| `at(datetime)` | Triggers once at the specified datetime |
+| `daily_at(time)` | Triggers daily at the specified time |
 
 ### String Operations
 
-**`string(...)`** - Concatenation with special parsing:
+**`string(...)`** - Concatenation:
 
-Inside `string()`, tokens are concatenated instead of nested as function calls:
+Inside `string()`, tokens are concatenated. Function calls require explicit parentheses:
 
 ```
-[string("Hello " name ", today is " iso8601 date)]
-# Concatenates: "Hello " + name + ", today is " + (iso8601(date))
+[string("Hello " name ", today is " iso8601(date))]
+# Concatenates: "Hello " + name + ", today is " + iso8601(date)
+```
+
+**`qt`** - Quote character:
+
+Use `qt` to insert literal double-quote characters within strings:
+
+```
+[string("He said " qt "hello" qt " to me")]
+# Produces: He said "hello" to me
 ```
 
 ### List Operations
@@ -286,18 +365,26 @@ Inside `string()`, tokens are concatenated instead of nested as function calls:
 | Function | Description |
 |----------|-------------|
 | `list(a, b, c, ...)` | Create a list |
+| `first(list)` | Returns first item, or `undefined` if list is empty |
+| `sort(list, key:lambda, order:asc)` | Sort list; `key` extracts sort value; `order` is `asc` or `desc` |
+
+**Note**: `find` returns an empty list (not `undefined`) when no notes match. Use `maybe(first(find(...)))` to safely get a single note.
 
 ### Note Operations
 
 #### Note collection operations
 | Function                             | Description                                                         |
 |--------------------------------------|---------------------------------------------------------------------|
-| `new(path:p, content:c)`             | Create a new note; errors if path exists                            |
-| `maybe_new(path:p, maybe_content:c)` | Idempotently ensure note exists, only sets content if doesn't exist |
-| `find(path:pattern, where:lambda)`   | Search for notes                                                    |
+| `new(path:p, content:c)`             | Create a new note; returns the note; errors if path exists          |
+| `maybe_new(path:p, maybe_content:c)` | Idempotently ensure note exists; returns existing or new note       |
+| `find(path:pattern, where:lambda)`   | Search for notes; returns list (empty if none match)                |
 
 #### Single note operations
-| `.append(text)` | Append line to note |
+| Function | Description |
+|----------|-------------|
+| `.append(text)` | Append line to note; returns the note |
+
+**Note**: Currently only `.append` is supported for note mutation. Additional edit operations may be added later.
 
 ### Conditionals
 
@@ -324,17 +411,17 @@ Inside `string()`, tokens are concatenated instead of nested as function calls:
 Searches for notes matching criteria.
 
 **Parameters:**
-- `path`: A pattern to match against note paths
+- `path`: A string or pattern to match against note paths
 - `where`: A lambda predicate for filtering
 
 **Returns**: A list of matching notes (empty list if none found).
 
 **Examples:**
 ```
-[find path:"2026-01-15"]                           # Exact path match
-[find path:pattern(digit*4 "-" digit*2 "-" digit*2)]   # All ISO date paths
-[find where:lambda[after(i.modified, add_days(date, -1))]]     # Modified after yesterday
-[find(path:pattern("journal/" any*(1..)), where:lambda[before(i.created, add_days(date, -7))])]
+[find(path: "2026-01-15")]                                    # Exact path match
+[find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]        # All ISO date paths
+[find(where: lambda[after(i.modified, add_days(date, -1))])]  # Modified after yesterday
+[find(path: pattern("journal/" any*(1..)), where: lambda[before(i.created, add_days(date, -7))])]
 ```
 
 ---
@@ -392,7 +479,7 @@ Spaces outside quotes are token separators (not semantic).
 Creates a tappable button that executes an action:
 
 ```
-[button("Add today's date", later[.append iso8601 date])]
+[button("Add today's date", later[.append iso8601(date)])]
 ```
 
 - **Parameter 1**: Label text (string)
@@ -400,21 +487,27 @@ Creates a tappable button that executes an action:
 
 **Display**: The directive is replaced with a tappable button showing the label. A secondary button allows editing the directive.
 
+**Error handling**: When button action fails:
+1. Button changes color to orange to indicate error state
+2. A secondary button appears; tapping it shows the error details in a dialog
+
 ### `view` - Inline Note Content
 
 Dynamically fetches and inlines content from other notes:
 
 ```
-[view(find path:pattern(digit*4 "-" digit*2 "-" digit*2), order_key:lambda[parse_date i.path], order:desc)]
+[view(sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: desc))]
 ```
 
-- **Parameter 1**: List of notes to display
-- **order_key**: Named parameter; lambda returning the value to sort by
-- **order**: Named parameter; `asc` (ascending) or `desc` (descending)
+- **Parameter**: List of notes to display (use `sort()` if ordering is needed)
 
-**Display**: Notes' content is inlined as text, separated by dividers.
+**Display**: Notes' content is inlined as raw text, separated by dividers. No path headers are shown because the first line of each note serves as its title by convention.
+
+**Error handling**: If a viewed note's directive fails, the error appears inline where that directive would render; other content still displays.
 
 **Recursion**: Viewed notes' directives also execute, including nested `view` directives.
+
+**Circular dependency**: If a view creates a cycle (A views B views A), an error is shown inline.
 
 ---
 
@@ -438,11 +531,21 @@ Directives execute **on save**. Before save, pending directives show an indicato
 
 - **Default**: Show the computed result; directive is collapsed
 - **Expand**: A small button reveals/hides the original directive
-- **Cached**: Results are cached in the note alongside the original directive
+- **State persistence**: Collapsed/expanded state is saved and restored when the note is reloaded
+
+### Caching
+
+Results are cached using a hybrid approach:
+- Primary: Cached in Firestore alongside the note
+- Fallback: Local device cache for offline access
 
 ### Manual Re-execution
 
 For non-`refresh` directives, users can manually re-execute to update the cached result.
+
+### Directive Independence
+
+Each directive in a note executes independently. Directives cannot reference other directives' results within the same note. Use note properties to share state if needed.
 
 ---
 
@@ -450,7 +553,7 @@ For non-`refresh` directives, users can manually re-execute to update the cached
 
 ### Parse Errors
 
-Shown inline immediately (before save) where the directive appears.
+Shown inline when the cursor leaves the directive (on focus-out), before save.
 
 ### Execution Errors
 
@@ -465,8 +568,10 @@ A navigation button at the bottom lists execution errors across all notes.
 | Condition | Behavior |
 |-----------|----------|
 | `new` with existing path | Error: duplicate path |
-| Access `undefined` property | Error (except in boolean context) |
-| Network failure in `schedule` | Error displayed; schedule retried |
+| `schedule` directive copied to another note | Error: schedule already exists (same hash) |
+| Access `undefined` property | Error (except in boolean context—`undefined` is falsy) |
+| Circular `view` dependency | Error: cycle detected |
+| Network failure in `schedule` | Exponential backoff retry; failure visible in schedule view |
 
 ---
 
@@ -480,30 +585,49 @@ Sets the current note's path to "2026-01-01".
 
 ### Daily Date Append
 ```
-[schedule(daily, later[.append iso8601 date])]
+[schedule(daily_at("06:00"), later[.append iso8601(date)])]
 ```
-Every day, append the current date (formatted as ISO 8601) to the end of the note.
+Every day at 6 AM, append the current date (formatted as ISO 8601) to the end of the note.
 
 ### Daily Note Creation
 ```
-[date_str: iso8601 later date; schedule(daily, later[new(path:date_str, content:date_str)])]
+[schedule(daily_at("00:01"), later[
+  maybe_new(path: iso8601(date), maybe_content: string("# " iso8601(date)))
+])]
 ```
-Every day, create a new note with the path and content set to that day's ISO 8601 date.
+Every day just after midnight, ensure a note exists for that day's date.
+
+### One-Time Reminder
+```
+[schedule(at(datetime(add_days(date, 1), "09:00")), later[.append "Don't forget!"])]
+```
+Schedule a one-time reminder for 9 AM tomorrow.
 
 ### Dynamic Journal View
 ```
-[refresh view(find path:pattern(digit*4 "-" digit*2 "-" digit*2), order_key:lambda[parse_date i.path], order:desc)]
+[refresh view(sort(
+  find(path: pattern(digit*4 "-" digit*2 "-" digit*2)),
+  key: lambda[parse_date(i.path)],
+  order: desc
+))]
 ```
 Show all notes with ISO date paths, ordered most recent first. Refresh when any matching note changes.
 
 ### Quick Action Button
 ```
-[button("New Journal Entry", later[new(path:iso8601 date, content:string("# " iso8601 date))])]
+[button("New Journal Entry", later[new(path: iso8601(date), content: string("# " iso8601(date)))])]
 ```
 A button that creates a new journal note for today when tapped.
 
 ### Conditional Append
 ```
-[if(eq(.path, "inbox"), .append "Processed", .append "Skipped")]
+[if(eq(.path, "inbox"), .append("Processed"), .append("Skipped"))]
 ```
 Append "Processed" if this note's path is "inbox", otherwise append "Skipped".
+
+### Safe Single Note Lookup
+```
+[target: maybe(first(find(path: "inbox")));
+ if(target, target.append("New item"), .append("Inbox not found"))]
+```
+Find the inbox note and append to it, or show a message if not found.
