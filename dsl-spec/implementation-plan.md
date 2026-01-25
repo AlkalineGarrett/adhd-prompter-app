@@ -8,52 +8,70 @@ Detailed implementation plan for the TaskBrain DSL, based on the spec and implem
 
 ### 0.1 Package Structure
 
+All DSL files are in a flat package structure at `app/src/main/java/org/alkaline/taskbrain/dsl/`.
+
+**Core parsing & execution:**
 ```
-app/src/main/java/org/alkaline/taskbrain/dsl/
-├── lexer/
-│   ├── Lexer.kt              # Tokenizes input string
-│   ├── Token.kt              # Token data class
-│   └── TokenType.kt          # Enum of token types
-├── parser/
-│   ├── Parser.kt             # Recursive descent parser
-│   └── ast/
-│       ├── AstNode.kt        # Base AST node
-│       ├── Expression.kt     # Expression node types
-│       └── Directive.kt      # Top-level directive wrapper
-├── types/
-│   ├── DslValue.kt           # Sealed class for runtime values
-│   ├── DslType.kt            # Type enumeration
-│   └── Pattern.kt            # Pattern matching implementation
-├── executor/
-│   ├── Executor.kt           # AST interpreter
-│   ├── Environment.kt        # Variable scopes and bindings
-│   └── builtins/
-│       ├── BuiltinRegistry.kt
-│       ├── DateFunctions.kt
-│       ├── ArithmeticFunctions.kt
-│       ├── ComparisonFunctions.kt
-│       ├── StringFunctions.kt
-│       ├── ListFunctions.kt
-│       └── NoteFunctions.kt
-├── storage/
-│   ├── DirectiveResultRepository.kt
-│   └── ScheduleRepository.kt
-└── ui/
-    ├── DirectiveChip.kt      # Composable for directive display
-    ├── DirectiveRenderer.kt  # Renders execution results
-    └── ViewContentTracker.kt # Tracks editable view ranges
+├── Lexer.kt                  # Tokenizes input string
+├── Token.kt                  # Token data class with position
+├── TokenType.kt              # Enum of token types
+├── Parser.kt                 # Recursive descent parser
+├── Expression.kt             # AST node types + Directive wrapper
+├── Executor.kt               # AST interpreter
+├── Environment.kt            # Variable scopes and bindings
+├── DslValue.kt               # Runtime values with serialization
+```
+
+**Directive finding & segmentation:**
+```
+├── DirectiveFinder.kt        # Finds directives in note content
+├── DirectiveSegment.kt       # Segment types + DirectiveSegmenter
+├── DirectiveResult.kt        # Cached execution result model
+├── DirectiveResultRepository.kt  # Firestore storage for results
+```
+
+**UI components (in dsl/ package):**
+```
+├── DirectiveChip.kt          # Standalone chip for collapsed/expanded display
+├── DirectiveLineRenderer.kt  # Renders lines with computed results in dashed boxes
+├── DirectiveEditRow.kt       # Edit row with confirm/cancel for directive editing
+```
+
+**UI integration (in ui/currentnote/):**
+```
+├── ime/DirectiveAwareLineInput.kt  # Custom input handling for directive lines
+```
+
+**Future additions:**
+```
+├── ScheduleRepository.kt     # For Milestone 13
+├── builtins/                 # Builtin function modules (later milestones)
+│   ├── BuiltinRegistry.kt
+│   ├── DateFunctions.kt
+│   └── ...
+└── ViewContentTracker.kt     # For Milestone 9 (view)
 ```
 
 ### 0.2 Firestore Schema Additions
 
-**Subcollection: `notes/{noteId}/directiveResults/{directiveHash}`**
+**Subcollection: `notes/{noteId}/directiveResults/{directiveHash}`** ✅ IMPLEMENTED
 ```
 {
-  result: any,              // Serialized DslValue
-  resultType: string,       // Type discriminator for deserialization
+  result: {                 // Serialized DslValue (null if error)
+    type: string,           // "number" | "string" | ... (type discriminator)
+    value: any              // The actual value
+  } | null,
   executedAt: timestamp,
   error: string | null,
   collapsed: boolean
+}
+```
+
+**Firestore Rules Addition:**
+```javascript
+match /notes/{noteId}/directiveResults/{resultId} {
+  allow read, write: if request.auth != null &&
+    get(/databases/$(database)/documents/notes/$(noteId)).data.userId == request.auth.uid;
 }
 ```
 
@@ -80,65 +98,183 @@ app/src/main/java/org/alkaline/taskbrain/dsl/
 
 ---
 
-## Milestone 1: Literals
+## Milestone 1: Literals ✅ COMPLETE
 
 **Target:** `[1]`, `["hello"]`
 
-### Lexer
+### Lexer (Lexer.kt, Token.kt, TokenType.kt)
 | Token Type | Pattern |
 |------------|---------|
 | `LBRACKET` | `[` |
 | `RBRACKET` | `]` |
 | `NUMBER` | `[0-9]+(\.[0-9]+)?` |
 | `STRING` | `"[^"]*"` |
+| `EOF` | End of input |
 
 **Note:** Strings have no escape sequences (mobile-friendly). All characters between quotes are literal. Special characters are inserted via character constants (`qt`, `nl`, `tab`, `ret`) with the `string()` function in later milestones.
 
-### Parser
-- `parseDirective()` → expects `[`, expression, `]`
+**Implementation notes:**
+- `Token` includes `position: Int` for error reporting
+- `LexerException` includes position for pinpointing errors
+
+### Parser (Parser.kt)
+- `parseDirective()` → expects `[`, expression, `]`; captures source text
 - `parseExpression()` → for now, just `parseLiteral()`
 - `parseLiteral()` → NUMBER or STRING token
 
-### AST Nodes
+### AST Nodes (Expression.kt)
 ```kotlin
-sealed class Expression : AstNode
-data class NumberLiteral(val value: Double) : Expression()
-data class StringLiteral(val value: String) : Expression()
+sealed class Expression {
+    abstract val position: Int  // Source position for error reporting
+}
+data class NumberLiteral(val value: Double, override val position: Int) : Expression()
+data class StringLiteral(val value: String, override val position: Int) : Expression()
+
+// Wrapper for a complete directive with source text
+data class Directive(
+    val expression: Expression,
+    val sourceText: String,      // Full source including brackets
+    val startPosition: Int
+)
 ```
 
-### Executor
+### Executor (Executor.kt, Environment.kt)
 ```kotlin
-fun evaluate(expr: Expression, env: Environment): DslValue = when (expr) {
-    is NumberLiteral -> NumberVal(expr.value)
-    is StringLiteral -> StringVal(expr.value)
-    // ...
+class Executor {
+    fun execute(directive: Directive, env: Environment = Environment()): DslValue
+    fun evaluate(expr: Expression, env: Environment): DslValue = when (expr) {
+        is NumberLiteral -> NumberVal(expr.value)
+        is StringLiteral -> StringVal(expr.value)
+    }
+}
+
+class ExecutionException(message: String, val position: Int? = null) : RuntimeException
+
+// Environment with parent scoping (minimal for M1, expanded later)
+class Environment(private val parent: Environment? = null) {
+    fun define(name: String, value: DslValue)
+    fun get(name: String): DslValue?
+    fun child(): Environment
+    fun capture(): Environment
 }
 ```
 
-### Types
+### Types (DslValue.kt)
 ```kotlin
 sealed class DslValue {
-    data class NumberVal(val value: Double) : DslValue()
-    data class StringVal(val value: String) : DslValue()
-    // ... more to come
+    abstract val typeName: String           // "number", "string"
+    abstract fun toDisplayString(): String  // Human-readable output
+    fun serialize(): Map<String, Any?>      // For Firestore
+    companion object {
+        fun deserialize(map: Map<String, Any?>): DslValue
+    }
+}
+
+data class NumberVal(val value: Double) : DslValue() {
+    // Displays integers without decimal point (42 not 42.0)
+}
+data class StringVal(val value: String) : DslValue()
+```
+
+### Directive Finding (DirectiveFinder.kt)
+```kotlin
+object DirectiveFinder {
+    // Pattern matches [...] without nested brackets
+    private val DIRECTIVE_PATTERN = Regex("""\[[^\[\]]*\]""")
+
+    data class FoundDirective(
+        val sourceText: String,
+        val startOffset: Int,
+        val endOffset: Int
+    ) {
+        fun hash(): String  // SHA-256 of sourceText
+    }
+
+    fun findDirectives(content: String): List<FoundDirective>
+    fun containsDirectives(content: String): Boolean
+    fun executeDirective(sourceText: String): DirectiveResult
+    fun executeAllDirectives(content: String): Map<String, DirectiveResult>
+}
+```
+
+**Pattern decision:** Using `\[[^\[\]]*\]` instead of `\[.*?\]` to properly reject nested brackets until nesting is supported. This matches any `[...]` that doesn't contain `[` or `]` inside.
+
+### Line Segmentation (DirectiveSegment.kt)
+```kotlin
+sealed class DirectiveSegment {
+    abstract val range: IntRange
+
+    data class Text(val content: String, override val range: IntRange)
+    data class Directive(
+        val sourceText: String,
+        val hash: String,
+        val result: DirectiveResult?,
+        override val range: IntRange
+    ) {
+        val displayText: String  // Result value or source if not computed
+        val isComputed: Boolean
+    }
+}
+
+object DirectiveSegmenter {
+    fun segmentLine(content: String, results: Map<String, DirectiveResult>): List<DirectiveSegment>
+    fun hasDirectives(content: String): Boolean
+    fun hasComputedDirectives(content: String, results: Map<String, DirectiveResult>): Boolean
+    fun buildDisplayText(content: String, results: Map<String, DirectiveResult>): DisplayTextResult
 }
 ```
 
 ### UI Integration
-- Regex scan note content for `\[.*?\]` (non-greedy, handling nesting later)
-- Replace directive text with `DirectiveChip` composable
-- Chip shows result; tap to expand/collapse directive source
-- On save: parse, execute, store result in subcollection
 
-### Storage
-- `DirectiveResultRepository.saveResult(noteId, directiveHash, result)`
-- `DirectiveResultRepository.getResults(noteId): Map<String, DirectiveResult>`
+**Display Mode (DirectiveLineRenderer.kt):**
+- Lines with computed directives render in display mode (no text editing)
+- Directive results shown in dashed boxes (green border for success, red for error)
+- Tapping a directive expands it for editing
+
+**Edit Mode (DirectiveEditRow.kt):**
+- Appears below the line when directive is tapped
+- Shows directive source text in editable field
+- Confirm (checkmark) and Cancel (X) buttons
+- Auto-focuses on show
+
+**Integration points:**
+- `DirectiveAwareLineInput.kt` - Custom input handling for lines with directives
+- `HangingIndentEditor.kt` - Switches between normal editing and directive display mode
+- `LineView.kt` - Detects directives and routes to appropriate renderer
+- `CurrentNoteViewModel.kt` - Manages directive results state, executes on save
+
+### Storage (DirectiveResult.kt, DirectiveResultRepository.kt)
+```kotlin
+data class DirectiveResult(
+    val result: Map<String, Any?>? = null,  // Serialized DslValue
+    val executedAt: Timestamp? = null,
+    val error: String? = null,
+    val collapsed: Boolean = true
+) {
+    fun toValue(): DslValue?
+    companion object {
+        fun success(value: DslValue, collapsed: Boolean = true): DirectiveResult
+        fun failure(errorMessage: String, collapsed: Boolean = true): DirectiveResult
+        fun hashDirective(sourceText: String): String  // SHA-256
+    }
+}
+
+class DirectiveResultRepository(db: FirebaseFirestore) {
+    suspend fun saveResult(noteId: String, directiveHash: String, result: DirectiveResult): Result<Unit>
+    suspend fun getResults(noteId: String): Result<Map<String, DirectiveResult>>
+    suspend fun getResult(noteId: String, directiveHash: String): Result<DirectiveResult?>
+    suspend fun updateCollapsed(noteId: String, directiveHash: String, collapsed: Boolean): Result<Unit>
+    suspend fun deleteAllResults(noteId: String): Result<Unit>
+}
+```
 
 ### Tests
-- Lexer: tokenizes literals correctly
-- Parser: produces correct AST for `[1]`, `["hello"]`
-- Executor: evaluates to correct values
-- Round-trip: parse → execute → serialize → deserialize
+- `LexerTest.kt` - tokenizes literals, whitespace handling, error cases
+- `ParserTest.kt` - produces correct AST, error handling
+- `ExecutorTest.kt` - evaluates to correct values
+- `DirectiveFinderTest.kt` - finds directives in content, hash calculation
+- `DirectiveResultTest.kt` - serialization/deserialization round-trip
+- `DirectiveSegmenterTest.kt` - line segmentation, display text building
 
 ---
 
