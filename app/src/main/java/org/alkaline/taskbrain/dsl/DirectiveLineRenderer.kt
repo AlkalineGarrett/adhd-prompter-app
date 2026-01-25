@@ -102,10 +102,10 @@ private fun DirectiveResultBox(
     textStyle: TextStyle,
     onTap: () -> Unit
 ) {
-    val boxColor = if (hasError) ErrorBoxColor else ComputedBoxColor
+    val boxColor = if (hasError) DirectiveColors.ErrorBorder else DirectiveColors.SuccessBorder
 
     val textColor = when {
-        hasError -> ErrorTextColor
+        hasError -> DirectiveColors.ErrorText
         else -> textStyle.color
     }
 
@@ -143,7 +143,3 @@ private fun Modifier.dashedBorder(color: Color): Modifier = this.drawBehind {
     )
 }
 
-// Colors for directive boxes
-private val ComputedBoxColor = Color(0xFF4CAF50)  // Green
-private val ErrorBoxColor = Color(0xFFF44336)     // Red
-private val ErrorTextColor = Color(0xFFD32F2F)    // Dark red

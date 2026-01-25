@@ -24,8 +24,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
@@ -45,11 +45,6 @@ private val IndicatorSize = 16.dp
 private val IndicatorEndPadding = 4.dp
 private const val FontSizeScale = 0.9f
 
-// Colors
-private val EditRowBackground = Color(0xFFF5F5F5)
-private val IndicatorColor = Color(0xFF9E9E9E)
-private val ConfirmColor = Color(0xFF4CAF50)
-private val CancelColor = Color(0xFF757575)
 
 /**
  * An editable row for editing a directive's source text.
@@ -85,7 +80,7 @@ fun DirectiveEditRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .background(EditRowBackground)
+            .background(DirectiveColors.EditRowBackground)
             .padding(start = RowStartPadding, end = RowEndPadding, top = RowVerticalPadding, bottom = RowVerticalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -96,48 +91,15 @@ fun DirectiveEditRow(
         Box(
             modifier = Modifier
                 .weight(1f)
-                // Consume pointer events in Initial pass to prevent parent gesture handler from processing
                 .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            // Consume in Initial pass - parent checks consumption in Main pass
-                            val down = awaitPointerEvent(PointerEventPass.Initial)
-                            val downPos = down.changes.firstOrNull()?.position ?: continue
-                            down.changes.forEach { it.consume() }
-
-                            // Track until release
-                            var lastPos = downPos
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                val change = event.changes.firstOrNull() ?: break
-                                change.consume()
-
-                                if (!change.pressed) {
-                                    // Pointer released - handle tap
-                                    val textFieldPaddingPx = TextFieldHorizontalPadding.toPx()
-                                    focusRequester.requestFocus()
-                                    textLayoutResult?.let { layout ->
-                                        // Subtract TextField internal padding (pointer coords are relative to the Box)
-                                        val localX = lastPos.x - textFieldPaddingPx
-                                        if (localX >= 0) {
-                                            val localY = layout.size.height / 2f
-                                            val cursorOffset = layout.getOffsetForPosition(Offset(localX, localY))
-                                            textFieldValue = textFieldValue.copy(
-                                                selection = TextRange(cursorOffset)
-                                            )
-                                        } else {
-                                            // Tap was before text area - position at start
-                                            textFieldValue = textFieldValue.copy(
-                                                selection = TextRange(0)
-                                            )
-                                        }
-                                    }
-                                    break
-                                }
-                                lastPos = change.position
-                            }
+                    handleTextFieldPointerInput(
+                        paddingPx = TextFieldHorizontalPadding.toPx(),
+                        getTextLayout = { textLayoutResult },
+                        onTap = { cursorOffset ->
+                            focusRequester.requestFocus()
+                            textFieldValue = textFieldValue.copy(selection = TextRange(cursorOffset))
                         }
-                    }
+                    )
                 }
         ) {
             BasicTextField(
@@ -162,7 +124,7 @@ fun DirectiveEditRow(
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = "Confirm",
-                tint = ConfirmColor,
+                tint = DirectiveColors.SuccessBorder,
                 modifier = Modifier.size(IconSize)
             )
         }
@@ -175,7 +137,7 @@ fun DirectiveEditRow(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "Cancel",
-                tint = CancelColor,
+                tint = DirectiveColors.CancelButton,
                 modifier = Modifier.size(IconSize)
             )
         }
@@ -198,7 +160,7 @@ private fun DirectiveEditIndicator() {
 
         // Vertical line from top
         drawLine(
-            color = IndicatorColor,
+            color = DirectiveColors.EditIndicator,
             start = Offset(horizontalPosition, 0f),
             end = Offset(horizontalPosition, verticalMidpoint),
             strokeWidth = strokeWidth
@@ -206,10 +168,58 @@ private fun DirectiveEditIndicator() {
 
         // Horizontal line to the right
         drawLine(
-            color = IndicatorColor,
+            color = DirectiveColors.EditIndicator,
             start = Offset(horizontalPosition, verticalMidpoint),
             end = Offset(size.width, verticalMidpoint),
             strokeWidth = strokeWidth
         )
+    }
+}
+
+/**
+ * Handles pointer input for the text field, consuming events to prevent parent handlers
+ * from processing and positioning the cursor on tap.
+ *
+ * @param paddingPx Horizontal padding of the text field (to offset tap position)
+ * @param getTextLayout Provides the current TextLayoutResult for cursor positioning
+ * @param onTap Called with the cursor offset when a tap is detected
+ */
+private suspend fun PointerInputScope.handleTextFieldPointerInput(
+    paddingPx: Float,
+    getTextLayout: () -> TextLayoutResult?,
+    onTap: (cursorOffset: Int) -> Unit
+) {
+    awaitPointerEventScope {
+        while (true) {
+            // Consume in Initial pass - parent checks consumption in Main pass
+            val down = awaitPointerEvent(PointerEventPass.Initial)
+            val downPos = down.changes.firstOrNull()?.position ?: continue
+            down.changes.forEach { it.consume() }
+
+            // Track pointer until release
+            var lastPos = downPos
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull() ?: break
+                change.consume()
+
+                if (!change.pressed) {
+                    // Pointer released - calculate cursor position
+                    val layout = getTextLayout()
+                    if (layout != null) {
+                        val localX = lastPos.x - paddingPx
+                        val cursorOffset = if (localX >= 0) {
+                            val localY = layout.size.height / 2f
+                            layout.getOffsetForPosition(Offset(localX, localY))
+                        } else {
+                            0 // Tap was before text area
+                        }
+                        onTap(cursorOffset)
+                    }
+                    break
+                }
+                lastPos = change.position
+            }
+        }
     }
 }

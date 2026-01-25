@@ -743,13 +743,16 @@ class EditorController(
             return
         }
 
-        // Clear selection on any content update from IME
-        // The old selection-replacement logic was causing bugs (like "Jg" → "Hg")
-        // because it tried to extract inserted text and could corrupt content
-        state.clearSelection()
-
         // Check if content actually changed before updating
         val contentChanged = line.content != newContent
+
+        // Only clear selection if content actually changed
+        // This prevents IME sync (finishComposingText) from clearing gutter selections
+        // The old selection-replacement logic was causing bugs (like "Jg" → "Hg")
+        // because it tried to extract inserted text and could corrupt content
+        if (contentChanged) {
+            state.clearSelection()
+        }
 
         // Normal content update
         line.updateContent(newContent, contentCursor)

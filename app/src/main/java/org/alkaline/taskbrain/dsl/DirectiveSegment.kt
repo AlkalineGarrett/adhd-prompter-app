@@ -27,11 +27,13 @@ sealed class DirectiveSegment {
     ) : DirectiveSegment() {
         /** Display text - result value if computed, source if not */
         val displayText: String
-            get() = result?.toValue()?.toDisplayString() ?: sourceText
+            get() = result?.let {
+                if (it.isComputed) it.toValue()?.toDisplayString() ?: sourceText else sourceText
+            } ?: sourceText
 
         /** Whether this directive has been computed */
         val isComputed: Boolean
-            get() = result != null && result.error == null
+            get() = result?.isComputed ?: false
     }
 }
 
@@ -114,8 +116,7 @@ object DirectiveSegmenter {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
             val key = DirectiveFinder.directiveKey(lineIndex, directive.startOffset)
-            val result = results[key]
-            result != null && result.error == null
+            results[key]?.isComputed ?: false
         }
     }
 

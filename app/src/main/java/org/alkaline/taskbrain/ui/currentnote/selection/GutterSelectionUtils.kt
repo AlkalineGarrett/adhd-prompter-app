@@ -26,7 +26,9 @@ class GutterSelectionState {
      * @param state The editor state to update
      */
     fun selectLine(lineIndex: Int, state: EditorState) {
-        if (lineIndex !in state.lines.indices) return
+        if (lineIndex !in state.lines.indices) {
+            return
+        }
 
         val lineStart = state.getLineStartOffset(lineIndex)
         var lineEnd = lineStart + state.lines[lineIndex].text.length
@@ -50,7 +52,9 @@ class GutterSelectionState {
      * @param state The editor state to update
      */
     fun extendSelectionToLine(lineIndex: Int, state: EditorState) {
-        if (dragStartLine < 0 || lineIndex !in state.lines.indices) return
+        if (dragStartLine < 0 || lineIndex !in state.lines.indices) {
+            return
+        }
 
         val startLine = minOf(dragStartLine, lineIndex)
         val endLine = maxOf(dragStartLine, lineIndex)

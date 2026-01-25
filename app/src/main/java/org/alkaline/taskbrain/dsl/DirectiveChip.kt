@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -39,13 +38,13 @@ fun DirectiveChip(
     modifier: Modifier = Modifier
 ) {
     val backgroundColor = when {
-        result.error != null -> ErrorChipBackground
-        else -> SuccessChipBackground
+        result.error != null -> DirectiveColors.ErrorBackground
+        else -> DirectiveColors.SuccessBackground
     }
 
     val contentColor = when {
-        result.error != null -> ErrorChipContent
-        else -> SuccessChipContent
+        result.error != null -> DirectiveColors.ErrorContent
+        else -> DirectiveColors.SuccessContent
     }
 
     Column(
@@ -94,13 +93,7 @@ fun DirectiveChip(
     }
 }
 
-private fun formatDisplayText(result: DirectiveResult): String {
-    return when {
-        result.error != null -> "Error: ${result.error}"
-        result.result != null -> result.toValue()?.toDisplayString() ?: "null"
-        else -> "..."
-    }
-}
+private fun formatDisplayText(result: DirectiveResult): String = result.toDisplayString()
 
 // Chip styling constants
 private val ChipCornerRadius = 6.dp
@@ -109,9 +102,3 @@ private val ChipVerticalPadding = 4.dp
 private val ChipTextSize = 14.sp
 private val ChipSourceTextSize = 12.sp
 private val ChipIconSize = 16.dp
-
-// Colors
-private val SuccessChipBackground = Color(0xFFE8F5E9) // Light green
-private val SuccessChipContent = Color(0xFF2E7D32) // Dark green
-private val ErrorChipBackground = Color(0xFFFFEBEE) // Light red
-private val ErrorChipContent = Color(0xFFC62828) // Dark red

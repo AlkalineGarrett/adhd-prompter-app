@@ -28,6 +28,23 @@ data class DirectiveResult(
         }
     }
 
+    /**
+     * Get the display string for this result.
+     * @param fallback Text to display if result has no value (not an error, just not computed)
+     * @return Error message, computed value, or fallback
+     */
+    fun toDisplayString(fallback: String = "..."): String {
+        return when {
+            error != null -> "Error: $error"
+            result != null -> toValue()?.toDisplayString() ?: "null"
+            else -> fallback
+        }
+    }
+
+    /** True if this result has a computed value (not an error, not pending) */
+    val isComputed: Boolean
+        get() = result != null && error == null
+
     companion object {
         /**
          * Create a DirectiveResult from a successful execution.

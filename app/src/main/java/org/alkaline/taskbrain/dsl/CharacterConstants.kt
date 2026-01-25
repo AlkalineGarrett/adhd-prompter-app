@@ -11,53 +11,21 @@ package org.alkaline.taskbrain.dsl
 object CharacterConstants {
 
     fun register(registry: BuiltinRegistry) {
-        registry.register(qtFunction)
-        registry.register(nlFunction)
-        registry.register(tabFunction)
-        registry.register(retFunction)
+        charConstants.forEach { registry.register(it) }
     }
 
-    /**
-     * qt - Returns a double quote character.
-     * Example: [qt] -> "
-     */
-    private val qtFunction = BuiltinFunction("qt") { args, _ ->
+    /** Creates a zero-arg function that returns a constant string value. */
+    private fun charConstant(name: String, value: String) = BuiltinFunction(name) { args, _ ->
         if (args.isNotEmpty()) {
-            throw ExecutionException("'qt' takes no arguments, got ${args.size}")
+            throw ExecutionException("'$name' takes no arguments, got ${args.size}")
         }
-        StringVal("\"")
+        StringVal(value)
     }
 
-    /**
-     * nl - Returns a newline character.
-     * Example: [nl] -> \n
-     */
-    private val nlFunction = BuiltinFunction("nl") { args, _ ->
-        if (args.isNotEmpty()) {
-            throw ExecutionException("'nl' takes no arguments, got ${args.size}")
-        }
-        StringVal("\n")
-    }
-
-    /**
-     * tab - Returns a tab character.
-     * Example: [tab] -> \t
-     */
-    private val tabFunction = BuiltinFunction("tab") { args, _ ->
-        if (args.isNotEmpty()) {
-            throw ExecutionException("'tab' takes no arguments, got ${args.size}")
-        }
-        StringVal("\t")
-    }
-
-    /**
-     * ret - Returns a carriage return character.
-     * Example: [ret] -> \r
-     */
-    private val retFunction = BuiltinFunction("ret") { args, _ ->
-        if (args.isNotEmpty()) {
-            throw ExecutionException("'ret' takes no arguments, got ${args.size}")
-        }
-        StringVal("\r")
-    }
+    private val charConstants = listOf(
+        charConstant("qt", "\""),   // Double quote
+        charConstant("nl", "\n"),   // Newline
+        charConstant("tab", "\t"),  // Tab
+        charConstant("ret", "\r")   // Carriage return
+    )
 }
