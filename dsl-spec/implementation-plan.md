@@ -32,6 +32,7 @@ All DSL files are in a flat package structure at `app/src/main/java/org/alkaline
 
 **UI components (in dsl/ package):**
 ```
+├── DirectiveColors.kt        # Centralized color definitions for directive UI
 ├── DirectiveChip.kt          # Standalone chip for collapsed/expanded display
 ├── DirectiveLineRenderer.kt  # Renders lines with computed results in dashed boxes
 ├── DirectiveEditRow.kt       # Edit row with confirm/cancel for directive editing
@@ -243,6 +244,27 @@ object DirectiveSegmenter {
 - `LineView.kt` - Detects directives and routes to appropriate renderer
 - `CurrentNoteViewModel.kt` - Manages directive results state, executes on save
 
+### UI Colors (DirectiveColors.kt)
+```kotlin
+object DirectiveColors {
+    // Success state (computed directives)
+    val SuccessBackground = Color(0xFFE8F5E9)
+    val SuccessContent = Color(0xFF2E7D32)
+    val SuccessBorder = Color(0xFF4CAF50)
+
+    // Error state
+    val ErrorBackground = Color(0xFFFFEBEE)
+    val ErrorContent = Color(0xFFC62828)
+    val ErrorBorder = Color(0xFFF44336)
+    val ErrorText = Color(0xFFD32F2F)
+
+    // Edit row
+    val EditRowBackground = Color(0xFFF5F5F5)
+    val EditIndicator = Color(0xFF9E9E9E)
+    val CancelButton = Color(0xFF757575)
+}
+```
+
 ### Storage (DirectiveResult.kt, DirectiveResultRepository.kt)
 ```kotlin
 data class DirectiveResult(
@@ -252,6 +274,11 @@ data class DirectiveResult(
     val collapsed: Boolean = true
 ) {
     fun toValue(): DslValue?
+
+    // Display helpers
+    fun toDisplayString(fallback: String = "..."): String  // Returns formatted result or error
+    val isComputed: Boolean  // True if result != null && error == null
+
     companion object {
         fun success(value: DslValue, collapsed: Boolean = true): DirectiveResult
         fun failure(errorMessage: String, collapsed: Boolean = true): DirectiveResult
@@ -310,12 +337,21 @@ data class IdentifierExpr(val name: String) : Expression()  // For variables lat
 ```
 
 ### Builtins: CharacterConstants.kt
-Character constants for mobile-friendly string building (no escape sequences):
+Character constants for mobile-friendly string building (no escape sequences).
+Defines reusable constants for special characters used across the DSL:
 ```kotlin
-"qt" to { args, env -> StringVal("\"") }   // Quote character
-"nl" to { args, env -> StringVal("\n") }   // Newline
-"tab" to { args, env -> StringVal("\t") }  // Tab
-"ret" to { args, env -> StringVal("\r") }  // Carriage return
+object CharacterConstants {
+    const val QUOTE = "\""
+    const val NEWLINE = "\n"
+    const val TAB = "\t"
+    const val CARRIAGE_RETURN = "\r"
+}
+
+// Builtin functions:
+"qt" to { args, env -> StringVal(CharacterConstants.QUOTE) }
+"nl" to { args, env -> StringVal(CharacterConstants.NEWLINE) }
+"tab" to { args, env -> StringVal(CharacterConstants.TAB) }
+"ret" to { args, env -> StringVal(CharacterConstants.CARRIAGE_RETURN) }
 ```
 
 ### Types Additions
@@ -1139,9 +1175,16 @@ suspend fun updateNoteContent(noteId: String, content: String, startLine: Int)
 - Handle editable view content tracking
 - Sync viewed content on save
 
+### LineGutter (rendering/LineGutter.kt)
+- Computes gutter-specific layouts via `computeGutterLineLayouts()` that account for expanded directive edit row gaps
+- Uses `GutterLayoutData` class to pass layout computation parameters to gesture handlers
+- Gesture handling uses computed layouts for accurate hit testing regardless of directive expansion state
+
 ### EditorController
 - Awareness of directive boundaries for undo/redo
 - Track view content ranges
+- **Selection preservation during IME sync**: `updateLineContent()` only clears selection when content actually changes.
+  This prevents IME's `finishComposingText()` from clearing gutter selections during drag operations.
 
 ### NoteLineTracker
 - May need awareness of directive vs. regular content
