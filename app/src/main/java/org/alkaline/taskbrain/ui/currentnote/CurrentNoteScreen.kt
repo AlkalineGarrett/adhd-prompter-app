@@ -522,11 +522,21 @@ fun CurrentNoteScreen(
             canUndo = canUndo && !isAlarmOperationPending,
             canRedo = canRedo && !isAlarmOperationPending,
             onUndoClick = {
+                // Capture expanded directive positions before undo
+                val expandedPositions = currentNoteViewModel.getExpandedDirectivePositions(userContent)
+
                 controller.commitUndoState()
                 val snapshot = controller.undo()
                 if (snapshot != null) {
                     userContent = editorState.text
                     isSaved = false
+
+                    // Re-execute directives on restored content
+                    currentNoteViewModel.executeDirectivesLive(userContent)
+
+                    // Restore expanded state for directives that still exist at the same positions
+                    currentNoteViewModel.restoreExpandedDirectivesByPosition(userContent, expandedPositions)
+
                     // If this snapshot created an alarm, delete it permanently
                     snapshot.createdAlarm?.let { alarm ->
                         currentNoteViewModel.deleteAlarmPermanently(alarm.id)
@@ -534,11 +544,21 @@ fun CurrentNoteScreen(
                 }
             },
             onRedoClick = {
+                // Capture expanded directive positions before redo
+                val expandedPositions = currentNoteViewModel.getExpandedDirectivePositions(userContent)
+
                 controller.commitUndoState()
                 val snapshot = controller.redo()
                 if (snapshot != null) {
                     userContent = editorState.text
                     isSaved = false
+
+                    // Re-execute directives on restored content
+                    currentNoteViewModel.executeDirectivesLive(userContent)
+
+                    // Restore expanded state for directives that still exist at the same positions
+                    currentNoteViewModel.restoreExpandedDirectivesByPosition(userContent, expandedPositions)
+
                     // If the undone snapshot had an alarm, recreate it
                     snapshot.createdAlarm?.let { alarm ->
                         currentNoteViewModel.recreateAlarm(
@@ -594,25 +614,44 @@ fun CurrentNoteScreen(
                     currentNoteViewModel.toggleDirectiveCollapsed(hash, sourceText)
                 },
                 onDirectiveEditConfirm = { lineIndex, hash, sourceText, newText ->
-                    // Replace source text in content and collapse
-                    if (sourceText != newText) {
-                        val newContent = textFieldValue.text.replace(sourceText, newText)
-                        updateTextFieldValue(TextFieldValue(newContent, textFieldValue.selection))
+                    // Find directive position in line content before any modifications
+                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                    val startOffset = lineContent.indexOf(sourceText)
+
+                    if (sourceText != newText && startOffset >= 0) {
+                        val endOffset = startOffset + sourceText.length
+
+                        // Use controller for proper undo handling
+                        controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
+
+                        // Sync userContent with EditorState
+                        userContent = editorState.text
                         isSaved = false
-                        // Execute the edited directive immediately
-                        currentNoteViewModel.executeDirectivesLive(newContent)
+
+                        // Re-execute directives
+                        currentNoteViewModel.executeDirectivesLive(userContent)
+
+                        // Position cursor at end of the new directive text
+                        val cursorPos = startOffset + newText.length
+                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
+                    } else if (startOffset >= 0) {
+                        // No change - position cursor at end of original directive
+                        val cursorPos = startOffset + sourceText.length
+                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
                     }
+
+                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
+                },
+                onDirectiveEditCancel = { lineIndex, hash, sourceText ->
                     currentNoteViewModel.toggleDirectiveCollapsed(hash)
 
-                    // Focus next line after editing (current line is display-only due to directive)
-                    // Try to find the next line without directives, or focus the line after current
-                    val nextLineIndex = (lineIndex + 1).coerceAtMost(editorState.lines.lastIndex)
-                    if (nextLineIndex < editorState.lines.size) {
-                        controller.setCursor(nextLineIndex, 0)
+                    // Position cursor at end of the directive
+                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                    val startOffset = lineContent.indexOf(sourceText)
+                    if (startOffset >= 0) {
+                        val cursorPos = startOffset + sourceText.length
+                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
                     }
-                },
-                onDirectiveEditCancel = { hash ->
-                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
                 },
                 modifier = Modifier.weight(1f)
             )

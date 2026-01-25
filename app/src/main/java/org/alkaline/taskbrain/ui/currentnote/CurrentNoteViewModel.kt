@@ -431,30 +431,36 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch {
-            val currentResults = _directiveResults.value ?: emptyMap()
             val foundDirectives = DirectiveFinder.findDirectives(content)
 
-            // Find directives that don't have results yet
-            val missingHashes = foundDirectives
-                .map { it.hash() }
-                .filter { hash -> currentResults[hash] == null }
+            // Check which directives need execution (don't have results yet)
+            val currentResults = _directiveResults.value ?: emptyMap()
+            val missingDirectives = foundDirectives.filter { found ->
+                currentResults[found.hash()] == null
+            }
 
-            if (missingHashes.isEmpty()) {
+            if (missingDirectives.isEmpty()) {
                 return@launch
             }
 
-            // Execute only the missing directives
-            val newResults = currentResults.toMutableMap()
-            for (found in foundDirectives) {
-                val hash = found.hash()
-                if (currentResults[hash] == null) {
-                    val result = DirectiveFinder.executeDirective(found.sourceText)
-                    newResults[hash] = result
+            // Execute the missing directives
+            val executedResults = missingDirectives.associate { found ->
+                found.hash() to DirectiveFinder.executeDirective(found.sourceText)
+            }
+
+            // Merge new results into CURRENT state (not the captured snapshot)
+            // This avoids overwriting changes made by toggleDirectiveCollapsed while
+            // this coroutine was running (race condition fix)
+            val latestResults = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+            for ((hash, result) in executedResults) {
+                // Only add if still missing (another coroutine might have added it)
+                if (latestResults[hash] == null) {
+                    latestResults[hash] = result
                 }
             }
 
-            _directiveResults.value = newResults
-            Log.d(TAG, "Live executed ${missingHashes.size} directives")
+            _directiveResults.value = latestResults
+            Log.d(TAG, "Live executed ${executedResults.size} directives")
         }
     }
 
@@ -469,13 +475,13 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch {
-            val currentResults = _directiveResults.value ?: emptyMap()
             val freshResults = DirectiveFinder.executeAllDirectives(content)
 
-            // Merge fresh results with existing collapsed state
+            // Merge fresh results with CURRENT collapsed state (read at merge time to avoid race)
+            // This ensures we don't overwrite collapsed state changes made while executing
             val mergedResults = freshResults.mapValues { (hash, result) ->
-                val existingCollapsed = currentResults[hash]?.collapsed ?: true
-                result.copy(collapsed = existingCollapsed)
+                val latestCollapsed = _directiveResults.value?.get(hash)?.collapsed ?: true
+                result.copy(collapsed = latestCollapsed)
             }
 
             // Update local state
@@ -573,6 +579,63 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             _directiveResults.value = updated
         }
         // Firestore sync happens on save via executeAndStoreDirectives
+    }
+
+    /**
+     * A position identifier for a directive: line index and start offset within line content.
+     */
+    data class DirectivePosition(val lineIndex: Int, val startOffset: Int)
+
+    /**
+     * Gets the positions of all currently expanded directive edit rows.
+     * Used before undo/redo to preserve expanded state by position.
+     */
+    fun getExpandedDirectivePositions(content: String): Set<DirectivePosition> {
+        val current = _directiveResults.value ?: return emptySet()
+        val expandedHashes = current.filter { !it.value.collapsed }.keys
+        if (expandedHashes.isEmpty()) return emptySet()
+
+        val positions = mutableSetOf<DirectivePosition>()
+        content.lines().forEachIndexed { lineIndex, lineContent ->
+            val directives = DirectiveFinder.findDirectives(lineContent)
+            for (directive in directives) {
+                if (directive.hash() in expandedHashes) {
+                    positions.add(DirectivePosition(lineIndex, directive.startOffset))
+                }
+            }
+        }
+        return positions
+    }
+
+    /**
+     * Restores expanded state for directives at the given positions.
+     * Called after undo/redo to preserve edit row state for directives that still exist.
+     * Directives that no longer exist at those positions will not be expanded.
+     */
+    fun restoreExpandedDirectivesByPosition(content: String, positions: Set<DirectivePosition>) {
+        if (positions.isEmpty()) return
+
+        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+
+        content.lines().forEachIndexed { lineIndex, lineContent ->
+            val directives = DirectiveFinder.findDirectives(lineContent)
+            for (directive in directives) {
+                val pos = DirectivePosition(lineIndex, directive.startOffset)
+                if (pos in positions) {
+                    val hash = directive.hash()
+                    val existing = current[hash]
+                    if (existing != null) {
+                        current[hash] = existing.copy(collapsed = false)
+                    } else {
+                        // Execute the directive and set it to expanded
+                        val result = DirectiveFinder.executeDirective(directive.sourceText)
+                        current[hash] = result.copy(collapsed = false)
+                    }
+                }
+            }
+        }
+
+        _directiveResults.value = current
     }
 
     // endregion

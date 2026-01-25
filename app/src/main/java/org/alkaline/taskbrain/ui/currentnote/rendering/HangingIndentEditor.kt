@@ -10,6 +10,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -153,7 +154,7 @@ fun HangingIndentEditor(
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
-    onDirectiveEditCancel: ((directiveHash: String) -> Unit)? = null,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -254,7 +255,7 @@ private fun EditorLayout(
     directiveResults: Map<String, DirectiveResult>,
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -309,7 +310,7 @@ private fun EditorRow(
     directiveResults: Map<String, DirectiveResult>,
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?
+    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         if (showGutter) {
@@ -447,7 +448,7 @@ private fun EditorContent(
     directiveResults: Map<String, DirectiveResult>,
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -492,16 +493,19 @@ private fun EditorContent(
                     val hash = found.hash()
                     val result = directiveResults[hash]
                     if (result != null && !result.collapsed) {
-                        DirectiveEditRow(
-                            initialText = found.sourceText,
-                            textStyle = textStyle,
-                            onConfirm = { newText ->
-                                onDirectiveEditConfirm?.invoke(index, hash, found.sourceText, newText)
-                            },
-                            onCancel = {
-                                onDirectiveEditCancel?.invoke(hash)
-                            }
-                        )
+                        // Key on hash so component recreates when directive text changes (e.g., after undo)
+                        key(hash) {
+                            DirectiveEditRow(
+                                initialText = found.sourceText,
+                                textStyle = textStyle,
+                                onConfirm = { newText ->
+                                    onDirectiveEditConfirm?.invoke(index, hash, found.sourceText, newText)
+                                },
+                                onCancel = {
+                                    onDirectiveEditCancel?.invoke(index, hash, found.sourceText)
+                                }
+                            )
+                        }
                     }
                 }
             }

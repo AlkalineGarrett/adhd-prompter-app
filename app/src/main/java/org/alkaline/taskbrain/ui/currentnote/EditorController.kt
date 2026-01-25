@@ -29,6 +29,7 @@ enum class OperationType {
     CHECKBOX_TOGGLE,  // Gutter checkbox toggle - same as COMMAND_CHECKBOX
     ALARM_SYMBOL,     // Alarm symbol insertion - commits pending, captures state
     MOVE_LINES,       // Consecutive moves of same lines are grouped
+    DIRECTIVE_EDIT,   // Confirming directive edit row - always separate undo step
 }
 
 /**
@@ -198,6 +199,10 @@ class EditorController(
             OperationType.MOVE_LINES -> {
                 // Move lines has its own undo handling via recordMoveCommand
             }
+            OperationType.DIRECTIVE_EDIT -> {
+                undoManager.commitPendingUndoState(state)
+                undoManager.captureStateBeforeChange(state)
+            }
         }
     }
 
@@ -215,6 +220,9 @@ class EditorController(
             }
             OperationType.MOVE_LINES -> {
                 // Move lines has its own undo handling via recordMoveCommand/updateMoveRange
+            }
+            OperationType.DIRECTIVE_EDIT -> {
+                undoManager.beginEditingLine(state, state.focusedLineIndex)
             }
         }
     }
@@ -306,6 +314,34 @@ class EditorController(
     fun insertAtEndOfCurrentLine(text: String) =
         executeOperation(OperationType.ALARM_SYMBOL) {
             state.insertAtEndOfCurrentLineInternal(text)
+        }
+
+    /**
+     * Confirms a directive edit from the edit row.
+     * Creates an undo point so the change can be undone.
+     *
+     * @param lineIndex The line containing the directive
+     * @param startOffset Start position within line content (inclusive)
+     * @param endOffset End position within line content (exclusive)
+     * @param newText New directive source text (e.g., "[99]" replacing "[42]")
+     */
+    fun confirmDirectiveEdit(lineIndex: Int, startOffset: Int, endOffset: Int, newText: String) =
+        executeOperation(OperationType.DIRECTIVE_EDIT) {
+            val line = state.lines.getOrNull(lineIndex) ?: return@executeOperation
+            val content = line.content
+
+            // Validate range
+            if (startOffset < 0 || endOffset > content.length || startOffset > endOffset) {
+                return@executeOperation
+            }
+
+            // Replace directive text in content (preserves prefix)
+            val newContent = content.substring(0, startOffset) +
+                             newText +
+                             content.substring(endOffset)
+
+            line.updateContent(newContent, line.contentCursorPosition)
+            state.notifyChange()
         }
 
     // =========================================================================
@@ -712,12 +748,19 @@ class EditorController(
         // because it tried to extract inserted text and could corrupt content
         state.clearSelection()
 
+        // Check if content actually changed before updating
+        val contentChanged = line.content != newContent
+
         // Normal content update
         line.updateContent(newContent, contentCursor)
         state.notifyChange()
 
-        // Mark that content has changed so canUndo reflects uncommitted edits
-        undoManager.markContentChanged()
+        // Only mark content changed if it actually changed
+        // This prevents false positives after undo (IME sync sends same content)
+        // which would incorrectly set hasUncommittedChanges and clear redo stack
+        if (contentChanged) {
+            undoManager.markContentChanged()
+        }
     }
 
     // =========================================================================

@@ -1748,6 +1748,288 @@ class UndoManagerTest {
         assertEquals("Cursor should be at end of line (position 5)", 5, snapshot!!.cursorPosition)
     }
 
+    // ==================== Directive Edit Undo/Redo ====================
+    // These tests verify that directive edit operations create proper undo boundaries
+    // and can be undone/redone correctly.
+
+    @Test
+    fun `directive edit creates undo point via EditorController`() {
+        // When a directive is edited via confirmDirectiveEdit(), it should create
+        // an undo point that allows restoring the original directive text.
+
+        // Setup: line with a directive "[42]"
+        editorState.updateFromText("some text [42] more text")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Edit the directive from "[42]" to "[99]"
+        // "[42]" starts at position 10, ends at position 14
+        controller.confirmDirectiveEdit(
+            lineIndex = 0,
+            startOffset = 10,
+            endOffset = 14,
+            newText = "[99]"
+        )
+
+        // Content should be updated
+        assertEquals("some text [99] more text", editorState.lines[0].text)
+
+        // Should be able to undo
+        assertTrue("Should be able to undo after directive edit", controller.canUndo)
+
+        val snapshot = controller.undo()
+        assertNotNull(snapshot)
+        assertEquals(listOf("some text [42] more text"), snapshot!!.lineContents)
+    }
+
+    @Test
+    fun `directive edit undo restores original content`() {
+        // After undoing a directive edit, the original directive text should be restored
+
+        editorState.updateFromText("result: [100]")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Edit "[100]" to "[999]" (starts at 8, ends at 13)
+        controller.confirmDirectiveEdit(0, 8, 13, "[999]")
+        assertEquals("result: [999]", editorState.lines[0].text)
+
+        // Undo
+        val snapshot = controller.undo()
+        assertEquals(listOf("result: [100]"), snapshot!!.lineContents)
+
+        // editorState should be restored via controller
+        assertEquals("result: [100]", editorState.lines[0].text)
+    }
+
+    @Test
+    fun `consecutive directive edits create separate undo steps`() {
+        // Each confirmDirectiveEdit() call should create its own undo step,
+        // unlike indent commands which are grouped.
+
+        editorState.updateFromText("values: [1] and [2]")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Edit first directive "[1]" -> "[10]" (starts at 8, ends at 11)
+        controller.confirmDirectiveEdit(0, 8, 11, "[10]")
+        assertEquals("values: [10] and [2]", editorState.lines[0].text)
+
+        // Edit second directive "[2]" -> "[20]" (now starts at 17, ends at 20)
+        controller.confirmDirectiveEdit(0, 17, 20, "[20]")
+        assertEquals("values: [10] and [20]", editorState.lines[0].text)
+
+        // First undo: should restore "[2]"
+        val snapshot1 = controller.undo()
+        assertEquals(listOf("values: [10] and [2]"), snapshot1!!.lineContents)
+
+        // Second undo: should restore "[1]"
+        val snapshot2 = controller.undo()
+        assertEquals(listOf("values: [1] and [2]"), snapshot2!!.lineContents)
+    }
+
+    @Test
+    fun `directive edit with invalid range does not modify content`() {
+        // confirmDirectiveEdit should safely handle invalid ranges without modifying state
+        // Note: State IS captured before the range validation, so undo may be available
+        // but undoing will just restore the same content (a no-op).
+
+        editorState.updateFromText("short")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Try to edit with invalid range (beyond content length)
+        controller.confirmDirectiveEdit(0, 10, 15, "invalid")
+
+        // Content should not change
+        assertEquals("short", editorState.lines[0].text)
+
+        // Undo IS available (state was captured before validation),
+        // but undoing will restore the same content
+        assertTrue("canUndo should be true (state captured before validation)", controller.canUndo)
+        val snapshot = controller.undo()
+        assertEquals(listOf("short"), snapshot!!.lineContents)
+    }
+
+    @Test
+    fun `directive edit with negative start offset does nothing`() {
+        editorState.updateFromText("[42]")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Try with negative start
+        controller.confirmDirectiveEdit(0, -1, 4, "[99]")
+
+        // Content should not change
+        assertEquals("[42]", editorState.lines[0].text)
+    }
+
+    @Test
+    fun `directive edit with start greater than end does nothing`() {
+        editorState.updateFromText("[42]")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Try with start > end
+        controller.confirmDirectiveEdit(0, 3, 1, "[99]")
+
+        // Content should not change
+        assertEquals("[42]", editorState.lines[0].text)
+    }
+
+    @Test
+    fun `directive edit on nonexistent line does nothing`() {
+        editorState.updateFromText("only one line")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Try to edit line that doesn't exist
+        controller.confirmDirectiveEdit(5, 0, 4, "[99]")
+
+        // Content should not change
+        assertEquals("only one line", editorState.lines[0].text)
+    }
+
+    @Test
+    fun `directive edit redo restores edited content`() {
+        editorState.updateFromText("test [42] here")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Edit "[42]" -> "[99]"
+        controller.confirmDirectiveEdit(0, 5, 9, "[99]")
+        assertEquals("test [99] here", editorState.lines[0].text)
+
+        // Undo
+        controller.undo()
+        assertEquals("test [42] here", editorState.lines[0].text)
+
+        // Redo
+        assertTrue(controller.canRedo)
+        val snapshot = controller.redo()
+        assertEquals(listOf("test [99] here"), snapshot!!.lineContents)
+        assertEquals("test [99] here", editorState.lines[0].text)
+    }
+
+    @Test
+    fun `directive edit after typing creates two undo steps`() {
+        // Typing before a directive edit should be a separate undo step
+
+        editorState.updateFromText("[42]")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Type some text before the directive
+        controller.updateLineContent(0, "prefix [42]", 7)
+
+        // Now edit the directive
+        controller.confirmDirectiveEdit(0, 7, 11, "[99]")
+        assertEquals("prefix [99]", editorState.lines[0].text)
+
+        // First undo: restores directive to [42]
+        val snapshot1 = controller.undo()
+        assertEquals(listOf("prefix [42]"), snapshot1!!.lineContents)
+
+        // Second undo: restores to original (before typing)
+        val snapshot2 = controller.undo()
+        assertEquals(listOf("[42]"), snapshot2!!.lineContents)
+    }
+
+    @Test
+    fun `directive edit commits pending typing before creating undo point`() {
+        // confirmDirectiveEdit should commit any pending typing first,
+        // so typing before the directive edit can be undone separately.
+
+        editorState.updateFromText("start")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // User types, adding " [42]"
+        controller.updateLineContent(0, "start [42]", 10)
+
+        // User edits the directive
+        controller.confirmDirectiveEdit(0, 6, 10, "[100]")
+        assertEquals("start [100]", editorState.lines[0].text)
+
+        // First undo: restores [42] (the directive edit)
+        val snapshot1 = controller.undo()
+        assertEquals(listOf("start [42]"), snapshot1!!.lineContents)
+
+        // Second undo: restores original (the typing)
+        val snapshot2 = controller.undo()
+        assertEquals(listOf("start"), snapshot2!!.lineContents)
+
+        // No more undos
+        assertFalse(controller.canUndo)
+    }
+
+    @Test
+    fun `directive edit on line with prefix preserves prefix`() {
+        // Directive edits work on content (without prefix), so prefixes should be preserved
+
+        editorState.updateFromText("• item [42] text")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Edit "[42]" in content - note that the line has prefix "• "
+        // Full text is "• item [42] text", content is "item [42] text"
+        // "[42]" is at content position 5-9
+        val contentOffset = editorState.lines[0].content.indexOf("[42]")
+        controller.confirmDirectiveEdit(0, contentOffset, contentOffset + 4, "[99]")
+
+        // Check that prefix is preserved
+        assertEquals("• item [99] text", editorState.lines[0].text)
+        assertEquals("• ", editorState.lines[0].prefix)
+        assertEquals("item [99] text", editorState.lines[0].content)
+
+        // Undo should also preserve prefix
+        val snapshot = controller.undo()
+        assertEquals(listOf("• item [42] text"), snapshot!!.lineContents)
+    }
+
+    @Test
+    fun `directive edit to same text creates undo point before it`() {
+        // When a directive is "edited" to the same value, an undo point is still
+        // created (state is captured before we check if content changed).
+        // This means: first undo restores to before the directive edit attempt,
+        // second undo restores to before the typing.
+
+        editorState.updateFromText("original")
+        val controller = EditorController(editorState)
+        controller.undoManager.setBaseline(editorState)
+        controller.undoManager.beginEditingLine(editorState, 0)
+
+        // Type some changes
+        controller.updateLineContent(0, "original [42]", 13)
+
+        // "Edit" directive to same value (user didn't change it)
+        // This still captures state before the no-op, creating an undo point
+        controller.confirmDirectiveEdit(0, 9, 13, "[42]")
+        assertEquals("original [42]", editorState.lines[0].text)
+
+        // First undo: restores to before the directive edit attempt
+        // (which had the same content, so this is effectively a no-op restore)
+        assertTrue(controller.canUndo)
+        val snapshot1 = controller.undo()
+        assertEquals(listOf("original [42]"), snapshot1!!.lineContents)
+
+        // Second undo: restores to before the typing
+        assertTrue(controller.canUndo)
+        val snapshot2 = controller.undo()
+        assertEquals(listOf("original"), snapshot2!!.lineContents)
+    }
+
     @Test
     fun `checkbox toggle restores cursor position`() {
         editorState.updateFromText("task item")

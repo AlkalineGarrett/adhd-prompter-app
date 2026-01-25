@@ -60,7 +60,7 @@ fun NoteTextField(
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
-    onDirectiveEditCancel: ((directiveHash: String) -> Unit)? = null,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
