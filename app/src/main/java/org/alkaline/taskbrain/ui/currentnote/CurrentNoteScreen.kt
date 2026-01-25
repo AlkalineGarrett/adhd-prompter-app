@@ -63,6 +63,7 @@ fun CurrentNoteScreen(
     val isAlarmOperationPending by currentNoteViewModel.isAlarmOperationPending.observeAsState(false)
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
     val isNoteDeletedFromVm by currentNoteViewModel.isNoteDeleted.observeAsState(false)
+    val directiveResults by currentNoteViewModel.directiveResults.observeAsState(emptyMap())
     val recentTabs by recentTabsViewModel.tabs.observeAsState(emptyList())
     val tabsError by recentTabsViewModel.error.observeAsState()
 
@@ -460,10 +461,17 @@ fun CurrentNoteScreen(
 
     // Helper to update text field value and track changes
     val updateTextFieldValue: (TextFieldValue) -> Unit = { newValue ->
+        val oldText = textFieldValue.text
         textFieldValue = newValue
         if (newValue.text != userContent) {
             userContent = newValue.text
             if (isSaved) isSaved = false
+            // Execute directives only when a closing bracket is typed
+            val oldBracketCount = oldText.count { it == ']' }
+            val newBracketCount = newValue.text.count { it == ']' }
+            if (newBracketCount > oldBracketCount) {
+                currentNoteViewModel.executeDirectivesLive(newValue.text)
+            }
         }
     }
 
@@ -581,6 +589,31 @@ fun CurrentNoteScreen(
                     showAlarmDialog = true
                 },
                 textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
+                directiveResults = directiveResults,
+                onDirectiveTap = { hash, sourceText ->
+                    currentNoteViewModel.toggleDirectiveCollapsed(hash, sourceText)
+                },
+                onDirectiveEditConfirm = { lineIndex, hash, sourceText, newText ->
+                    // Replace source text in content and collapse
+                    if (sourceText != newText) {
+                        val newContent = textFieldValue.text.replace(sourceText, newText)
+                        updateTextFieldValue(TextFieldValue(newContent, textFieldValue.selection))
+                        isSaved = false
+                        // Execute the edited directive immediately
+                        currentNoteViewModel.executeDirectivesLive(newContent)
+                    }
+                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
+
+                    // Focus next line after editing (current line is display-only due to directive)
+                    // Try to find the next line without directives, or focus the line after current
+                    val nextLineIndex = (lineIndex + 1).coerceAtMost(editorState.lines.lastIndex)
+                    if (nextLineIndex < editorState.lines.size) {
+                        controller.setCursor(nextLineIndex, 0)
+                    }
+                },
+                onDirectiveEditCancel = { hash ->
+                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
+                },
                 modifier = Modifier.weight(1f)
             )
         }

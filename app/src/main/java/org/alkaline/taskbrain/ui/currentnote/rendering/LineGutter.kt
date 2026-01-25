@@ -16,11 +16,16 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import org.alkaline.taskbrain.dsl.DirectiveFinder
+import org.alkaline.taskbrain.dsl.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.findLineIndexAtY
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
-import org.alkaline.taskbrain.ui.currentnote.selection.GutterSelectionState
+
+// Layout constants for directive edit row gaps
+private val DirectiveEditRowGapHeight = 40.dp
+private val DefaultLineHeight = 24.dp
 
 // =============================================================================
 // Gutter Gesture Handling
@@ -166,6 +171,7 @@ internal fun isLineInSelection(lineIndex: Int, state: EditorState): Boolean {
 internal fun LineGutter(
     lineLayouts: List<LineLayoutInfo>,
     state: EditorState,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onLineSelected: (Int) -> Unit,
     onLineDragStart: (Int) -> Unit,
     onLineDragUpdate: (Int) -> Unit,
@@ -174,7 +180,7 @@ internal fun LineGutter(
 ) {
     val density = LocalDensity.current
     val gutterWidthPx = with(density) { EditorConfig.GutterWidth.toPx() }
-    val defaultLineHeight = with(density) { 24.dp.toPx() }
+    val defaultLineHeight = with(density) { DefaultLineHeight.toPx() }
 
     val callbacks = GutterGestureCallbacks(
         onLineSelected = onLineSelected,
@@ -192,6 +198,7 @@ internal fun LineGutter(
             lineCount = state.lines.size,
             lineLayouts = lineLayouts,
             state = state,
+            directiveResults = directiveResults,
             defaultLineHeight = defaultLineHeight,
             gutterWidthPx = gutterWidthPx,
             density = density
@@ -204,6 +211,7 @@ private fun GutterContent(
     lineCount: Int,
     lineLayouts: List<LineLayoutInfo>,
     state: EditorState,
+    directiveResults: Map<String, DirectiveResult>,
     defaultLineHeight: Float,
     gutterWidthPx: Float,
     density: androidx.compose.ui.unit.Density
@@ -219,7 +227,33 @@ private fun GutterContent(
             isSelected = isSelected,
             gutterWidthPx = gutterWidthPx
         )
+
+        // Add gaps for expanded directive edit rows on this line
+        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        val lineDirectives = DirectiveFinder.findDirectives(lineContent)
+        for (found in lineDirectives) {
+            val hash = found.hash()
+            val result = directiveResults[hash]
+            if (result != null && !result.collapsed) {
+                GutterGap(height = DirectiveEditRowGapHeight, width = EditorConfig.GutterWidth)
+            }
+        }
     }
+}
+
+/**
+ * An empty gap in the gutter for directive edit rows.
+ */
+@Composable
+private fun GutterGap(
+    height: Dp,
+    width: Dp
+) {
+    Box(
+        modifier = Modifier
+            .width(width)
+            .height(height)
+    )
 }
 
 /**

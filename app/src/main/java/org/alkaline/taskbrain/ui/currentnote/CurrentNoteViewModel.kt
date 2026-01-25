@@ -21,6 +21,9 @@ import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
+import org.alkaline.taskbrain.dsl.DirectiveFinder
+import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.DirectiveResultRepository
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -31,6 +34,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val alarmScheduler = AlarmScheduler(application)
     private val sharedPreferences: SharedPreferences = application.getSharedPreferences("taskbrain_prefs", Context.MODE_PRIVATE)
     private val agent = PrompterAgent()
+    private val directiveResultRepository = DirectiveResultRepository()
     
     private val _saveStatus = MutableLiveData<SaveStatus>()
     val saveStatus: LiveData<SaveStatus> = _saveStatus
@@ -77,6 +81,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val _isNoteDeleted = MutableLiveData<Boolean>(false)
     val isNoteDeleted: LiveData<Boolean> = _isNoteDeleted
 
+    // Directive execution results - maps directive hash to result
+    private val _directiveResults = MutableLiveData<Map<String, DirectiveResult>>(emptyMap())
+    val directiveResults: LiveData<Map<String, DirectiveResult>> = _directiveResults
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
@@ -118,8 +126,11 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             lineTracker.setTrackedLines(cached.noteLines)
             val fullContent = cached.noteLines.joinToString("\n") { it.content }
             _loadStatus.value = LoadStatus.Success(fullContent)
-            // Still update lastAccessedAt in background
-            viewModelScope.launch { repository.updateLastAccessed(currentNoteId) }
+            // Still update lastAccessedAt and load directive results in background
+            viewModelScope.launch {
+                repository.updateLastAccessed(currentNoteId)
+                loadDirectiveResults(fullContent)
+            }
             return
         }
 
@@ -149,6 +160,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                         loadedLines,
                         _isNoteDeleted.value ?: false
                     )
+
+                    // Load cached directive results and execute any missing directives
+                    loadDirectiveResults(fullContent)
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error loading note", e)
@@ -185,6 +199,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
                     // Sync alarm line content with updated note content
                     syncAlarmLineContent(trackedLines)
+
+                    // Execute directives and store results
+                    executeAndStoreDirectives(content)
 
                     Log.d("CurrentNoteViewModel", "Note saved successfully with structure.")
                     _saveStatus.value = SaveStatus.Success
@@ -400,6 +417,165 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             }
         )
     }
+
+    // region Directive Execution
+
+    /**
+     * Execute directives in the content and update local state immediately.
+     * Called when content changes (e.g., when user types a closing bracket).
+     * Results are NOT persisted to Firestore until save.
+     */
+    fun executeDirectivesLive(content: String) {
+        if (!DirectiveFinder.containsDirectives(content)) {
+            return
+        }
+
+        viewModelScope.launch {
+            val currentResults = _directiveResults.value ?: emptyMap()
+            val foundDirectives = DirectiveFinder.findDirectives(content)
+
+            // Find directives that don't have results yet
+            val missingHashes = foundDirectives
+                .map { it.hash() }
+                .filter { hash -> currentResults[hash] == null }
+
+            if (missingHashes.isEmpty()) {
+                return@launch
+            }
+
+            // Execute only the missing directives
+            val newResults = currentResults.toMutableMap()
+            for (found in foundDirectives) {
+                val hash = found.hash()
+                if (currentResults[hash] == null) {
+                    val result = DirectiveFinder.executeDirective(found.sourceText)
+                    newResults[hash] = result
+                }
+            }
+
+            _directiveResults.value = newResults
+            Log.d(TAG, "Live executed ${missingHashes.size} directives")
+        }
+    }
+
+    /**
+     * Execute all directives in the content and store results.
+     * Called after note save succeeds.
+     * Preserves collapsed state from local results.
+     */
+    private fun executeAndStoreDirectives(content: String) {
+        if (!DirectiveFinder.containsDirectives(content)) {
+            return
+        }
+
+        viewModelScope.launch {
+            val currentResults = _directiveResults.value ?: emptyMap()
+            val freshResults = DirectiveFinder.executeAllDirectives(content)
+
+            // Merge fresh results with existing collapsed state
+            val mergedResults = freshResults.mapValues { (hash, result) ->
+                val existingCollapsed = currentResults[hash]?.collapsed ?: true
+                result.copy(collapsed = existingCollapsed)
+            }
+
+            // Update local state
+            _directiveResults.value = mergedResults
+
+            // Store results in Firestore
+            for ((hash, result) in mergedResults) {
+                directiveResultRepository.saveResult(currentNoteId, hash, result)
+                    .onFailure { e ->
+                        Log.e(TAG, "Failed to save directive result: $hash", e)
+                    }
+            }
+
+            Log.d(TAG, "Executed ${mergedResults.size} directives")
+        }
+    }
+
+    /**
+     * Load cached directive results for the current note, and execute any missing directives.
+     * Called when note is loaded.
+     */
+    private suspend fun loadDirectiveResults(content: String) {
+        // First load cached results
+        val cachedResults = directiveResultRepository.getResults(currentNoteId)
+            .getOrElse { e ->
+                Log.e(TAG, "Failed to load directive results", e)
+                emptyMap()
+            }
+
+        if (!DirectiveFinder.containsDirectives(content)) {
+            _directiveResults.postValue(cachedResults)
+            return
+        }
+
+        // Find directives in content and check which ones need execution
+        val foundDirectives = DirectiveFinder.findDirectives(content)
+        val missingHashes = foundDirectives
+            .map { it.hash() }
+            .filter { hash -> cachedResults[hash] == null }
+
+        if (missingHashes.isEmpty()) {
+            // All directives have cached results
+            _directiveResults.postValue(cachedResults)
+            Log.d(TAG, "Loaded ${cachedResults.size} cached directive results")
+            return
+        }
+
+        // Execute missing directives
+        val newResults = DirectiveFinder.executeAllDirectives(content)
+        val mergedResults = cachedResults.toMutableMap()
+
+        // Add only newly executed results (preserve cached collapsed state)
+        for ((hash, result) in newResults) {
+            if (cachedResults[hash] == null) {
+                mergedResults[hash] = result
+                // Store in Firestore
+                directiveResultRepository.saveResult(currentNoteId, hash, result)
+                    .onFailure { e ->
+                        Log.e(TAG, "Failed to save directive result: $hash", e)
+                    }
+            }
+        }
+
+        _directiveResults.postValue(mergedResults)
+        Log.d(TAG, "Loaded ${cachedResults.size} cached + executed ${missingHashes.size} new directives")
+    }
+
+    /**
+     * Toggle the collapsed state of a directive result.
+     * If no result exists for this hash, executes the directive first.
+     *
+     * @param directiveHash The hash of the directive
+     * @param sourceText The source text of the directive (e.g., "[42]"), needed to execute if no result exists
+     */
+    fun toggleDirectiveCollapsed(directiveHash: String, sourceText: String? = null) {
+        val current = _directiveResults.value ?: mutableMapOf()
+        val existingResult = current[directiveHash]
+
+        if (existingResult == null) {
+            // No result exists - execute the directive and create result with collapsed = false
+            if (sourceText == null) {
+                Log.w(TAG, "Cannot toggle directive without sourceText when no result exists")
+                return
+            }
+
+            val newResult = DirectiveFinder.executeDirective(sourceText).copy(collapsed = false)
+            val updated = current.toMutableMap()
+            updated[directiveHash] = newResult
+            _directiveResults.value = updated
+        } else {
+            // Result exists - toggle collapsed state
+            val newCollapsed = !existingResult.collapsed
+            val updated = current.toMutableMap()
+            updated[directiveHash] = existingResult.copy(collapsed = newCollapsed)
+            _directiveResults.value = updated
+        }
+        // Firestore sync happens on save via executeAndStoreDirectives
+    }
+
+    // endregion
 
     companion object {
         private const val TAG = "CurrentNoteViewModel"

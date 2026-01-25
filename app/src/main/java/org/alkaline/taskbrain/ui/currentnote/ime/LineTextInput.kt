@@ -132,7 +132,7 @@ internal fun LineTextInput(
 // IME Connection Modifier
 // =============================================================================
 
-private data class LineImeConnectionElement(
+internal data class LineImeConnectionElement(
     val state: LineImeState,
     val cursorPosition: Int,
     val hostView: View
@@ -142,7 +142,7 @@ private data class LineImeConnectionElement(
     override fun InspectorInfo.inspectableProperties() { name = "lineImeConnection" }
 }
 
-private class LineImeConnectionNode(
+internal class LineImeConnectionNode(
     private var state: LineImeState,
     private var hostView: View
 ) : DelegatingNode(),
@@ -235,7 +235,7 @@ private class LineImeConnectionNode(
     }
 }
 
-private fun Modifier.lineImeConnection(state: LineImeState, cursorPosition: Int, hostView: View): Modifier =
+internal fun Modifier.lineImeConnection(state: LineImeState, cursorPosition: Int, hostView: View): Modifier =
     this then LineImeConnectionElement(state, cursorPosition, hostView)
 
 // =============================================================================

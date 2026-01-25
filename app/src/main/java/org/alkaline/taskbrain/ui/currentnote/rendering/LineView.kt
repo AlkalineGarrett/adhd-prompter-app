@@ -4,7 +4,8 @@ import androidx.compose.foundation.clickable
 import org.alkaline.taskbrain.ui.currentnote.selection.ContentSelectionOverlay
 import org.alkaline.taskbrain.ui.currentnote.selection.PrefixSelectionOverlay
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToContentSelection
-import org.alkaline.taskbrain.ui.currentnote.ime.LineTextInput
+import org.alkaline.taskbrain.ui.currentnote.ime.DirectiveAwareLineInput
+import org.alkaline.taskbrain.dsl.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LineState
@@ -77,6 +78,8 @@ internal fun ControlledLineView(
     onFocusChanged: (Boolean) -> Unit,
     onTextLayoutResult: (TextLayoutResult) -> Unit,
     onPrefixWidthMeasured: (Float) -> Unit = {},
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val prefix = lineState.prefix
@@ -170,7 +173,7 @@ internal fun ControlledLineView(
                 )
             }
 
-            LineTextInput(
+            DirectiveAwareLineInput(
                 lineIndex = lineIndex,
                 content = content,
                 contentCursor = contentCursorPosition,
@@ -179,6 +182,7 @@ internal fun ControlledLineView(
                 hasExternalSelection = hasExternalSelection,
                 textStyle = textStyle,
                 focusRequester = focusRequester,
+                directiveResults = directiveResults,
                 onFocusChanged = { focused ->
                     isFocused = focused
                     onFocusChanged(focused)
@@ -186,6 +190,9 @@ internal fun ControlledLineView(
                 onTextLayoutResult = { layout ->
                     contentTextLayout = layout
                     onTextLayoutResult(layout)
+                },
+                onDirectiveTap = { hash, sourceText ->
+                    onDirectiveTap?.invoke(hash, sourceText)
                 },
                 modifier = Modifier.fillMaxWidth()
             )

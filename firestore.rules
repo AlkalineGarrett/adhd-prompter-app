@@ -35,6 +35,12 @@ service cloud.firestore {
       allow create: if isAuthenticated() && incomingDataBelongsToUser();
       allow read: if isAuthenticated() && (resource == null || existingDataBelongsToUser());
       allow update, delete: if isAuthenticated() && existingDataBelongsToUser();
+
+      // Directive results subcollection - user can access if they own the parent note
+      match /directiveResults/{directiveHash} {
+        allow read, write: if isAuthenticated() &&
+          get(/databases/$(database)/documents/notes/$(noteId)).data.userId == currentUserId();
+      }
     }
 
     // ==================== Alarms Collection ====================

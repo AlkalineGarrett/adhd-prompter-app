@@ -226,12 +226,19 @@ private class GestureTracker(
         private set
     var isScrollGesture = false
         private set
+    var consumedByChild = false
+        private set
     var lastPosition = downPosition
         private set
 
     private var anchorStart = -1
     private var anchorEnd = -1
     private var totalDragDistance = 0f
+
+    /** Marks this gesture as consumed by a child composable. */
+    fun markConsumedByChild() {
+        consumedByChild = true
+    }
 
     /**
      * Called when long press timer fires.
@@ -287,7 +294,7 @@ private class GestureTracker(
         onTapOnSelection: ((Offset) -> Unit)?,
         onSelectionCompleted: ((Offset) -> Unit)?
     ) {
-        if (isScrollGesture) return
+        if (isScrollGesture || consumedByChild) return
 
         if (longPressTriggered) {
             // Long press selection completed
@@ -359,14 +366,18 @@ internal fun Modifier.editorPointerInput(
 
 /**
  * Waits for a pointer down event and creates a gesture tracker.
+ * Uses Main pass to allow children to consume events first.
  */
 private suspend fun AwaitPointerEventScope.awaitGestureStart(
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
     touchSlop: Float
 ): GestureTracker? {
-    val down = awaitPointerEvent(PointerEventPass.Initial)
+    // Use Main pass so children (like DirectiveEditRow) can consume in Initial pass first
+    val down = awaitPointerEvent(PointerEventPass.Main)
     val downChange = down.changes.firstOrNull { it.pressed } ?: return null
+    // Skip if a child already consumed this event
+    if (downChange.isConsumed) return null
     return GestureTracker(downChange.position, state, lineLayouts, touchSlop)
 }
 
@@ -389,8 +400,16 @@ private suspend fun AwaitPointerEventScope.trackPointerUntilRelease(
     longPressJob: Job
 ) {
     while (true) {
-        val event = awaitPointerEvent(PointerEventPass.Initial)
+        // Use Main pass to allow children to consume first
+        val event = awaitPointerEvent(PointerEventPass.Main)
         val change = event.changes.firstOrNull() ?: break
+
+        // Skip if consumed by a child
+        if (change.isConsumed) {
+            longPressJob.cancel()
+            tracker.markConsumedByChild()
+            break
+        }
 
         if (!change.pressed) {
             longPressJob.cancel()

@@ -35,6 +35,7 @@ import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.rendering.HangingIndentEditor
 import org.alkaline.taskbrain.ui.currentnote.HangingIndentEditorState
 import org.alkaline.taskbrain.ui.currentnote.rememberHangingIndentEditorState
+import org.alkaline.taskbrain.dsl.DirectiveResult
 
 /**
  * Main text editing component for notes.
@@ -56,6 +57,10 @@ fun NoteTextField(
     isFingerDownFlow: StateFlow<Boolean>? = null,
     onAlarmSymbolTap: ((AlarmSymbolInfo) -> Unit)? = null,
     textColor: Color = Color.Black,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
+    onDirectiveEditCancel: ((directiveHash: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -98,6 +103,10 @@ fun NoteTextField(
                     onEditorFocusChanged = onFocusChanged,
                     scrollState = scrollState,
                     showGutter = true,
+                    directiveResults = directiveResults,
+                    onDirectiveTap = onDirectiveTap,
+                    onDirectiveEditConfirm = onDirectiveEditConfirm,
+                    onDirectiveEditCancel = onDirectiveEditCancel,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(

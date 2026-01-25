@@ -48,6 +48,9 @@ import org.alkaline.taskbrain.ui.currentnote.gestures.editorPointerInput
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 import org.alkaline.taskbrain.ui.currentnote.LineState
 import org.alkaline.taskbrain.ui.currentnote.rememberEditorState
+import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.DirectiveEditRow
+import org.alkaline.taskbrain.dsl.DirectiveFinder
 
 // =============================================================================
 // Context Menu State
@@ -147,6 +150,10 @@ fun HangingIndentEditor(
     onEditorFocusChanged: ((Boolean) -> Unit)? = null,
     scrollState: ScrollState? = null,
     showGutter: Boolean = false,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
+    onDirectiveEditCancel: ((directiveHash: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -214,6 +221,10 @@ fun HangingIndentEditor(
         clipboardManager = clipboardManager,
         onEditorFocusChanged = onEditorFocusChanged,
         onSelectionCompleted = onSelectionCompleted,
+        directiveResults = directiveResults,
+        onDirectiveTap = onDirectiveTap,
+        onDirectiveEditConfirm = onDirectiveEditConfirm,
+        onDirectiveEditCancel = onDirectiveEditCancel,
         modifier = modifier
     )
 }
@@ -240,6 +251,10 @@ private fun EditorLayout(
     clipboardManager: ClipboardManager,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     onSelectionCompleted: () -> Unit,
+    directiveResults: Map<String, DirectiveResult>,
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -256,7 +271,11 @@ private fun EditorLayout(
             gutterSelectionState = gutterSelectionState,
             contextMenuState = contextMenuState,
             onEditorFocusChanged = onEditorFocusChanged,
-            onSelectionCompleted = onSelectionCompleted
+            onSelectionCompleted = onSelectionCompleted,
+            directiveResults = directiveResults,
+            onDirectiveTap = onDirectiveTap,
+            onDirectiveEditConfirm = onDirectiveEditConfirm,
+            onDirectiveEditCancel = onDirectiveEditCancel
         )
 
         // Selection overlay (handles + context menu)
@@ -286,13 +305,18 @@ private fun EditorRow(
     gutterSelectionState: GutterSelectionState,
     contextMenuState: ContextMenuState,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
-    onSelectionCompleted: () -> Unit
+    onSelectionCompleted: () -> Unit,
+    directiveResults: Map<String, DirectiveResult>,
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         if (showGutter) {
             LineGutter(
                 lineLayouts = lineLayouts,
                 state = state,
+                directiveResults = directiveResults,
                 onLineSelected = { lineIndex ->
                     gutterSelectionState.selectLine(lineIndex, state)
                     onSelectionCompleted()
@@ -318,6 +342,10 @@ private fun EditorRow(
             onTapOnSelection = contextMenuState::handleTapOnSelection,
             onSelectionCompleted = { onSelectionCompleted() },
             onEditorFocusChanged = onEditorFocusChanged,
+            directiveResults = directiveResults,
+            onDirectiveTap = onDirectiveTap,
+            onDirectiveEditConfirm = onDirectiveEditConfirm,
+            onDirectiveEditCancel = onDirectiveEditCancel,
             modifier = Modifier.weight(1f)
         )
     }
@@ -416,6 +444,10 @@ private fun EditorContent(
     onTapOnSelection: (Offset) -> Unit,
     onSelectionCompleted: () -> Unit,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
+    directiveResults: Map<String, DirectiveResult>,
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((directiveHash: String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -439,6 +471,7 @@ private fun EditorContent(
 
         state.lines.forEachIndexed { index, lineState ->
             if (index < focusRequesters.size) {
+                // All lines use the same wrapper - directives are handled inline
                 ControlledLineViewWrapper(
                     index = index,
                     lineState = lineState,
@@ -447,8 +480,30 @@ private fun EditorContent(
                     textStyle = textStyle,
                     focusRequester = focusRequesters[index],
                     lineLayouts = lineLayouts,
-                    onEditorFocusChanged = onEditorFocusChanged
+                    onEditorFocusChanged = onEditorFocusChanged,
+                    directiveResults = directiveResults,
+                    onDirectiveTap = { hash, sourceText -> onDirectiveTap?.invoke(hash, sourceText) }
                 )
+
+                // Render edit rows for expanded directives on this line
+                val lineContent = lineState.content
+                val lineDirectives = DirectiveFinder.findDirectives(lineContent)
+                for (found in lineDirectives) {
+                    val hash = found.hash()
+                    val result = directiveResults[hash]
+                    if (result != null && !result.collapsed) {
+                        DirectiveEditRow(
+                            initialText = found.sourceText,
+                            textStyle = textStyle,
+                            onConfirm = { newText ->
+                                onDirectiveEditConfirm?.invoke(index, hash, found.sourceText, newText)
+                            },
+                            onCancel = {
+                                onDirectiveEditCancel?.invoke(hash)
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -466,7 +521,9 @@ private fun ControlledLineViewWrapper(
     textStyle: TextStyle,
     focusRequester: FocusRequester,
     lineLayouts: MutableList<LineLayoutInfo>,
-    onEditorFocusChanged: ((Boolean) -> Unit)?
+    onEditorFocusChanged: ((Boolean) -> Unit)?,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null
 ) {
     val lineSelection = state.getLineSelection(index)
     val lineEndOffset = state.getLineStartOffset(index) + lineState.text.length
@@ -499,6 +556,8 @@ private fun ControlledLineViewWrapper(
                 lineLayouts[index] = lineLayouts[index].copy(prefixWidthPx = prefixWidthPx)
             }
         },
+        directiveResults = directiveResults,
+        onDirectiveTap = onDirectiveTap,
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
