@@ -17,8 +17,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import org.alkaline.taskbrain.dsl.DirectiveFinder
-import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo

@@ -50,9 +50,9 @@ import org.alkaline.taskbrain.ui.currentnote.gestures.editorPointerInput
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 import org.alkaline.taskbrain.ui.currentnote.LineState
 import org.alkaline.taskbrain.ui.currentnote.rememberEditorState
-import org.alkaline.taskbrain.dsl.DirectiveResult
-import org.alkaline.taskbrain.dsl.DirectiveEditRow
-import org.alkaline.taskbrain.dsl.DirectiveFinder
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
 
 // =============================================================================
 // Context Menu State

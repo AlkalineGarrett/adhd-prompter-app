@@ -15,9 +15,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import org.alkaline.taskbrain.dsl.DirectiveResult
-import org.alkaline.taskbrain.dsl.DirectiveSegmenter
-import org.alkaline.taskbrain.dsl.DisplayTextResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo

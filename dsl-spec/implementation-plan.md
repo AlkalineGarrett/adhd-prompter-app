@@ -8,34 +8,47 @@ Detailed implementation plan for the TaskBrain DSL, based on the spec and implem
 
 ### 0.1 Package Structure
 
-All DSL files are in a flat package structure at `app/src/main/java/org/alkaline/taskbrain/dsl/`.
+DSL files are organized into subpackages under `app/src/main/java/org/alkaline/taskbrain/dsl/`:
 
-**Core parsing & execution:**
+**language/** - Core DSL parsing pipeline
 ```
-├── Lexer.kt                  # Tokenizes input string
-├── Token.kt                  # Token data class with position
 ├── TokenType.kt              # Enum of token types
-├── Parser.kt                 # Recursive descent parser
+├── Token.kt                  # Token data class with position
+├── Lexer.kt                  # Tokenizes input string (+ LexerException)
 ├── Expression.kt             # AST node types + Directive wrapper
-├── Executor.kt               # AST interpreter
-├── Environment.kt            # Variable scopes and bindings
-├── DslValue.kt               # Runtime values with serialization
+└── Parser.kt                 # Recursive descent parser (+ ParseException)
 ```
 
-**Directive finding & segmentation:**
+**runtime/** - Execution engine and values
 ```
-├── DirectiveFinder.kt        # Finds directives in note content
-├── DirectiveSegment.kt       # Segment types + DirectiveSegmenter
+├── DslValue.kt               # Runtime values with serialization (NumberVal, StringVal, DateVal, etc.)
+├── BuiltinRegistry.kt        # Function registry + Arguments + BuiltinFunction
+├── Executor.kt               # AST interpreter (+ ExecutionException)
+└── Environment.kt            # Variable scopes and bindings
+```
+
+**builtins/** - Library functions (extensible)
+```
+├── DateFunctions.kt          # date, datetime, time (dynamic)
+├── ArithmeticFunctions.kt    # add, sub, mul, div, mod (static)
+└── CharacterConstants.kt     # qt, nl, tab, ret (special chars for mobile)
+```
+
+**directives/** - Directive lifecycle management
+```
+├── DirectiveFinder.kt        # Finds directives in note content, executes them
+├── DirectiveInstance.kt      # UUID-stable directive tracking across edits
 ├── DirectiveResult.kt        # Cached execution result model
 ├── DirectiveResultRepository.kt  # Firestore storage for results
+└── DirectiveSegment.kt       # Segment types + DirectiveSegmenter + DisplayTextResult
 ```
 
-**UI components (in dsl/ package):**
+**ui/** - Compose presentation layer
 ```
 ├── DirectiveColors.kt        # Centralized color definitions for directive UI
 ├── DirectiveChip.kt          # Standalone chip for collapsed/expanded display
 ├── DirectiveLineRenderer.kt  # Renders lines with computed results in dashed boxes
-├── DirectiveEditRow.kt       # Edit row with confirm/cancel for directive editing
+└── DirectiveEditRow.kt       # Edit row with confirm/cancel for directive editing
 ```
 
 **UI integration (in ui/currentnote/):**
@@ -45,12 +58,16 @@ All DSL files are in a flat package structure at `app/src/main/java/org/alkaline
 
 **Future additions:**
 ```
+dsl/
 ├── ScheduleRepository.kt     # For Milestone 13
-├── builtins/                 # Builtin function modules (later milestones)
-│   ├── BuiltinRegistry.kt
-│   ├── DateFunctions.kt
-│   └── ...
 └── ViewContentTracker.kt     # For Milestone 9 (view)
+```
+
+**Test structure** mirrors main source under `app/src/test/java/org/alkaline/taskbrain/dsl/`:
+```
+├── language/                 # LexerTest, ParserTest
+├── runtime/                  # ExecutorTest
+└── directives/               # DirectiveFinderTest, DirectiveInstanceTest, DirectiveResultTest, DirectiveSegmenterTest
 ```
 
 ### 0.2 Firestore Schema Additions

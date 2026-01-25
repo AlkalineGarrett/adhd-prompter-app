@@ -21,12 +21,12 @@ import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
-import org.alkaline.taskbrain.dsl.DirectiveFinder
-import org.alkaline.taskbrain.dsl.DirectiveInstance
-import org.alkaline.taskbrain.dsl.DirectiveResult
-import org.alkaline.taskbrain.dsl.DirectiveResultRepository
-import org.alkaline.taskbrain.dsl.matchDirectiveInstances
-import org.alkaline.taskbrain.dsl.parseAllDirectiveLocations
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
+import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
+import org.alkaline.taskbrain.dsl.directives.matchDirectiveInstances
+import org.alkaline.taskbrain.dsl.directives.parseAllDirectiveLocations
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 

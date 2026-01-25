@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
-import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 import org.alkaline.taskbrain.ui.currentnote.gestures.positionToGlobalOffset

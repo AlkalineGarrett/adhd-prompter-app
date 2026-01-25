@@ -35,7 +35,7 @@ import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.rendering.HangingIndentEditor
 import org.alkaline.taskbrain.ui.currentnote.HangingIndentEditorState
 import org.alkaline.taskbrain.ui.currentnote.rememberHangingIndentEditorState
-import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 
 /**
  * Main text editing component for notes.

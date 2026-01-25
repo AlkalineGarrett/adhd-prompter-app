@@ -39,10 +39,10 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import org.alkaline.taskbrain.dsl.DirectiveResult
-import org.alkaline.taskbrain.dsl.DirectiveSegment
-import org.alkaline.taskbrain.dsl.DirectiveSegmenter
-import org.alkaline.taskbrain.dsl.DisplayTextResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
+import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 
 // Directive box colors

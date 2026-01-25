@@ -5,9 +5,9 @@ import org.alkaline.taskbrain.ui.currentnote.selection.ContentSelectionOverlay
 import org.alkaline.taskbrain.ui.currentnote.selection.PrefixSelectionOverlay
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToContentSelection
 import org.alkaline.taskbrain.ui.currentnote.ime.DirectiveAwareLineInput
-import org.alkaline.taskbrain.dsl.DirectiveResult
-import org.alkaline.taskbrain.dsl.DirectiveSegmenter
-import org.alkaline.taskbrain.dsl.DisplayTextResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LineState
