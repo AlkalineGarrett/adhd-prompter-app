@@ -4,7 +4,7 @@ package org.alkaline.taskbrain.dsl
  * Lexer for the TaskBrain DSL.
  * Converts source text into a sequence of tokens.
  *
- * Milestone 2: Adds identifier support for function names and variables.
+ * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
  *
  * Note: Strings have no escape sequences (mobile-friendly design).
  * Special characters like quotes and newlines are inserted using
@@ -33,6 +33,10 @@ class Lexer(private val source: String) {
         when (val c = advance()) {
             '[' -> addToken(TokenType.LBRACKET)
             ']' -> addToken(TokenType.RBRACKET)
+            '(' -> addToken(TokenType.LPAREN)
+            ')' -> addToken(TokenType.RPAREN)
+            ',' -> addToken(TokenType.COMMA)
+            ':' -> addToken(TokenType.COLON)
             '"' -> string()
             ' ', '\t', '\r', '\n' -> { /* skip whitespace */ }
             else -> when {

@@ -2,12 +2,16 @@ package org.alkaline.taskbrain.dsl
 
 /**
  * Token types recognized by the DSL lexer.
- * Milestone 2: Adds IDENTIFIER for function names and variables.
+ * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
  */
 enum class TokenType {
     // Delimiters
     LBRACKET,    // [
     RBRACKET,    // ]
+    LPAREN,      // (
+    RPAREN,      // )
+    COMMA,       // ,
+    COLON,       // :
 
     // Literals
     NUMBER,      // Integer or decimal: 123, 45.67

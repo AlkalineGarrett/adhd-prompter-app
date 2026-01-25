@@ -687,6 +687,46 @@ fun CurrentNoteScreen(
                         controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
                     }
                 },
+                onDirectiveRefresh = { lineIndex, positionKey, sourceText, newText ->
+                    // Refresh updates the text and re-executes without closing the editor
+                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                    val startOffset = lineContent.indexOf(sourceText)
+
+                    if (sourceText != newText && startOffset >= 0) {
+                        val endOffset = startOffset + sourceText.length
+
+                        // Use controller for proper undo handling
+                        controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
+
+                        // Sync userContent with EditorState
+                        userContent = editorState.text
+                        isSaved = false
+
+                        // Re-execute directives (this will assign UUIDs to the new content)
+                        currentNoteViewModel.executeDirectivesLive(userContent)
+
+                        // Keep the directive expanded by refreshing with the new UUID
+                        val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                        if (newUuid != null) {
+                            currentNoteViewModel.refreshDirective(newUuid, newText)
+                        }
+                    } else {
+                        // No text change - just re-execute to refresh dynamic values like [now]
+                        // Get current UUID and refresh to keep expanded
+                        val parts = positionKey.split(":")
+                        val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
+                        val startOffsetFromKey = parts.getOrNull(1)?.toIntOrNull()
+                        val uuid = if (lineIndexFromKey != null && startOffsetFromKey != null) {
+                            currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffsetFromKey)
+                        } else null
+
+                        if (uuid != null) {
+                            currentNoteViewModel.refreshDirective(uuid, sourceText)
+                        } else {
+                            currentNoteViewModel.executeDirectivesLive(userContent)
+                        }
+                    }
+                },
                 modifier = Modifier.weight(1f)
             )
         }

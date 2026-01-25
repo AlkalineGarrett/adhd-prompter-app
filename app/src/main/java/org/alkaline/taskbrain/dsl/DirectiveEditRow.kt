@@ -2,6 +2,7 @@ package org.alkaline.taskbrain.dsl
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,8 +11,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
@@ -31,6 +35,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -52,15 +57,21 @@ private const val FontSizeScale = 0.9f
  *
  * @param initialText The initial directive source text (e.g., "[42]")
  * @param textStyle The text style to use
+ * @param errorMessage Optional error message to display (from failed execution)
+ * @param onRefresh Called when user taps refresh to recompute without closing
  * @param onConfirm Called when user confirms the edit (check button or collapse)
  * @param onCancel Called when user cancels the edit (X button)
+ * @param onHeightMeasured Called with the measured height in pixels after layout
  */
 @Composable
 fun DirectiveEditRow(
     initialText: String,
     textStyle: TextStyle,
+    errorMessage: String? = null,
+    onRefresh: ((currentText: String) -> Unit)? = null,
     onConfirm: (newText: String) -> Unit,
     onCancel: () -> Unit,
+    onHeightMeasured: ((Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var textFieldValue by remember {
@@ -77,13 +88,21 @@ fun DirectiveEditRow(
         keyboardController?.show()
     }
 
-    Row(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .background(DirectiveColors.EditRowBackground)
-            .padding(start = RowStartPadding, end = RowEndPadding, top = RowVerticalPadding, bottom = RowVerticalPadding),
-        verticalAlignment = Alignment.CenterVertically
+            .onGloballyPositioned { coordinates ->
+                onHeightMeasured?.invoke(coordinates.size.height)
+            }
     ) {
+        // Edit row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = RowStartPadding, end = RowEndPadding, top = RowVerticalPadding, bottom = RowVerticalPadding),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         // Edit indicator
         DirectiveEditIndicator()
 
@@ -116,6 +135,21 @@ fun DirectiveEditRow(
             )
         }
 
+        // Refresh button (recompute without closing)
+        if (onRefresh != null) {
+            IconButton(
+                onClick = { onRefresh(textFieldValue.text) },
+                modifier = Modifier.size(ButtonSize)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = "Refresh",
+                    tint = DirectiveColors.RefreshButton,
+                    modifier = Modifier.size(IconSize)
+                )
+            }
+        }
+
         // Confirm button
         IconButton(
             onClick = { onConfirm(textFieldValue.text) },
@@ -140,6 +174,27 @@ fun DirectiveEditRow(
                 tint = DirectiveColors.CancelButton,
                 modifier = Modifier.size(IconSize)
             )
+        }
+        }
+
+        // Error message row (if present) - below the edit row
+        if (errorMessage != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DirectiveColors.ErrorBackground)
+                    .padding(start = RowStartPadding + IndicatorSize, end = RowEndPadding, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = errorMessage,
+                    color = DirectiveColors.ErrorText,
+                    fontSize = (textStyle.fontSize.value * FontSizeScale * 0.9f).sp,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
         }
     }
 }

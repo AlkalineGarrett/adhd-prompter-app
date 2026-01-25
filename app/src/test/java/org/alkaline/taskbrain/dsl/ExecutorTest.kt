@@ -432,4 +432,205 @@ class ExecutorTest {
     }
 
     // endregion
+
+    // region Arithmetic functions (Milestone 3)
+
+    @Test
+    fun `add returns sum of two numbers`() {
+        val result = execute("[add(1, 2)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(3.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `add works with decimals`() {
+        val result = execute("[add(1.5, 2.5)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(4.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `sub returns difference`() {
+        val result = execute("[sub(5, 3)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(2.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `sub can produce negative result`() {
+        val result = execute("[sub(3, 5)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(-2.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `mul returns product`() {
+        val result = execute("[mul(3, 4)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(12.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `div returns quotient`() {
+        val result = execute("[div(10, 4)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(2.5, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `div throws on division by zero`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[div(10, 0)]")
+        }
+        assertTrue(exception.message!!.contains("Division by zero"))
+    }
+
+    @Test
+    fun `mod returns remainder`() {
+        val result = execute("[mod(10, 3)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(1.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `mod throws on modulo by zero`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[mod(10, 0)]")
+        }
+        assertTrue(exception.message!!.contains("Modulo by zero"))
+    }
+
+    // endregion
+
+    // region Nested calls (Milestone 3)
+
+    @Test
+    fun `nested arithmetic calls`() {
+        val result = execute("[add(mul(2, 3), 4)]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(10.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `deeply nested calls`() {
+        val result = execute("[add(mul(2, 3), sub(10, 5))]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(11.0, (result as NumberVal).value, 0.0)
+    }
+
+    @Test
+    fun `triple nested calls`() {
+        // (2 * 3) + (10 - (4 / 2)) = 6 + (10 - 2) = 6 + 8 = 14
+        val result = execute("[add(mul(2, 3), sub(10, div(4, 2)))]")
+
+        assertTrue(result is NumberVal)
+        assertEquals(14.0, (result as NumberVal).value, 0.0)
+    }
+
+    // endregion
+
+    // region Named arguments parsing (Milestone 3)
+
+    @Test
+    fun `parses named arguments`() {
+        // Create a simple test function that accepts named arguments
+        val directive = parse("[test(foo: 42)]")
+        val expr = directive.expression as CallExpr
+
+        assertEquals("test", expr.name)
+        assertEquals(0, expr.args.size)
+        assertEquals(1, expr.namedArgs.size)
+        assertEquals("foo", expr.namedArgs[0].name)
+        assertTrue(expr.namedArgs[0].value is NumberLiteral)
+        assertEquals(42.0, (expr.namedArgs[0].value as NumberLiteral).value, 0.0)
+    }
+
+    @Test
+    fun `parses mixed positional and named arguments`() {
+        val directive = parse("[test(1, 2, foo: 3)]")
+        val expr = directive.expression as CallExpr
+
+        assertEquals("test", expr.name)
+        assertEquals(2, expr.args.size)
+        assertEquals(1, expr.namedArgs.size)
+
+        assertEquals(1.0, (expr.args[0] as NumberLiteral).value, 0.0)
+        assertEquals(2.0, (expr.args[1] as NumberLiteral).value, 0.0)
+        assertEquals("foo", expr.namedArgs[0].name)
+        assertEquals(3.0, (expr.namedArgs[0].value as NumberLiteral).value, 0.0)
+    }
+
+    @Test
+    fun `parses multiple named arguments`() {
+        val directive = parse("[test(a: 1, b: 2, c: 3)]")
+        val expr = directive.expression as CallExpr
+
+        assertEquals("test", expr.name)
+        assertEquals(0, expr.args.size)
+        assertEquals(3, expr.namedArgs.size)
+
+        assertEquals("a", expr.namedArgs[0].name)
+        assertEquals("b", expr.namedArgs[1].name)
+        assertEquals("c", expr.namedArgs[2].name)
+    }
+
+    @Test
+    fun `positional argument after named throws parse error`() {
+        val exception = assertThrows(ParseException::class.java) {
+            parse("[test(foo: 1, 2)]")
+        }
+        assertTrue(exception.message!!.contains("Positional argument cannot follow named argument"))
+    }
+
+    // endregion
+
+    // region Arithmetic error handling (Milestone 3)
+
+    @Test
+    fun `add with wrong arity throws`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[add(1)]")
+        }
+        assertTrue(exception.message!!.contains("requires 2 arguments"))
+    }
+
+    @Test
+    fun `add with non-number throws`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[add(1, \"hello\")]")
+        }
+        assertTrue(exception.message!!.contains("must be a number"))
+    }
+
+    @Test
+    fun `arithmetic functions are classified as static`() {
+        assertFalse(BuiltinRegistry.isDynamic("add"))
+        assertFalse(BuiltinRegistry.isDynamic("sub"))
+        assertFalse(BuiltinRegistry.isDynamic("mul"))
+        assertFalse(BuiltinRegistry.isDynamic("div"))
+        assertFalse(BuiltinRegistry.isDynamic("mod"))
+    }
+
+    // endregion
+
+    // region Empty parentheses (Milestone 3)
+
+    @Test
+    fun `empty parentheses work for zero-arg functions`() {
+        val result = execute("[date()]")
+
+        assertTrue(result is DateVal)
+        assertEquals(LocalDate.now(), (result as DateVal).value)
+    }
+
+    // endregion
 }

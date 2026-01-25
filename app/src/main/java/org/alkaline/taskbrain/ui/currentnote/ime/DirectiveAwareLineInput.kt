@@ -62,6 +62,9 @@ private object DirectiveBoxStyle {
 private val CursorColor = Color.Black
 private val CursorWidth = 2.dp
 
+// Empty directive placeholder
+private val EmptyDirectiveTapWidth = 16.dp
+
 /**
  * A directive-aware text input that allows editing around directives.
  *
@@ -249,11 +252,12 @@ private fun DirectiveOverlayText(
                         val boxColor = if (range.hasError) DirectiveErrorColor else DirectiveSuccessColor
                         val startOffset = range.displayRange.first.coerceIn(0, displayResult.displayText.length)
                         val endOffset = (range.displayRange.last + 1).coerceIn(0, displayResult.displayText.length)
+                        val padding = DirectiveBoxStyle.padding.toPx()
 
                         if (startOffset < endOffset) {
+                            // Non-empty display text - draw box around the text
                             val path = layout.getPathForRange(startOffset, endOffset)
                             val bounds = path.getBounds()
-                            val padding = DirectiveBoxStyle.padding.toPx()
 
                             drawRoundRect(
                                 color = boxColor,
@@ -265,6 +269,24 @@ private fun DirectiveOverlayText(
                                     pathEffect = PathEffect.dashPathEffect(
                                         floatArrayOf(DirectiveBoxStyle.dashLength.toPx(), DirectiveBoxStyle.gapLength.toPx())
                                     )
+                                )
+                            )
+                        } else if (range.displayText.isEmpty()) {
+                            // Empty display text - draw a vertical dashed line placeholder
+                            val cursorRect = try {
+                                layout.getCursorRect(startOffset.coerceIn(0, displayResult.displayText.length))
+                            } catch (e: Exception) {
+                                Rect(0f, 0f, 2f, layout.size.height.toFloat())
+                            }
+
+                            // Draw vertical dashed line
+                            drawLine(
+                                color = boxColor,
+                                start = Offset(cursorRect.left, cursorRect.top + padding),
+                                end = Offset(cursorRect.left, cursorRect.bottom - padding),
+                                strokeWidth = DirectiveBoxStyle.strokeWidth.toPx() * 1.5f,
+                                pathEffect = PathEffect.dashPathEffect(
+                                    floatArrayOf(DirectiveBoxStyle.dashLength.toPx() * 0.75f, DirectiveBoxStyle.gapLength.toPx())
                                 )
                             )
                         }
@@ -281,11 +303,12 @@ private fun DirectiveOverlayText(
             for (range in displayResult.directiveDisplayRanges) {
                 val startOffset = range.displayRange.first.coerceIn(0, displayResult.displayText.length)
                 val endOffset = (range.displayRange.last + 1).coerceIn(0, displayResult.displayText.length)
+                val padding = DirectiveBoxStyle.padding
 
                 if (startOffset < endOffset) {
+                    // Non-empty - use text bounds
                     val path = layout.getPathForRange(startOffset, endOffset)
                     val bounds = path.getBounds()
-                    val padding = DirectiveBoxStyle.padding
 
                     Box(
                         modifier = Modifier
@@ -296,6 +319,28 @@ private fun DirectiveOverlayText(
                             .size(
                                 width = with(LocalDensity.current) { (bounds.width + padding.toPx() * 2).toDp() },
                                 height = with(LocalDensity.current) { (bounds.height + padding.toPx() * 2).toDp() }
+                            )
+                            .clickable {
+                                onDirectiveTap(range.key, range.sourceText)
+                            }
+                    )
+                } else if (range.displayText.isEmpty()) {
+                    // Empty - create tap target at cursor position
+                    val cursorRect = try {
+                        layout.getCursorRect(startOffset.coerceIn(0, displayResult.displayText.length))
+                    } catch (e: Exception) {
+                        Rect(0f, 0f, 2f, layout.size.height.toFloat())
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .offset(
+                                x = with(LocalDensity.current) { (cursorRect.left - EmptyDirectiveTapWidth.toPx() / 2).toDp() },
+                                y = with(LocalDensity.current) { cursorRect.top.toDp() }
+                            )
+                            .size(
+                                width = EmptyDirectiveTapWidth,
+                                height = with(LocalDensity.current) { (cursorRect.bottom - cursorRect.top).toDp() }
                             )
                             .clickable {
                                 onDirectiveTap(range.key, range.sourceText)

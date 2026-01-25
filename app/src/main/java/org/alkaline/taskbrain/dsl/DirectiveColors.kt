@@ -23,4 +23,7 @@ object DirectiveColors {
     val EditRowBackground = Color(0xFFF5F5F5)   // Light gray
     val EditIndicator = Color(0xFF9E9E9E)       // Medium gray
     val CancelButton = Color(0xFF757575)        // Darker gray
+
+    // Action buttons - blue palette
+    val RefreshButton = Color(0xFF2196F3)       // Blue (refresh button)
 }

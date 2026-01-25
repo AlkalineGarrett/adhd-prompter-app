@@ -643,6 +643,24 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Re-executes a directive and keeps it expanded.
+     * Called when user refreshes a directive edit (recompute without closing).
+     *
+     * @param directiveUuid The UUID of the directive instance
+     * @param sourceText The source text of the directive (e.g., "[now]")
+     */
+    fun refreshDirective(directiveUuid: String, sourceText: String) {
+        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+
+        // Re-execute to get fresh value but keep expanded
+        val freshResult = DirectiveFinder.executeDirective(sourceText).copy(collapsed = false)
+        current[directiveUuid] = freshResult
+        _directiveResults.value = current
+
+        Log.d(TAG, "Refreshed directive $directiveUuid with fresh result (kept expanded)")
+    }
+
+    /**
      * Gets the UUID for a directive at the given position.
      * Returns null if no directive instance exists at that position.
      */

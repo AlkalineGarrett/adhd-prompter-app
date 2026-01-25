@@ -24,7 +24,7 @@ import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 
 // Layout constants for directive edit row gaps
-private val DirectiveEditRowGapHeight = 40.dp
+private val DirectiveEditRowGapHeightFallback = 40.dp  // Fallback if no measured height available
 private val DefaultLineHeight = 24.dp
 
 // =============================================================================
@@ -79,22 +79,24 @@ private class GutterLayoutData(
     val lineLayouts: List<LineLayoutInfo>,
     val state: EditorState,
     val directiveResults: Map<String, DirectiveResult>,
+    val directiveEditHeights: Map<String, Int>,
     val defaultLineHeight: Float,
-    val gapHeight: Float
+    val fallbackGapHeight: Float
 ) {
     fun computeLayouts(): List<GutterLineLayout> =
-        computeGutterLineLayouts(lineCount, lineLayouts, state, directiveResults, defaultLineHeight, gapHeight)
+        computeGutterLineLayouts(lineCount, lineLayouts, state, directiveResults, directiveEditHeights, defaultLineHeight, fallbackGapHeight)
 }
 
 /**
  * Modifier that handles gutter tap and drag gestures using gutter-specific layout tracking.
- * Uses a stable key (lineCount only) to avoid restarting the gesture when data changes.
+ * Restarts when line count or directive heights change to ensure fresh layout data.
  * Layouts are computed on-demand during gesture handling.
  */
 private fun Modifier.gutterPointerInputWithLayouts(
     layoutData: GutterLayoutData,
+    directiveEditHeights: Map<String, Int>,
     callbacks: GutterGestureCallbacks
-): Modifier = this.pointerInput(layoutData.lineCount) {
+): Modifier = this.pointerInput(layoutData.lineCount, directiveEditHeights.keys.toSet(), directiveEditHeights.values.toList()) {
     awaitEachGesture {
         // Compute layouts at gesture start to get current state
         val layouts = layoutData.computeLayouts()
@@ -245,8 +247,9 @@ private fun computeGutterLineLayouts(
     lineLayouts: List<LineLayoutInfo>,
     state: EditorState,
     directiveResults: Map<String, DirectiveResult>,
+    directiveEditHeights: Map<String, Int>,
     defaultLineHeight: Float,
-    gapHeight: Float
+    fallbackGapHeight: Float
 ): List<GutterLineLayout> {
     val result = mutableListOf<GutterLineLayout>()
     var currentY = 0f
@@ -265,7 +268,9 @@ private fun computeGutterLineLayouts(
             val key = DirectiveFinder.directiveKey(index, found.startOffset)
             val directiveResult = directiveResults[key]
             if (directiveResult != null && !directiveResult.collapsed) {
-                currentY += gapHeight
+                // Use measured height if available, otherwise fallback
+                val measuredHeight = directiveEditHeights[key]
+                currentY += measuredHeight?.toFloat() ?: fallbackGapHeight
             }
         }
     }
@@ -283,6 +288,7 @@ internal fun LineGutter(
     lineLayouts: List<LineLayoutInfo>,
     state: EditorState,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    directiveEditHeights: Map<String, Int> = emptyMap(),
     onLineSelected: (Int) -> Unit,
     onLineDragStart: (Int) -> Unit,
     onLineDragUpdate: (Int) -> Unit,
@@ -292,7 +298,7 @@ internal fun LineGutter(
     val density = LocalDensity.current
     val gutterWidthPx = with(density) { EditorConfig.GutterWidth.toPx() }
     val defaultLineHeight = with(density) { DefaultLineHeight.toPx() }
-    val gapHeightPx = with(density) { DirectiveEditRowGapHeight.toPx() }
+    val fallbackGapHeightPx = with(density) { DirectiveEditRowGapHeightFallback.toPx() }
 
     // Data needed to compute layouts on-demand during gesture handling
     val layoutData = GutterLayoutData(
@@ -300,8 +306,9 @@ internal fun LineGutter(
         lineLayouts = lineLayouts,
         state = state,
         directiveResults = directiveResults,
+        directiveEditHeights = directiveEditHeights,
         defaultLineHeight = defaultLineHeight,
-        gapHeight = gapHeightPx
+        fallbackGapHeight = fallbackGapHeightPx
     )
 
     val callbacks = GutterGestureCallbacks(
@@ -314,14 +321,16 @@ internal fun LineGutter(
     Column(
         modifier = modifier
             .width(EditorConfig.GutterWidth)
-            .gutterPointerInputWithLayouts(layoutData, callbacks)
+            .gutterPointerInputWithLayouts(layoutData, directiveEditHeights, callbacks)
     ) {
         GutterContent(
             lineCount = state.lines.size,
             lineLayouts = lineLayouts,
             state = state,
             directiveResults = directiveResults,
+            directiveEditHeights = directiveEditHeights,
             defaultLineHeight = defaultLineHeight,
+            fallbackGapHeight = fallbackGapHeightPx,
             gutterWidthPx = gutterWidthPx,
             density = density
         )
@@ -334,7 +343,9 @@ private fun GutterContent(
     lineLayouts: List<LineLayoutInfo>,
     state: EditorState,
     directiveResults: Map<String, DirectiveResult>,
+    directiveEditHeights: Map<String, Int>,
     defaultLineHeight: Float,
+    fallbackGapHeight: Float,
     gutterWidthPx: Float,
     density: androidx.compose.ui.unit.Density
 ) {
@@ -357,7 +368,12 @@ private fun GutterContent(
             val key = DirectiveFinder.directiveKey(index, found.startOffset)
             val result = directiveResults[key]
             if (result != null && !result.collapsed) {
-                GutterGap(height = DirectiveEditRowGapHeight, width = EditorConfig.GutterWidth)
+                // Use measured height if available, otherwise fallback
+                val measuredHeight = directiveEditHeights[key]
+                val gapHeight = with(density) {
+                    (measuredHeight?.toFloat() ?: fallbackGapHeight).toDp()
+                }
+                GutterGap(height = gapHeight, width = EditorConfig.GutterWidth)
             }
         }
     }

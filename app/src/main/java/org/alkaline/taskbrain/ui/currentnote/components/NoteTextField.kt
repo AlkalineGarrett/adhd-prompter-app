@@ -61,6 +61,7 @@ fun NoteTextField(
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
     onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)? = null,
+    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -107,6 +108,7 @@ fun NoteTextField(
                     onDirectiveTap = onDirectiveTap,
                     onDirectiveEditConfirm = onDirectiveEditConfirm,
                     onDirectiveEditCancel = onDirectiveEditCancel,
+                    onDirectiveRefresh = onDirectiveRefresh,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(

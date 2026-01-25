@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.dsl
 /**
  * Evaluates DSL expressions and produces runtime values.
  *
- * Milestone 2: Adds function call evaluation.
+ * Milestone 3: Supports parenthesized calls with named arguments.
  */
 class Executor {
 
@@ -35,12 +35,20 @@ class Executor {
                 expr.position
             )
 
-        // Evaluate all arguments
-        val argValues = expr.args.map { evaluate(it, env) }
+        // Evaluate positional arguments
+        val positionalValues = expr.args.map { evaluate(it, env) }
+
+        // Evaluate named arguments
+        val namedValues = expr.namedArgs.associate { namedArg ->
+            namedArg.name to evaluate(namedArg.value, env)
+        }
+
+        // Build Arguments container
+        val args = Arguments(positionalValues, namedValues)
 
         // Call the function
         return try {
-            function.call(argValues, env)
+            function.call(args, env)
         } catch (e: ExecutionException) {
             throw e
         } catch (e: Exception) {

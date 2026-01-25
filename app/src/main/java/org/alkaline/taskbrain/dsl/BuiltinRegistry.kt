@@ -1,6 +1,44 @@
 package org.alkaline.taskbrain.dsl
 
 /**
+ * Container for function arguments, supporting both positional and named arguments.
+ *
+ * @property positional List of positional arguments in order
+ * @property named Map of named argument name to value
+ */
+data class Arguments(
+    val positional: List<DslValue>,
+    val named: Map<String, DslValue> = emptyMap()
+) {
+    /** Get a positional argument by index, or null if not present. */
+    operator fun get(index: Int): DslValue? = positional.getOrNull(index)
+
+    /** Get a named argument by name, or null if not present. */
+    operator fun get(name: String): DslValue? = named[name]
+
+    /** Get a positional argument, throwing if not present. */
+    fun require(index: Int, paramName: String = "argument $index"): DslValue =
+        positional.getOrNull(index)
+            ?: throw ExecutionException("Missing required $paramName")
+
+    /** Get a named argument, throwing if not present. */
+    fun requireNamed(name: String): DslValue =
+        named[name] ?: throw ExecutionException("Missing required argument '$name'")
+
+    /** Total number of positional arguments. */
+    val size: Int get() = positional.size
+
+    /** Check if any positional arguments were provided. */
+    fun hasPositional(): Boolean = positional.isNotEmpty()
+
+    /** Check if any named arguments were provided. */
+    fun hasNamed(): Boolean = named.isNotEmpty()
+
+    /** Check if a specific named argument was provided. */
+    fun hasNamed(name: String): Boolean = named.containsKey(name)
+}
+
+/**
  * A builtin function that can be called from the DSL.
  *
  * @property name The function name used to call it
@@ -12,13 +50,13 @@ package org.alkaline.taskbrain.dsl
 data class BuiltinFunction(
     val name: String,
     val isDynamic: Boolean = false,
-    val call: (args: List<DslValue>, env: Environment) -> DslValue
+    val call: (args: Arguments, env: Environment) -> DslValue
 )
 
 /**
  * Registry of all builtin functions available in the DSL.
  *
- * Milestone 2: Date/time functions and character constants.
+ * Milestone 3: Adds arithmetic functions.
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -27,6 +65,7 @@ object BuiltinRegistry {
         // Register all builtin modules
         DateFunctions.register(this)
         CharacterConstants.register(this)
+        ArithmeticFunctions.register(this)
     }
 
     /**
@@ -66,7 +105,9 @@ object BuiltinRegistry {
             is NumberLiteral -> false
             is StringLiteral -> false
             is CallExpr -> {
-                isDynamic(expr.name) || expr.args.any { containsDynamicCalls(it) }
+                isDynamic(expr.name) ||
+                    expr.args.any { containsDynamicCalls(it) } ||
+                    expr.namedArgs.any { containsDynamicCalls(it.value) }
             }
         }
     }

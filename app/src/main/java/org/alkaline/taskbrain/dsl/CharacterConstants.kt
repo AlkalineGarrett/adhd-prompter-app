@@ -16,7 +16,7 @@ object CharacterConstants {
 
     /** Creates a zero-arg function that returns a constant string value. */
     private fun charConstant(name: String, value: String) = BuiltinFunction(name) { args, _ ->
-        if (args.isNotEmpty()) {
+        if (args.hasPositional()) {
             throw ExecutionException("'$name' takes no arguments, got ${args.size}")
         }
         StringVal(value)

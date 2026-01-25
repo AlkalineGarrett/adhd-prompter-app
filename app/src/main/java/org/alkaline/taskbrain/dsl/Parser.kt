@@ -4,9 +4,12 @@ package org.alkaline.taskbrain.dsl
  * Recursive descent parser for the TaskBrain DSL.
  * Produces an AST from a sequence of tokens.
  *
- * Milestone 2: Adds function calls with right-to-left nesting.
- * Space-separated tokens nest right-to-left:
- * - [a b c] parses as CallExpr("a", [CallExpr("b", [CallExpr("c", [])])])
+ * Milestone 3: Adds parenthesized calls with named arguments.
+ * Supports two calling styles:
+ * 1. Space-separated: [a b c] -> a(b(c)) (right-to-left nesting)
+ * 2. Parenthesized: [add(1, 2)] or [foo(bar: "baz")]
+ *
+ * Space-separated nesting still works inside parens: [a(b c, d)] -> a(b(c), d)
  */
 class Parser(private val tokens: List<Token>, private val source: String) {
     private var current = 0
@@ -48,7 +51,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
             return first
         }
 
-        // Check if there are more expressions to nest
+        // Check if there are more expressions to nest (not at end-of-argument boundary)
         if (!isAtExpressionStart()) {
             return first
         }
@@ -57,18 +60,23 @@ class Parser(private val tokens: List<Token>, private val source: String) {
         val rest = parseCallChain()
 
         // Nest right-to-left: the rest becomes the argument to first
-        return CallExpr(first.name, listOf(rest), first.position)
+        return CallExpr(first.name, listOf(rest), first.position, first.namedArgs)
     }
 
     /**
-     * Check if we're at the start of another expression (not at ] or EOF).
+     * Check if we're at the start of another expression.
+     * Not at: ], ), ,, :, or EOF
      */
     private fun isAtExpressionStart(): Boolean {
-        return !check(TokenType.RBRACKET) && !isAtEnd()
+        return !check(TokenType.RBRACKET) &&
+               !check(TokenType.RPAREN) &&
+               !check(TokenType.COMMA) &&
+               !check(TokenType.COLON) &&
+               !isAtEnd()
     }
 
     /**
-     * Parse a primary expression (literal or identifier).
+     * Parse a primary expression (literal, identifier, or parenthesized call).
      */
     private fun parsePrimary(): Expression {
         return when {
@@ -82,14 +90,92 @@ class Parser(private val tokens: List<Token>, private val source: String) {
             }
             match(TokenType.IDENTIFIER) -> {
                 val token = previous()
-                // An identifier alone becomes a zero-arg function call
-                CallExpr(token.literal as String, emptyList(), token.position)
+                val name = token.literal as String
+                val position = token.position
+
+                // Check for parenthesized argument list
+                if (match(TokenType.LPAREN)) {
+                    parseParenthesizedCall(name, position)
+                } else {
+                    // An identifier alone becomes a zero-arg function call
+                    CallExpr(name, emptyList(), position)
+                }
             }
             else -> throw ParseException(
                 "Expected expression",
                 peek().position
             )
         }
+    }
+
+    /**
+     * Parse parenthesized arguments: name(arg1, arg2, key: value, ...)
+     * Called after LPAREN has been consumed.
+     */
+    private fun parseParenthesizedCall(name: String, position: Int): CallExpr {
+        val positionalArgs = mutableListOf<Expression>()
+        val namedArgs = mutableListOf<NamedArg>()
+
+        // Check for empty argument list
+        if (!check(TokenType.RPAREN)) {
+            do {
+                val arg = parseArgument()
+                when (arg) {
+                    is ParsedPositionalArg -> {
+                        if (namedArgs.isNotEmpty()) {
+                            throw ParseException(
+                                "Positional argument cannot follow named argument",
+                                arg.expr.position
+                            )
+                        }
+                        positionalArgs.add(arg.expr)
+                    }
+                    is ParsedNamedArg -> {
+                        namedArgs.add(arg.namedArg)
+                    }
+                }
+            } while (match(TokenType.COMMA))
+        }
+
+        consume(TokenType.RPAREN, "Expected ')' after arguments")
+
+        return CallExpr(name, positionalArgs, position, namedArgs)
+    }
+
+    /**
+     * Result of parsing a single argument - either positional or named.
+     */
+    private sealed class ParsedArg
+    private data class ParsedPositionalArg(val expr: Expression) : ParsedArg()
+    private data class ParsedNamedArg(val namedArg: NamedArg) : ParsedArg()
+
+    /**
+     * Parse a single argument (positional or named).
+     * Named arguments have the form: identifier: expression
+     * Positional arguments are just expressions.
+     */
+    private fun parseArgument(): ParsedArg {
+        // Look ahead: if we see IDENTIFIER followed by COLON, it's a named argument
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            val nameToken = advance()
+            val argName = nameToken.literal as String
+            val argPosition = nameToken.position
+            consume(TokenType.COLON, "Expected ':' after parameter name")
+            val value = parseCallChain()
+            return ParsedNamedArg(NamedArg(argName, value, argPosition))
+        }
+
+        // Otherwise it's a positional argument
+        val expr = parseCallChain()
+        return ParsedPositionalArg(expr)
+    }
+
+    /**
+     * Check the next token (one ahead) without consuming.
+     */
+    private fun checkNext(type: TokenType): Boolean {
+        if (current + 1 >= tokens.size) return false
+        return tokens[current + 1].type == type
     }
 
     private fun match(vararg types: TokenType): Boolean {

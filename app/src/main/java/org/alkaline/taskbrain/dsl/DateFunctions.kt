@@ -26,7 +26,7 @@ object DateFunctions {
         name = "date",
         isDynamic = true
     ) { args, _ ->
-        if (args.isNotEmpty()) {
+        if (args.hasPositional()) {
             throw ExecutionException("'date' takes no arguments, got ${args.size}")
         }
         DateVal(LocalDate.now())
@@ -41,7 +41,7 @@ object DateFunctions {
         name = "datetime",
         isDynamic = true
     ) { args, _ ->
-        if (args.isNotEmpty()) {
+        if (args.hasPositional()) {
             throw ExecutionException("'datetime' takes no arguments, got ${args.size}")
         }
         DateTimeVal(LocalDateTime.now())
@@ -56,7 +56,7 @@ object DateFunctions {
         name = "time",
         isDynamic = true
     ) { args, _ ->
-        if (args.isNotEmpty()) {
+        if (args.hasPositional()) {
             throw ExecutionException("'time' takes no arguments, got ${args.size}")
         }
         TimeVal(LocalTime.now())

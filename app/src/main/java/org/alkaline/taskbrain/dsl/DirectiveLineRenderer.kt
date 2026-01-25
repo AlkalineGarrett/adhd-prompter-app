@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
@@ -93,6 +94,7 @@ fun DirectiveLineContent(
 /**
  * A directive result displayed in a dashed box.
  * Shows the computed result (or source if not computed).
+ * Empty results show a vertical dashed line placeholder.
  */
 @Composable
 private fun DirectiveResultBox(
@@ -109,18 +111,35 @@ private fun DirectiveResultBox(
         else -> textStyle.color
     }
 
+    val isEmpty = displayText.isEmpty()
+
     Box(
         modifier = Modifier
             .clickable(onClick = onTap)
-            .dashedBorder(boxColor)
-            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .then(
+                if (isEmpty) {
+                    Modifier
+                        .size(width = EmptyPlaceholderWidth, height = EmptyPlaceholderHeight)
+                        .emptyResultPlaceholder(boxColor)
+                } else {
+                    Modifier
+                        .dashedBorder(boxColor)
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                }
+            )
     ) {
-        BasicText(
-            text = displayText,
-            style = textStyle.copy(color = textColor)
-        )
+        if (!isEmpty) {
+            BasicText(
+                text = displayText,
+                style = textStyle.copy(color = textColor)
+            )
+        }
     }
 }
+
+// Empty result placeholder dimensions
+private val EmptyPlaceholderWidth = 12.dp
+private val EmptyPlaceholderHeight = 16.dp
 
 /**
  * Modifier that draws a dashed border around the content.
@@ -140,6 +159,28 @@ private fun Modifier.dashedBorder(color: Color): Modifier = this.drawBehind {
             width = strokeWidth,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashLength, gapLength))
         )
+    )
+}
+
+/**
+ * Modifier for empty result placeholder - draws a vertical dashed line.
+ * This provides a tappable target when a directive evaluates to an empty string.
+ */
+private fun Modifier.emptyResultPlaceholder(color: Color): Modifier = this.drawBehind {
+    val strokeWidth = 1.5.dp.toPx()
+    val dashLength = 3.dp.toPx()
+    val gapLength = 2.dp.toPx()
+    val lineHeight = size.height
+
+    // Draw vertical dashed line in the center
+    val centerX = size.width / 2
+
+    drawLine(
+        color = color,
+        start = Offset(centerX, 0f),
+        end = Offset(centerX, lineHeight),
+        strokeWidth = strokeWidth,
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashLength, gapLength))
     )
 }
 

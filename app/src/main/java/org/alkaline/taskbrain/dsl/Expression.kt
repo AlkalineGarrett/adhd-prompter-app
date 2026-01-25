@@ -4,7 +4,7 @@ package org.alkaline.taskbrain.dsl
  * Base class for all AST expression nodes.
  * Each subclass represents a different syntactic construct.
  *
- * Milestone 2: Adds CallExpr for function calls.
+ * Milestone 3: Adds support for parenthesized calls with named arguments.
  */
 sealed class Expression {
     /** The position in source where this expression starts */
@@ -30,17 +30,33 @@ data class StringLiteral(
 ) : Expression()
 
 /**
+ * A named argument in a function call.
+ * Example: path: "foo" in find(path: "foo")
+ */
+data class NamedArg(
+    val name: String,
+    val value: Expression,
+    val position: Int
+)
+
+/**
  * A function call expression.
- * Example: date, iso8601 date, add(1, 2)
+ * Example: date, iso8601 date, add(1, 2), find(path: "foo")
  *
- * In the DSL, space-separated identifiers nest right-to-left:
- * - [a b c] parses as CallExpr("a", [CallExpr("b", [CallExpr("c", [])])])
- * - This means "call a with the result of calling b with the result of calling c"
+ * Supports two calling styles:
+ * 1. Space-separated: identifiers nest right-to-left
+ *    - [a b c] parses as CallExpr("a", [CallExpr("b", [CallExpr("c", [])])])
+ * 2. Parenthesized: explicit argument lists with optional named args
+ *    - [add(1, 2)] parses as CallExpr("add", [NumberLiteral(1), NumberLiteral(2)])
+ *    - [foo(bar: "baz")] parses with named arg
+ *
+ * Named arguments come after positional arguments in the namedArgs list.
  */
 data class CallExpr(
     val name: String,
     val args: List<Expression>,
-    override val position: Int
+    override val position: Int,
+    val namedArgs: List<NamedArg> = emptyList()
 ) : Expression()
 
 /**
