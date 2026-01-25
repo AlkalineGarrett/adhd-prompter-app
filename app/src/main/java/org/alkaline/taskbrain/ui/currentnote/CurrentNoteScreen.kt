@@ -63,7 +63,11 @@ fun CurrentNoteScreen(
     val isAlarmOperationPending by currentNoteViewModel.isAlarmOperationPending.observeAsState(false)
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
     val isNoteDeletedFromVm by currentNoteViewModel.isNoteDeleted.observeAsState(false)
-    val directiveResults by currentNoteViewModel.directiveResults.observeAsState(emptyMap())
+    // Observe UUID-keyed results and convert to position-keyed for UI display
+    val directiveResultsRaw by currentNoteViewModel.directiveResults.observeAsState(emptyMap())
+    val directiveResults = remember(directiveResultsRaw) {
+        currentNoteViewModel.getResultsByPosition()
+    }
     val recentTabs by recentTabsViewModel.tabs.observeAsState(emptyList())
     val tabsError by recentTabsViewModel.error.observeAsState()
 
@@ -610,13 +614,27 @@ fun CurrentNoteScreen(
                 },
                 textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
                 directiveResults = directiveResults,
-                onDirectiveTap = { hash, sourceText ->
-                    currentNoteViewModel.toggleDirectiveCollapsed(hash, sourceText)
+                onDirectiveTap = { positionKey, sourceText ->
+                    // Parse position key (lineIndex:startOffset) to get UUID
+                    val parts = positionKey.split(":")
+                    val lineIndex = parts.getOrNull(0)?.toIntOrNull()
+                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                    val uuid = if (lineIndex != null && startOffset != null) {
+                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                    } else null
+                    if (uuid != null) {
+                        currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
+                    }
                 },
-                onDirectiveEditConfirm = { lineIndex, hash, sourceText, newText ->
+                onDirectiveEditConfirm = { lineIndex, positionKey, sourceText, newText ->
                     // Find directive position in line content before any modifications
                     val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
                     val startOffset = lineContent.indexOf(sourceText)
+
+                    // Get UUID before any modifications (position may change after edit)
+                    val uuid = if (startOffset >= 0) {
+                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                    } else null
 
                     if (sourceText != newText && startOffset >= 0) {
                         val endOffset = startOffset + sourceText.length
@@ -628,28 +646,44 @@ fun CurrentNoteScreen(
                         userContent = editorState.text
                         isSaved = false
 
-                        // Re-execute directives
+                        // Re-execute directives (this will assign UUIDs to the new content)
                         currentNoteViewModel.executeDirectivesLive(userContent)
 
                         // Position cursor at end of the new directive text
                         val cursorPos = startOffset + newText.length
                         controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
-                    } else if (startOffset >= 0) {
-                        // No change - position cursor at end of original directive
+
+                        // Confirm the new directive (re-execute and collapse)
+                        val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                        if (newUuid != null) {
+                            currentNoteViewModel.confirmDirective(newUuid, newText)
+                        }
+                    } else if (startOffset >= 0 && uuid != null) {
+                        // No text change - position cursor at end of directive
                         val cursorPos = startOffset + sourceText.length
                         controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
-                    }
 
-                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
+                        // Re-execute and collapse (important for dynamic directives like [now])
+                        currentNoteViewModel.confirmDirective(uuid, sourceText)
+                    }
                 },
-                onDirectiveEditCancel = { lineIndex, hash, sourceText ->
-                    currentNoteViewModel.toggleDirectiveCollapsed(hash)
+                onDirectiveEditCancel = { lineIndex, positionKey, sourceText ->
+                    // Parse position key to get UUID
+                    val parts = positionKey.split(":")
+                    val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
+                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                    val uuid = if (lineIndexFromKey != null && startOffset != null) {
+                        currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffset)
+                    } else null
+                    if (uuid != null) {
+                        currentNoteViewModel.toggleDirectiveCollapsed(uuid)
+                    }
 
                     // Position cursor at end of the directive
                     val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                    val startOffset = lineContent.indexOf(sourceText)
-                    if (startOffset >= 0) {
-                        val cursorPos = startOffset + sourceText.length
+                    val foundStartOffset = lineContent.indexOf(sourceText)
+                    if (foundStartOffset >= 0) {
+                        val cursorPos = foundStartOffset + sourceText.length
                         controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
                     }
                 },

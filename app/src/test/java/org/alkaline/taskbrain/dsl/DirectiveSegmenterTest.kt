@@ -9,13 +9,13 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `segmentLine returns empty list for empty content`() {
-        val segments = DirectiveSegmenter.segmentLine("", emptyMap())
+        val segments = DirectiveSegmenter.segmentLine("", 0, emptyMap())
         assertTrue(segments.isEmpty())
     }
 
     @Test
     fun `segmentLine returns single text segment for content without directives`() {
-        val segments = DirectiveSegmenter.segmentLine("Hello world", emptyMap())
+        val segments = DirectiveSegmenter.segmentLine("Hello world", 0, emptyMap())
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Text
@@ -26,8 +26,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `segmentLine returns directive segment for single directive`() {
         val content = "[42]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val segments = DirectiveSegmenter.segmentLine(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val segments = DirectiveSegmenter.segmentLine(content, 0, results)
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Directive
@@ -39,8 +39,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `segmentLine handles text before and after directive`() {
         val content = "Hello [42] world"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val segments = DirectiveSegmenter.segmentLine(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val segments = DirectiveSegmenter.segmentLine(content, 0, results)
 
         assertEquals(3, segments.size)
 
@@ -58,8 +58,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `segmentLine handles multiple directives`() {
         val content = "[1] and [2] and [3]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val segments = DirectiveSegmenter.segmentLine(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val segments = DirectiveSegmenter.segmentLine(content, 0, results)
 
         assertEquals(5, segments.size)
 
@@ -83,7 +83,7 @@ class DirectiveSegmenterTest {
     fun `segmentLine shows source text when no result available`() {
         val content = "[42]"
         // No results provided
-        val segments = DirectiveSegmenter.segmentLine(content, emptyMap())
+        val segments = DirectiveSegmenter.segmentLine(content, 0, emptyMap())
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Directive
@@ -116,27 +116,28 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `hasComputedDirectives returns false for content without directives`() {
-        assertFalse(DirectiveSegmenter.hasComputedDirectives("Hello world", emptyMap()))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives("Hello world", 0, emptyMap()))
     }
 
     @Test
     fun `hasComputedDirectives returns false when no results available`() {
-        assertFalse(DirectiveSegmenter.hasComputedDirectives("[42]", emptyMap()))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives("[42]", 0, emptyMap()))
     }
 
     @Test
     fun `hasComputedDirectives returns true when result is available`() {
         val content = "[42]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        assertTrue(DirectiveSegmenter.hasComputedDirectives(content, results))
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        assertTrue(DirectiveSegmenter.hasComputedDirectives(content, 0, results))
     }
 
     @Test
     fun `hasComputedDirectives returns false when result has error`() {
         val content = "[42]"
-        val hash = DirectiveResult.hashDirective("[42]")
-        val errorResult = mapOf(hash to DirectiveResult.failure("Error"))
-        assertFalse(DirectiveSegmenter.hasComputedDirectives(content, errorResult))
+        // Use position-based key for line 0, offset 0
+        val key = DirectiveFinder.directiveKey(0, 0)
+        val errorResult = mapOf(key to DirectiveResult.failure("Error"))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives(content, 0, errorResult))
     }
 
     // endregion
@@ -145,7 +146,7 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `buildDisplayText returns empty for empty content`() {
-        val result = DirectiveSegmenter.buildDisplayText("", emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText("", 0, emptyMap())
         assertEquals("", result.displayText)
         assertTrue(result.segments.isEmpty())
         assertTrue(result.directiveDisplayRanges.isEmpty())
@@ -153,7 +154,7 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `buildDisplayText returns original text for content without directives`() {
-        val result = DirectiveSegmenter.buildDisplayText("Hello world", emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText("Hello world", 0, emptyMap())
         assertEquals("Hello world", result.displayText)
         assertTrue(result.directiveDisplayRanges.isEmpty())
     }
@@ -161,8 +162,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText replaces directive with result`() {
         val content = "[42]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val result = DirectiveSegmenter.buildDisplayText(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val result = DirectiveSegmenter.buildDisplayText(content, 0, results)
 
         assertEquals("42", result.displayText)
         assertEquals(1, result.directiveDisplayRanges.size)
@@ -179,8 +180,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText handles mixed content`() {
         val content = "Hello [42] world"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val result = DirectiveSegmenter.buildDisplayText(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val result = DirectiveSegmenter.buildDisplayText(content, 0, results)
 
         // "[42]" (4 chars) replaced with "42" (2 chars)
         assertEquals("Hello 42 world", result.displayText)
@@ -194,7 +195,7 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText handles uncomputed directive`() {
         val content = "[42]"
-        val result = DirectiveSegmenter.buildDisplayText(content, emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText(content, 0, emptyMap())
 
         // Should show source text when not computed
         assertEquals("[42]", result.displayText)
@@ -205,8 +206,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText handles string directive`() {
         val content = "[\"hello\"]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val result = DirectiveSegmenter.buildDisplayText(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val result = DirectiveSegmenter.buildDisplayText(content, 0, results)
 
         assertEquals("hello", result.displayText)
     }
@@ -214,8 +215,8 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText handles multiple directives with different lengths`() {
         val content = "[100] [200]"
-        val results = DirectiveFinder.executeAllDirectives(content)
-        val result = DirectiveSegmenter.buildDisplayText(content, results)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val result = DirectiveSegmenter.buildDisplayText(content, 0, results)
 
         assertEquals("100 200", result.displayText)
         assertEquals(2, result.directiveDisplayRanges.size)

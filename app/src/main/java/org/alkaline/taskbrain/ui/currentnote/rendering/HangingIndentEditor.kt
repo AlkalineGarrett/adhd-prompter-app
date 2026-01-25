@@ -152,9 +152,9 @@ fun HangingIndentEditor(
     scrollState: ScrollState? = null,
     showGutter: Boolean = false,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)? = null,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -253,9 +253,9 @@ private fun EditorLayout(
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     onSelectionCompleted: () -> Unit,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -308,9 +308,9 @@ private fun EditorRow(
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     onSelectionCompleted: () -> Unit,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
         if (showGutter) {
@@ -446,9 +446,9 @@ private fun EditorContent(
     onSelectionCompleted: () -> Unit,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)?,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
+    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -483,26 +483,26 @@ private fun EditorContent(
                     lineLayouts = lineLayouts,
                     onEditorFocusChanged = onEditorFocusChanged,
                     directiveResults = directiveResults,
-                    onDirectiveTap = { hash, sourceText -> onDirectiveTap?.invoke(hash, sourceText) }
+                    onDirectiveTap = { key, sourceText -> onDirectiveTap?.invoke(key, sourceText) }
                 )
 
                 // Render edit rows for expanded directives on this line
                 val lineContent = lineState.content
                 val lineDirectives = DirectiveFinder.findDirectives(lineContent)
                 for (found in lineDirectives) {
-                    val hash = found.hash()
-                    val result = directiveResults[hash]
+                    val key = DirectiveFinder.directiveKey(index, found.startOffset)
+                    val result = directiveResults[key]
                     if (result != null && !result.collapsed) {
-                        // Key on hash so component recreates when directive text changes (e.g., after undo)
-                        key(hash) {
+                        // Key on position-based key so component recreates when directive moves
+                        key(key) {
                             DirectiveEditRow(
                                 initialText = found.sourceText,
                                 textStyle = textStyle,
                                 onConfirm = { newText ->
-                                    onDirectiveEditConfirm?.invoke(index, hash, found.sourceText, newText)
+                                    onDirectiveEditConfirm?.invoke(index, key, found.sourceText, newText)
                                 },
                                 onCancel = {
-                                    onDirectiveEditCancel?.invoke(index, hash, found.sourceText)
+                                    onDirectiveEditCancel?.invoke(index, key, found.sourceText)
                                 }
                             )
                         }
@@ -527,7 +527,7 @@ private fun ControlledLineViewWrapper(
     lineLayouts: MutableList<LineLayoutInfo>,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null
 ) {
     val lineSelection = state.getLineSelection(index)
     val lineEndOffset = state.getLineStartOffset(index) + lineState.text.length

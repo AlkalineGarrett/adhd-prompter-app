@@ -107,7 +107,7 @@ Semicolon separates multiple statements within a directive:
 
 ### Reserved Words
 
-All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `now`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
+All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `datetime`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
 
 ### The Dot Operator: Current Note Reference
 
@@ -125,7 +125,7 @@ All built-in function and constant names are reserved and cannot be used as vari
 - **Number**: Integer or decimal values
 - **String**: Text enclosed in double quotes
 - **Boolean**: Result of comparison functions (`true`/`false`)
-- **Datetime**: Combined date and time value (from `now` or `datetime()`)
+- **Datetime**: Combined date and time value (from `datetime` function or combining date and time)
 - **Date**: Date-only value (from `date` function or parsing)
 - **Time**: Time value with full precision including seconds/ms (from `time` function); supports same arithmetic as dates
 
@@ -181,17 +181,17 @@ Example:
 When a function receives a deferred value as input, it automatically returns a deferred result. This allows natural composition:
 
 ```
-[iso8601 later date]       # Returns deferred string (iso8601 of future date)
+[format later date]        # Returns deferred string (formatted date)
 ```
 
-The `iso8601` function sees a deferred date, so it returns a deferred string that will format the date when eventually evaluated.
+The `format` function sees a deferred date, so it returns a deferred string that will format the date when eventually evaluated.
 
 ### Variable Capture
 
 Variables are captured at definition time. In a deferred expression, captured variables retain their values (which may themselves be deferred):
 
 ```
-[x: later date; schedule(daily_at("9:00"), later[iso8601 x])]
+[x: later date; schedule(daily_at("9:00"), later x)]
 # x captures a deferred date; when schedule runs, x resolves to that day's date
 ```
 
@@ -209,7 +209,7 @@ Variables are captured at definition time. In a deferred expression, captured va
 Square brackets after `later` create a deferred scope where nothing inside executes:
 
 ```
-[later[.append iso8601(date)]]    # Entire expression is deferred
+[later[.append date]]    # Entire expression is deferred
 ```
 
 ### `run` - Force Evaluation in Deferred Scope
@@ -217,7 +217,7 @@ Square brackets after `later` create a deferred scope where nothing inside execu
 Use `run` to evaluate the next token immediately within a deferred scope:
 
 ```
-[later[.append iso8601(run date)]]    # date evaluates NOW; .append and iso8601 deferred
+[later[.append run date]]    # date evaluates NOW; .append deferred
 ```
 
 **Note**: `run` evaluates only the next token. `run a b` evaluates `a`; `b` remains deferred.
@@ -247,7 +247,7 @@ Creates a multi-argument function with explicit parameter names. The implicit `i
 Schedules a one-time or recurring execution:
 
 ```
-[schedule(daily_at("9:00"), later[.append iso8601(date)])]
+[schedule(daily_at("9:00"), later[.append date])]
 [schedule(at(datetime(date, "14:30")), later[.append "Reminder!"])]
 ```
 
@@ -312,13 +312,12 @@ Re-executes when underlying data changes:
 
 | Function | Description |
 |----------|-------------|
-| `now` | Returns current datetime |
-| `date` | Returns current date (date-only, no time) |
+| `datetime` | Returns current datetime |
+| `date` | Returns current date (date-only, no time); displays as "yyyy-MM-dd" |
 | `time` | Returns current time (full precision with seconds/ms) |
 | `datetime(date, time)` | Combines date and time into datetime |
 | `parse_datetime(string)` | Parses datetime from string (e.g., "2026-01-15 09:00") |
 | `parse_date(string)` | Parses a date from string |
-| `iso8601(date)` | Formats date as "yyyy-MM-dd" |
 | `add_days(date, n)` | Add n days to date (use negative n for past dates) |
 | `diff_days(d1, d2)` | Difference in days between dates |
 | `before(d1, d2)` | True if d1 is before d2 |
@@ -327,7 +326,7 @@ Re-executes when underlying data changes:
 **Timezone**: All date/time functions use device local timezone by default. Use optional `tz:` parameter for different timezone:
 ```
 [date(tz: "America/New_York")]
-[now(tz: "UTC")]
+[datetime(tz: "UTC")]
 ```
 
 **Note**: Relative dates are derived via arithmetic, not constants:
@@ -349,8 +348,8 @@ Re-executes when underlying data changes:
 Inside `string()`, tokens are concatenated. Function calls require explicit parentheses:
 
 ```
-[string("Hello " name ", today is " iso8601(date))]
-# Concatenates: "Hello " + name + ", today is " + iso8601(date)
+[string("Hello " name ", today is " date)]
+# Concatenates: "Hello " + name + ", today is " + date
 ```
 
 **Character constants** - For special characters (mobile-friendly, no escape sequences):
@@ -494,7 +493,7 @@ Spaces outside quotes are token separators (not semantic).
 Creates a tappable button that executes an action:
 
 ```
-[button("Add today's date", later[.append iso8601(date)])]
+[button("Add today's date", later[.append date])]
 ```
 
 - **Parameter 1**: Label text (string)
@@ -600,14 +599,14 @@ Sets the current note's path to "2026-01-01".
 
 ### Daily Date Append
 ```
-[schedule(daily_at("06:00"), later[.append iso8601(date)])]
+[schedule(daily_at("06:00"), later[.append date])]
 ```
-Every day at 6 AM, append the current date (formatted as ISO 8601) to the end of the note.
+Every day at 6 AM, append the current date to the end of the note.
 
 ### Daily Note Creation
 ```
 [schedule(daily_at("00:01"), later[
-  maybe_new(path: iso8601(date), maybe_content: string("# " iso8601(date)))
+  maybe_new(path: date, maybe_content: string("# " date))
 ])]
 ```
 Every day just after midnight, ensure a note exists for that day's date.
@@ -630,7 +629,7 @@ Show all notes with ISO date paths, ordered most recent first. Refresh when any 
 
 ### Quick Action Button
 ```
-[button("New Journal Entry", later[new(path: iso8601(date), content: string("# " iso8601(date)))])]
+[button("New Journal Entry", later[new(path: date, content: string("# " date))])]
 ```
 A button that creates a new journal note for today when tapped.
 

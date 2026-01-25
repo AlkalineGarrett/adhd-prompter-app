@@ -84,7 +84,7 @@ internal fun DirectiveAwareLineInput(
     directiveResults: Map<String, DirectiveResult>,
     onFocusChanged: (Boolean) -> Unit,
     onTextLayoutResult: (TextLayoutResult) -> Unit,
-    onDirectiveTap: (directiveHash: String, sourceText: String) -> Unit,
+    onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val hostView = LocalView.current
@@ -99,8 +99,8 @@ internal fun DirectiveAwareLineInput(
     }
 
     // Build display text with directive results
-    val displayResult = remember(content, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, directiveResults)
+    val displayResult = remember(content, lineIndex, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineIndex, directiveResults)
     }
 
     // Map source cursor to display cursor
@@ -192,7 +192,7 @@ private fun DirectiveOverlayText(
     displayCursor: Int,
     cursorInDirective: Boolean,
     cursorAlpha: Float,
-    onDirectiveTap: (directiveHash: String, sourceText: String) -> Unit,
+    onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
     onTextLayout: (TextLayoutResult) -> Unit,
     onTapAtSourcePosition: (Int) -> Unit
 ) {
@@ -298,7 +298,7 @@ private fun DirectiveOverlayText(
                                 height = with(LocalDensity.current) { (bounds.height + padding.toPx() * 2).toDp() }
                             )
                             .clickable {
-                                onDirectiveTap(range.hash, range.sourceText)
+                                onDirectiveTap(range.key, range.sourceText)
                             }
                     )
                 }

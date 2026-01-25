@@ -22,8 +22,11 @@ import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
 import org.alkaline.taskbrain.dsl.DirectiveFinder
+import org.alkaline.taskbrain.dsl.DirectiveInstance
 import org.alkaline.taskbrain.dsl.DirectiveResult
 import org.alkaline.taskbrain.dsl.DirectiveResultRepository
+import org.alkaline.taskbrain.dsl.matchDirectiveInstances
+import org.alkaline.taskbrain.dsl.parseAllDirectiveLocations
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -81,9 +84,12 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val _isNoteDeleted = MutableLiveData<Boolean>(false)
     val isNoteDeleted: LiveData<Boolean> = _isNoteDeleted
 
-    // Directive execution results - maps directive hash to result
+    // Directive execution results - maps directive UUID to result
     private val _directiveResults = MutableLiveData<Map<String, DirectiveResult>>(emptyMap())
     val directiveResults: LiveData<Map<String, DirectiveResult>> = _directiveResults
+
+    // Directive instances with stable UUIDs - survives text edits
+    private var directiveInstances: List<DirectiveInstance> = emptyList()
 
     // Current Note ID being edited
     private var currentNoteId = "root_note"
@@ -424,6 +430,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * Execute directives in the content and update local state immediately.
      * Called when content changes (e.g., when user types a closing bracket).
      * Results are NOT persisted to Firestore until save.
+     *
+     * Uses UUID-based keys for stable identity across text edits.
+     * UUIDs are preserved when directives move due to text insertions/deletions.
      */
     fun executeDirectivesLive(content: String) {
         if (!DirectiveFinder.containsDirectives(content)) {
@@ -431,31 +440,34 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch {
-            val foundDirectives = DirectiveFinder.findDirectives(content)
+            // Parse all directive locations from content
+            val newLocations = parseAllDirectiveLocations(content)
 
-            // Check which directives need execution (don't have results yet)
+            // Match to existing instances to preserve UUIDs
+            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
+            directiveInstances = updatedInstances
+
+            // Find directives that need execution (no existing result)
             val currentResults = _directiveResults.value ?: emptyMap()
-            val missingDirectives = foundDirectives.filter { found ->
-                currentResults[found.hash()] == null
-            }
+            val missingInstances = updatedInstances.filter { currentResults[it.uuid] == null }
 
-            if (missingDirectives.isEmpty()) {
+            if (missingInstances.isEmpty()) {
                 return@launch
             }
 
-            // Execute the missing directives
-            val executedResults = missingDirectives.associate { found ->
-                found.hash() to DirectiveFinder.executeDirective(found.sourceText)
+            // Execute missing directives
+            val executedResults = missingInstances.associate { instance ->
+                instance.uuid to DirectiveFinder.executeDirective(instance.sourceText)
             }
 
             // Merge new results into CURRENT state (not the captured snapshot)
             // This avoids overwriting changes made by toggleDirectiveCollapsed while
             // this coroutine was running (race condition fix)
             val latestResults = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-            for ((hash, result) in executedResults) {
+            for ((uuid, result) in executedResults) {
                 // Only add if still missing (another coroutine might have added it)
-                if (latestResults[hash] == null) {
-                    latestResults[hash] = result
+                if (latestResults[uuid] == null) {
+                    latestResults[uuid] = result
                 }
             }
 
@@ -468,6 +480,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * Execute all directives in the content and store results.
      * Called after note save succeeds.
      * Preserves collapsed state from local results.
+     *
+     * Uses UUID-based keys for in-memory state, but stores with text hash in Firestore
+     * for cross-session caching.
      */
     private fun executeAndStoreDirectives(content: String) {
         if (!DirectiveFinder.containsDirectives(content)) {
@@ -475,23 +490,35 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         viewModelScope.launch {
-            val freshResults = DirectiveFinder.executeAllDirectives(content)
+            // Parse all directive locations and match to existing instances
+            val newLocations = parseAllDirectiveLocations(content)
+            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
+            directiveInstances = updatedInstances
+
+            // Execute all directives with UUID-based keys
+            val freshResults = mutableMapOf<String, DirectiveResult>()
+            for (instance in updatedInstances) {
+                val result = DirectiveFinder.executeDirective(instance.sourceText)
+                freshResults[instance.uuid] = result
+            }
 
             // Merge fresh results with CURRENT collapsed state (read at merge time to avoid race)
             // This ensures we don't overwrite collapsed state changes made while executing
-            val mergedResults = freshResults.mapValues { (hash, result) ->
-                val latestCollapsed = _directiveResults.value?.get(hash)?.collapsed ?: true
+            val mergedResults = freshResults.mapValues { (uuid, result) ->
+                val latestCollapsed = _directiveResults.value?.get(uuid)?.collapsed ?: true
                 result.copy(collapsed = latestCollapsed)
             }
 
             // Update local state
             _directiveResults.value = mergedResults
 
-            // Store results in Firestore
-            for ((hash, result) in mergedResults) {
-                directiveResultRepository.saveResult(currentNoteId, hash, result)
+            // Store results in Firestore using text hash as key for cross-session caching
+            for (instance in updatedInstances) {
+                val result = mergedResults[instance.uuid] ?: continue
+                val textHash = DirectiveResult.hashDirective(instance.sourceText)
+                directiveResultRepository.saveResult(currentNoteId, textHash, result)
                     .onFailure { e ->
-                        Log.e(TAG, "Failed to save directive result: $hash", e)
+                        Log.e(TAG, "Failed to save directive result: $textHash", e)
                     }
             }
 
@@ -502,63 +529,78 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     /**
      * Load cached directive results for the current note, and execute any missing directives.
      * Called when note is loaded.
+     *
+     * Cached results in Firestore are keyed by text hash. We create fresh UUID-based instances
+     * and map cached results to them.
      */
     private suspend fun loadDirectiveResults(content: String) {
-        // First load cached results
-        val cachedResults = directiveResultRepository.getResults(currentNoteId)
+        // First load cached results (keyed by text hash in Firestore)
+        val cachedByHash = directiveResultRepository.getResults(currentNoteId)
             .getOrElse { e ->
                 Log.e(TAG, "Failed to load directive results", e)
                 emptyMap()
             }
 
         if (!DirectiveFinder.containsDirectives(content)) {
-            _directiveResults.postValue(cachedResults)
+            directiveInstances = emptyList()
+            _directiveResults.postValue(emptyMap())
             return
         }
 
-        // Find directives in content and check which ones need execution
-        val foundDirectives = DirectiveFinder.findDirectives(content)
-        val missingHashes = foundDirectives
-            .map { it.hash() }
-            .filter { hash -> cachedResults[hash] == null }
+        // Parse all directive locations and create fresh instances with UUIDs
+        val newLocations = parseAllDirectiveLocations(content)
+        val newInstances = newLocations.map { loc ->
+            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText)
+        }
+        directiveInstances = newInstances
 
-        if (missingHashes.isEmpty()) {
+        // Build UUID-based results map from cached results
+        val uuidResults = mutableMapOf<String, DirectiveResult>()
+        val missingInstances = mutableListOf<DirectiveInstance>()
+
+        for (instance in newInstances) {
+            val textHash = DirectiveResult.hashDirective(instance.sourceText)
+            val cached = cachedByHash[textHash]
+            if (cached != null) {
+                uuidResults[instance.uuid] = cached
+            } else {
+                missingInstances.add(instance)
+            }
+        }
+
+        if (missingInstances.isEmpty()) {
             // All directives have cached results
-            _directiveResults.postValue(cachedResults)
-            Log.d(TAG, "Loaded ${cachedResults.size} cached directive results")
+            _directiveResults.postValue(uuidResults)
+            Log.d(TAG, "Loaded ${uuidResults.size} cached directive results")
             return
         }
 
         // Execute missing directives
-        val newResults = DirectiveFinder.executeAllDirectives(content)
-        val mergedResults = cachedResults.toMutableMap()
-
-        // Add only newly executed results (preserve cached collapsed state)
-        for ((hash, result) in newResults) {
-            if (cachedResults[hash] == null) {
-                mergedResults[hash] = result
-                // Store in Firestore
-                directiveResultRepository.saveResult(currentNoteId, hash, result)
-                    .onFailure { e ->
-                        Log.e(TAG, "Failed to save directive result: $hash", e)
-                    }
-            }
+        for (instance in missingInstances) {
+            val result = DirectiveFinder.executeDirective(instance.sourceText)
+            uuidResults[instance.uuid] = result
+            // Store in Firestore using text hash
+            val textHash = DirectiveResult.hashDirective(instance.sourceText)
+            directiveResultRepository.saveResult(currentNoteId, textHash, result)
+                .onFailure { e ->
+                    Log.e(TAG, "Failed to save directive result: $textHash", e)
+                }
         }
 
-        _directiveResults.postValue(mergedResults)
-        Log.d(TAG, "Loaded ${cachedResults.size} cached + executed ${missingHashes.size} new directives")
+        _directiveResults.postValue(uuidResults)
+        Log.d(TAG, "Loaded ${uuidResults.size - missingInstances.size} cached + executed ${missingInstances.size} new directives")
     }
 
     /**
      * Toggle the collapsed state of a directive result.
-     * If no result exists for this hash, executes the directive first.
+     * If no result exists for this UUID, executes the directive first.
      *
-     * @param directiveHash The hash of the directive
+     * @param directiveUuid The UUID of the directive instance
      * @param sourceText The source text of the directive (e.g., "[42]"), needed to execute if no result exists
      */
-    fun toggleDirectiveCollapsed(directiveHash: String, sourceText: String? = null) {
+    fun toggleDirectiveCollapsed(directiveUuid: String, sourceText: String? = null) {
         val current = _directiveResults.value ?: mutableMapOf()
-        val existingResult = current[directiveHash]
+        val existingResult = current[directiveUuid]
 
         if (existingResult == null) {
             // No result exists - execute the directive and create result with collapsed = false
@@ -569,20 +611,65 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
             val newResult = DirectiveFinder.executeDirective(sourceText).copy(collapsed = false)
             val updated = current.toMutableMap()
-            updated[directiveHash] = newResult
+            updated[directiveUuid] = newResult
             _directiveResults.value = updated
         } else {
             // Result exists - toggle collapsed state
             val newCollapsed = !existingResult.collapsed
             val updated = current.toMutableMap()
-            updated[directiveHash] = existingResult.copy(collapsed = newCollapsed)
+            updated[directiveUuid] = existingResult.copy(collapsed = newCollapsed)
             _directiveResults.value = updated
         }
         // Firestore sync happens on save via executeAndStoreDirectives
     }
 
     /**
+     * Re-executes a directive and collapses it.
+     * Called when user confirms a directive edit (including when no changes were made).
+     * This ensures dynamic directives like [now] get fresh values on confirm.
+     *
+     * @param directiveUuid The UUID of the directive instance
+     * @param sourceText The source text of the directive (e.g., "[now]")
+     */
+    fun confirmDirective(directiveUuid: String, sourceText: String) {
+        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+
+        // Always re-execute to get fresh value (important for dynamic directives like [now])
+        val freshResult = DirectiveFinder.executeDirective(sourceText).copy(collapsed = true)
+        current[directiveUuid] = freshResult
+        _directiveResults.value = current
+
+        Log.d(TAG, "Confirmed directive $directiveUuid with fresh result")
+    }
+
+    /**
+     * Gets the UUID for a directive at the given position.
+     * Returns null if no directive instance exists at that position.
+     */
+    fun getDirectiveUuid(lineIndex: Int, startOffset: Int): String? {
+        return directiveInstances.find { it.lineIndex == lineIndex && it.startOffset == startOffset }?.uuid
+    }
+
+    /**
+     * Gets directive results keyed by position (lineIndex:startOffset) for UI display.
+     * This converts from the internal UUID-keyed results to position-keyed results.
+     */
+    fun getResultsByPosition(): Map<String, DirectiveResult> {
+        val uuidResults = _directiveResults.value ?: return emptyMap()
+        val positionResults = mutableMapOf<String, DirectiveResult>()
+        for (instance in directiveInstances) {
+            val result = uuidResults[instance.uuid]
+            if (result != null) {
+                val positionKey = DirectiveFinder.directiveKey(instance.lineIndex, instance.startOffset)
+                positionResults[positionKey] = result
+            }
+        }
+        return positionResults
+    }
+
+    /**
      * A position identifier for a directive: line index and start offset within line content.
+     * Used for undo/redo to restore expanded state by matching positions.
      */
     data class DirectivePosition(val lineIndex: Int, val startOffset: Int)
 
@@ -592,45 +679,42 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      */
     fun getExpandedDirectivePositions(content: String): Set<DirectivePosition> {
         val current = _directiveResults.value ?: return emptySet()
-        val expandedHashes = current.filter { !it.value.collapsed }.keys
-        if (expandedHashes.isEmpty()) return emptySet()
+        val expandedUuids = current.filter { !it.value.collapsed }.keys
+        if (expandedUuids.isEmpty()) return emptySet()
 
-        val positions = mutableSetOf<DirectivePosition>()
-        content.lines().forEachIndexed { lineIndex, lineContent ->
-            val directives = DirectiveFinder.findDirectives(lineContent)
-            for (directive in directives) {
-                if (directive.hash() in expandedHashes) {
-                    positions.add(DirectivePosition(lineIndex, directive.startOffset))
-                }
-            }
-        }
-        return positions
+        // Convert expanded UUIDs to DirectivePosition using current instances
+        return directiveInstances
+            .filter { it.uuid in expandedUuids }
+            .map { DirectivePosition(it.lineIndex, it.startOffset) }
+            .toSet()
     }
 
     /**
      * Restores expanded state for directives at the given positions.
      * Called after undo/redo to preserve edit row state for directives that still exist.
-     * Directives that no longer exist at those positions will not be expanded.
+     * Re-runs directive matching to assign UUIDs to the new content.
      */
     fun restoreExpandedDirectivesByPosition(content: String, positions: Set<DirectivePosition>) {
         if (positions.isEmpty()) return
 
+        // Re-parse directives and match to existing instances
+        val newLocations = parseAllDirectiveLocations(content)
+        val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
+        directiveInstances = updatedInstances
+
         val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
-        content.lines().forEachIndexed { lineIndex, lineContent ->
-            val directives = DirectiveFinder.findDirectives(lineContent)
-            for (directive in directives) {
-                val pos = DirectivePosition(lineIndex, directive.startOffset)
-                if (pos in positions) {
-                    val hash = directive.hash()
-                    val existing = current[hash]
-                    if (existing != null) {
-                        current[hash] = existing.copy(collapsed = false)
-                    } else {
-                        // Execute the directive and set it to expanded
-                        val result = DirectiveFinder.executeDirective(directive.sourceText)
-                        current[hash] = result.copy(collapsed = false)
-                    }
+        // Find directives at the target positions and expand them
+        for (instance in updatedInstances) {
+            val pos = DirectivePosition(instance.lineIndex, instance.startOffset)
+            if (pos in positions) {
+                val existing = current[instance.uuid]
+                if (existing != null) {
+                    current[instance.uuid] = existing.copy(collapsed = false)
+                } else {
+                    // Execute the directive and set it to expanded
+                    val result = DirectiveFinder.executeDirective(instance.sourceText)
+                    current[instance.uuid] = result.copy(collapsed = false)
                 }
             }
         }

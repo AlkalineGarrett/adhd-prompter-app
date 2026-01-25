@@ -278,9 +278,9 @@ class DirectiveResultRepository(db: FirebaseFirestore) {
 
 ---
 
-## Milestone 2: Function Calls
+## Milestone 2: Function Calls ✅ COMPLETE
 
-**Target:** `[date]`, `[iso8601 date]`
+**Target:** `[date]`, `[datetime]`, `[time]`
 
 ### Lexer Additions
 | Token Type | Pattern |
@@ -305,12 +305,8 @@ data class IdentifierExpr(val name: String) : Expression()  // For variables lat
 ### Builtins: DateFunctions.kt
 ```kotlin
 "date" to { args, env -> DateVal(LocalDate.now()) }
-"now" to { args, env -> DateTimeVal(LocalDateTime.now()) }
+"datetime" to { args, env -> DateTimeVal(LocalDateTime.now()) }
 "time" to { args, env -> TimeVal(LocalTime.now()) }
-"iso8601" to { args, env ->
-    val date = args[0] as DateVal
-    StringVal(date.value.format(DateTimeFormatter.ISO_LOCAL_DATE))
-}
 ```
 
 ### Builtins: CharacterConstants.kt
@@ -331,7 +327,8 @@ data class DateTimeVal(val value: LocalDateTime) : DslValue()
 
 ### Tests
 - `[date]` returns today's date
-- `[iso8601 date]` returns formatted string
+- `[datetime]` returns current date and time
+- `[time]` returns current time
 - Right-to-left nesting works correctly
 - `[qt]` returns `"`
 - `[nl]` returns newline character
@@ -787,12 +784,12 @@ data class DeferredVal(
 
 ### Auto-Propagation
 ```kotlin
-// In builtin functions:
-"iso8601" to { args, env ->
+// In builtin functions that take arguments, handle deferred values:
+"format" to { args, env ->
     val dateArg = args[0]
     if (dateArg is DeferredVal) {
         // Return deferred that will format when resolved
-        DeferredVal(CallExpr("iso8601", listOf(dateArg.ast)), env)
+        DeferredVal(CallExpr("format", listOf(dateArg.ast)), env)
     } else {
         StringVal((dateArg as DateVal).format())
     }

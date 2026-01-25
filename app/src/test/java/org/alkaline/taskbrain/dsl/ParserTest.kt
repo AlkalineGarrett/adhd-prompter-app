@@ -133,4 +133,70 @@ class ParserTest {
     }
 
     // endregion
+
+    // region Function calls (Milestone 2)
+
+    @Test
+    fun `parses single identifier as zero-arg call`() {
+        val directive = parse("[date]")
+
+        assertTrue(directive.expression is CallExpr)
+        val call = directive.expression as CallExpr
+        assertEquals("date", call.name)
+        assertEquals(0, call.args.size)
+    }
+
+    @Test
+    fun `parses two identifiers with right-to-left nesting`() {
+        val directive = parse("[format date]")
+
+        // Should parse as: format(date())
+        assertTrue(directive.expression is CallExpr)
+        val outer = directive.expression as CallExpr
+        assertEquals("format", outer.name)
+        assertEquals(1, outer.args.size)
+
+        assertTrue(outer.args[0] is CallExpr)
+        val inner = outer.args[0] as CallExpr
+        assertEquals("date", inner.name)
+        assertEquals(0, inner.args.size)
+    }
+
+    @Test
+    fun `parses three identifiers with right-to-left nesting`() {
+        val directive = parse("[a b c]")
+
+        // Should parse as: a(b(c()))
+        assertTrue(directive.expression is CallExpr)
+        val a = directive.expression as CallExpr
+        assertEquals("a", a.name)
+        assertEquals(1, a.args.size)
+
+        assertTrue(a.args[0] is CallExpr)
+        val b = a.args[0] as CallExpr
+        assertEquals("b", b.name)
+        assertEquals(1, b.args.size)
+
+        assertTrue(b.args[0] is CallExpr)
+        val c = b.args[0] as CallExpr
+        assertEquals("c", c.name)
+        assertEquals(0, c.args.size)
+    }
+
+    @Test
+    fun `captures identifier position`() {
+        val directive = parse("[date]")
+
+        val call = directive.expression as CallExpr
+        assertEquals(1, call.position)  // Position after the '['
+    }
+
+    @Test
+    fun `captures source text for function call`() {
+        val directive = parse("[format date]")
+
+        assertEquals("[format date]", directive.sourceText)
+    }
+
+    // endregion
 }

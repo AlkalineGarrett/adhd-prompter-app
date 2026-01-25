@@ -192,4 +192,74 @@ class LexerTest {
     }
 
     // endregion
+
+    // region Identifiers (Milestone 2)
+
+    @Test
+    fun `tokenizes simple identifier`() {
+        val tokens = Lexer("[date]").tokenize()
+
+        assertEquals(4, tokens.size)
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("date", tokens[1].lexeme)
+        assertEquals("date", tokens[1].literal)
+    }
+
+    @Test
+    fun `tokenizes identifier with underscore`() {
+        val tokens = Lexer("[my_func]").tokenize()
+
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("my_func", tokens[1].literal)
+    }
+
+    @Test
+    fun `tokenizes identifier starting with underscore`() {
+        val tokens = Lexer("[_private]").tokenize()
+
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("_private", tokens[1].literal)
+    }
+
+    @Test
+    fun `tokenizes identifier with digits`() {
+        val tokens = Lexer("[test123]").tokenize()
+
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("test123", tokens[1].literal)
+    }
+
+    @Test
+    fun `tokenizes multiple space-separated identifiers`() {
+        val tokens = Lexer("[datetime date]").tokenize()
+
+        assertEquals(5, tokens.size)
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("datetime", tokens[1].literal)
+        assertEquals(TokenType.IDENTIFIER, tokens[2].type)
+        assertEquals("date", tokens[2].literal)
+    }
+
+    @Test
+    fun `tokenizes three space-separated identifiers`() {
+        val tokens = Lexer("[a b c]").tokenize()
+
+        assertEquals(6, tokens.size)
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals("a", tokens[1].literal)
+        assertEquals(TokenType.IDENTIFIER, tokens[2].type)
+        assertEquals("b", tokens[2].literal)
+        assertEquals(TokenType.IDENTIFIER, tokens[3].type)
+        assertEquals("c", tokens[3].literal)
+    }
+
+    @Test
+    fun `tracks identifier positions correctly`() {
+        val tokens = Lexer("[datetime date]").tokenize()
+
+        assertEquals(1, tokens[1].position)  // datetime starts at 1
+        assertEquals(10, tokens[2].position) // date starts at 10
+    }
+
+    // endregion
 }

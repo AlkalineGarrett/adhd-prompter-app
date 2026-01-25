@@ -4,11 +4,11 @@ package org.alkaline.taskbrain.dsl
  * Lexer for the TaskBrain DSL.
  * Converts source text into a sequence of tokens.
  *
- * Milestone 1: Supports brackets, numbers, and strings only.
+ * Milestone 2: Adds identifier support for function names and variables.
  *
  * Note: Strings have no escape sequences (mobile-friendly design).
  * Special characters like quotes and newlines are inserted using
- * constants (qt, nl, tab, ret) with the string() function in later milestones.
+ * constants (qt, nl, tab, ret) with the string() function.
  */
 class Lexer(private val source: String) {
     private var start = 0
@@ -37,10 +37,27 @@ class Lexer(private val source: String) {
             ' ', '\t', '\r', '\n' -> { /* skip whitespace */ }
             else -> when {
                 c.isDigit() -> number()
+                c.isIdentifierStart() -> identifier()
                 else -> throw LexerException("Unexpected character '$c'", current - 1)
             }
         }
     }
+
+    /**
+     * Parse an identifier (function name or variable).
+     * Identifiers start with a letter or underscore, followed by
+     * letters, digits, or underscores.
+     */
+    private fun identifier() {
+        while (peek().isIdentifierPart()) advance()
+
+        val text = source.substring(start, current)
+        addToken(TokenType.IDENTIFIER, text)
+    }
+
+    private fun Char.isIdentifierStart(): Boolean = isLetter() || this == '_'
+
+    private fun Char.isIdentifierPart(): Boolean = isLetterOrDigit() || this == '_'
 
     private fun number() {
         while (peek().isDigit()) advance()

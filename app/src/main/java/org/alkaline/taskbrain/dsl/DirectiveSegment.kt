@@ -21,7 +21,7 @@ sealed class DirectiveSegment {
      */
     data class Directive(
         val sourceText: String,      // Original text, e.g., "[42]"
-        val hash: String,            // Hash for looking up result
+        val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
         val result: DirectiveResult?, // Computed result, null if not yet computed
         override val range: IntRange
     ) : DirectiveSegment() {
@@ -44,10 +44,11 @@ object DirectiveSegmenter {
      * Split a line into segments.
      *
      * @param content The line content
-     * @param results Map of directive hash to result
+     * @param lineIndex The line number (0-indexed) - used for position-based directive keys
+     * @param results Map of directive key to result (keys are position-based: "lineIndex:startOffset")
      * @return List of segments in order
      */
-    fun segmentLine(content: String, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
+    fun segmentLine(content: String, lineIndex: Int, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
         val directives = DirectiveFinder.findDirectives(content)
 
         if (directives.isEmpty()) {
@@ -72,13 +73,13 @@ object DirectiveSegmenter {
                 )
             }
 
-            // Add the directive segment
-            val hash = directive.hash()
+            // Add the directive segment with position-based key
+            val key = DirectiveFinder.directiveKey(lineIndex, directive.startOffset)
             segments.add(
                 DirectiveSegment.Directive(
                     sourceText = directive.sourceText,
-                    hash = hash,
-                    result = results[hash],
+                    key = key,
+                    result = results[key],
                     range = directive.startOffset until directive.endOffset
                 )
             )
@@ -109,11 +110,11 @@ object DirectiveSegmenter {
     /**
      * Check if a line has any computed directives (results available).
      */
-    fun hasComputedDirectives(content: String, results: Map<String, DirectiveResult>): Boolean {
+    fun hasComputedDirectives(content: String, lineIndex: Int, results: Map<String, DirectiveResult>): Boolean {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
-            val hash = directive.hash()
-            val result = results[hash]
+            val key = DirectiveFinder.directiveKey(lineIndex, directive.startOffset)
+            val result = results[key]
             result != null && result.error == null
         }
     }
@@ -123,14 +124,16 @@ object DirectiveSegmenter {
      * Also returns offset mapping from display to source positions.
      *
      * @param content The source line content
-     * @param results Map of directive hash to result
+     * @param lineIndex The line number (0-indexed) - used for position-based directive keys
+     * @param results Map of directive key to result (keys are position-based: "lineIndex:startOffset")
      * @return Pair of (displayText, sourceToDisplayMapping)
      */
     fun buildDisplayText(
         content: String,
+        lineIndex: Int,
         results: Map<String, DirectiveResult>
     ): DisplayTextResult {
-        val segments = segmentLine(content, results)
+        val segments = segmentLine(content, lineIndex, results)
 
         if (segments.isEmpty()) {
             return DisplayTextResult(
@@ -156,7 +159,7 @@ object DirectiveSegmenter {
 
                     directiveRanges.add(
                         DirectiveDisplayRange(
-                            hash = segment.hash,
+                            key = segment.key,
                             sourceRange = segment.range,
                             displayRange = displayStart until displayEnd,
                             sourceText = segment.sourceText,
@@ -190,7 +193,7 @@ data class DisplayTextResult(
  * Tracks where a directive appears in both source and display text.
  */
 data class DirectiveDisplayRange(
-    val hash: String,
+    val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
     val sourceRange: IntRange,
     val displayRange: IntRange,
     val sourceText: String,

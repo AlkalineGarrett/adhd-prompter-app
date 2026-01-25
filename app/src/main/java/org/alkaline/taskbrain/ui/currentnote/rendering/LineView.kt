@@ -79,7 +79,7 @@ internal fun ControlledLineView(
     onTextLayoutResult: (TextLayoutResult) -> Unit,
     onPrefixWidthMeasured: (Float) -> Unit = {},
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val prefix = lineState.prefix
@@ -191,8 +191,8 @@ internal fun ControlledLineView(
                     contentTextLayout = layout
                     onTextLayoutResult(layout)
                 },
-                onDirectiveTap = { hash, sourceText ->
-                    onDirectiveTap?.invoke(hash, sourceText)
+                onDirectiveTap = { key, sourceText ->
+                    onDirectiveTap?.invoke(key, sourceText)
                 },
                 modifier = Modifier.fillMaxWidth()
             )

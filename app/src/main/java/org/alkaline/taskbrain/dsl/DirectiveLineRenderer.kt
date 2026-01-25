@@ -29,22 +29,24 @@ import androidx.compose.ui.unit.dp
  * Editing happens via DirectiveEditRow when a directive is tapped.
  *
  * @param sourceContent The original line content with directive source text
- * @param directiveResults Map of directive hash to execution result
+ * @param lineIndex The line number (0-indexed) - used for position-based directive keys
+ * @param directiveResults Map of directive key to execution result (keys are position-based)
  * @param textStyle The text style for rendering
- * @param onDirectiveTap Called when a directive is tapped, with hash and source text
+ * @param onDirectiveTap Called when a directive is tapped, with position-based key and source text
  * @param modifier Modifier for the root composable
  */
 @Composable
 fun DirectiveLineContent(
     sourceContent: String,
+    lineIndex: Int,
     directiveResults: Map<String, DirectiveResult>,
     textStyle: TextStyle,
-    onDirectiveTap: (directiveHash: String, sourceText: String) -> Unit,
+    onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Build display text with directive results replacing source
-    val displayResult = remember(sourceContent, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(sourceContent, directiveResults)
+    val displayResult = remember(sourceContent, lineIndex, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(sourceContent, lineIndex, directiveResults)
     }
 
     if (displayResult.directiveDisplayRanges.isEmpty()) {
@@ -79,7 +81,7 @@ fun DirectiveLineContent(
                         isComputed = segment.isComputed,
                         hasError = segment.result?.error != null,
                         textStyle = textStyle,
-                        onTap = { onDirectiveTap(segment.hash, segment.sourceText) }
+                        onTap = { onDirectiveTap(segment.key, segment.sourceText) }
                     )
                     currentPos += segment.displayText.length
                 }

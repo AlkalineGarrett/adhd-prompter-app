@@ -7,6 +7,17 @@ package org.alkaline.taskbrain.dsl
  * Milestone 1: Simple non-nested matching with \[.*?\]
  */
 object DirectiveFinder {
+
+    /**
+     * Creates a unique key for a directive based on its position.
+     * This ensures each directive instance has its own cached result,
+     * even if multiple directives have the same text (e.g., two [now] directives).
+     *
+     * @param lineIndex The line number (0-indexed) where the directive appears
+     * @param startOffset The character offset within the line where the directive starts
+     * @return A string key like "3:15" for line 3, offset 15
+     */
+    fun directiveKey(lineIndex: Int, startOffset: Int): String = "$lineIndex:$startOffset"
     // Non-greedy match for [...] - will need to handle nesting in later milestones
     private val DIRECTIVE_PATTERN = Regex("""\[[^\[\]]*\]""")
 
@@ -77,12 +88,13 @@ object DirectiveFinder {
     /**
      * Find, parse, and execute all directives in the content.
      *
-     * @param content The note content
-     * @return Map of directive hash to execution result
+     * @param content The note content (single line)
+     * @param lineIndex The line index (for position-based keys)
+     * @return Map of directive position key to execution result
      */
-    fun executeAllDirectives(content: String): Map<String, DirectiveResult> {
+    fun executeAllDirectives(content: String, lineIndex: Int): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
-            found.hash() to executeDirective(found.sourceText)
+            directiveKey(lineIndex, found.startOffset) to executeDirective(found.sourceText)
         }
     }
 }

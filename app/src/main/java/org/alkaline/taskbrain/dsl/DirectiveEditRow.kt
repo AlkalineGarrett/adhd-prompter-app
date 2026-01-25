@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -73,10 +74,12 @@ fun DirectiveEditRow(
 
     val focusRequester = remember { FocusRequester() }
     var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val keyboardController = LocalSoftwareKeyboardController.current
 
-    // Auto-focus when shown
+    // Auto-focus and show keyboard when shown
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
+        keyboardController?.show()
     }
 
     Row(

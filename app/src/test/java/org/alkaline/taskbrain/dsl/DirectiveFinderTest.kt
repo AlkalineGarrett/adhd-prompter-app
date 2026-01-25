@@ -132,7 +132,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives returns results for all directives`() {
         val content = "First [42] second [\"hello\"]"
-        val results = DirectiveFinder.executeAllDirectives(content)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
 
         assertEquals(2, results.size)
     }
@@ -140,7 +140,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives handles mixed success and error`() {
         val content = "[42] and [invalid@]"
-        val results = DirectiveFinder.executeAllDirectives(content)
+        val results = DirectiveFinder.executeAllDirectives(content, 0)
 
         assertEquals(2, results.size)
 
@@ -156,7 +156,7 @@ class DirectiveFinderTest {
 
     @Test
     fun `executeAllDirectives returns empty map for no directives`() {
-        val results = DirectiveFinder.executeAllDirectives("No directives here")
+        val results = DirectiveFinder.executeAllDirectives("No directives here", 0)
         assertTrue(results.isEmpty())
     }
 
