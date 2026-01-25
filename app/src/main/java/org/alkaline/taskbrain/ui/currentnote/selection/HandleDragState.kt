@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import org.alkaline.taskbrain.dsl.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 import org.alkaline.taskbrain.ui.currentnote.gestures.positionToGlobalOffset
@@ -68,12 +69,14 @@ class HandleDragState {
      * @param dragDelta The delta movement from the drag gesture
      * @param state The editor state to update selection on
      * @param lineLayouts Layout info for position calculations
+     * @param directiveResults Map of directive results for display/source coordinate mapping
      */
     internal fun updateSelectionFromDrag(
         isStartHandle: Boolean,
         dragDelta: Offset,
         state: EditorState,
-        lineLayouts: List<LineLayoutInfo>
+        lineLayouts: List<LineLayoutInfo>,
+        directiveResults: Map<String, DirectiveResult> = emptyMap()
     ) {
         if (!state.hasSelection) return
 
@@ -84,7 +87,7 @@ class HandleDragState {
             val selectionOffset = if (isStartHandle) state.selection.start else state.selection.end
             val fixedOffset = if (isStartHandle) state.selection.end else state.selection.start
             handle.initialize(
-                calculateHandlePosition(selectionOffset, state, lineLayouts),
+                calculateHandlePosition(selectionOffset, state, lineLayouts, directiveResults = directiveResults),
                 fixedOffset
             )
         }
@@ -93,7 +96,7 @@ class HandleDragState {
         handle.addDelta(dragDelta)
         val newScreenPos = handle.calculateNewScreenPos() ?: return
 
-        val newGlobalOffset = positionToGlobalOffset(newScreenPos, state, lineLayouts)
+        val newGlobalOffset = positionToGlobalOffset(newScreenPos, state, lineLayouts, directiveResults)
 
         // Update selection: dragged handle moves, other end stays fixed
         if (isStartHandle) {

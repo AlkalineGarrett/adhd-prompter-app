@@ -11,6 +11,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 
@@ -90,11 +93,16 @@ internal fun findLineIndexAtY(
 
 /**
  * Converts a screen position to a global character offset in the editor text.
+ *
+ * When directives are present, the displayed text may differ from the source text
+ * (e.g., "[date]" displays as "Jan 25, 2026"). This function handles the mapping
+ * from display coordinates to source coordinates.
  */
 internal fun positionToGlobalOffset(
     position: Offset,
     state: EditorState,
-    lineLayouts: List<LineLayoutInfo>
+    lineLayouts: List<LineLayoutInfo>,
+    directiveResults: Map<String, DirectiveResult> = emptyMap()
 ): Int {
     if (state.lines.isEmpty()) return 0
 
@@ -102,15 +110,51 @@ internal fun positionToGlobalOffset(
     val lineState = state.lines.getOrNull(lineIndex) ?: return 0
     val layoutInfo = lineLayouts.getOrNull(lineIndex)
 
-    val contentOffset = getCharacterOffsetInContent(
+    // Build display text info to map between display and source positions
+    val displayResult = DirectiveSegmenter.buildDisplayText(
+        lineState.content, lineIndex, directiveResults
+    )
+
+    val displayOffset = getCharacterOffsetInContent(
         position = position,
         lineYOffset = layoutInfo?.yOffset ?: 0f,
         prefixLength = lineState.prefix.length,
-        contentLength = lineState.content.length,
+        contentLength = displayResult.displayText.length,
         textLayout = layoutInfo?.textLayoutResult
     )
 
-    return state.getLineStartOffset(lineIndex) + lineState.prefix.length + contentOffset
+    // Map display offset to source offset
+    val sourceOffset = mapDisplayToSourceOffset(displayOffset, displayResult)
+
+    return state.getLineStartOffset(lineIndex) + lineState.prefix.length + sourceOffset
+}
+
+/**
+ * Maps a cursor position from display text to source text.
+ */
+private fun mapDisplayToSourceOffset(displayOffset: Int, displayResult: DisplayTextResult): Int {
+    if (displayResult.directiveDisplayRanges.isEmpty()) {
+        return displayOffset
+    }
+
+    var sourceOffset = displayOffset
+
+    for (range in displayResult.directiveDisplayRanges) {
+        if (displayOffset <= range.displayRange.first) {
+            // Offset is before this directive - no adjustment needed
+            break
+        } else if (displayOffset > range.displayRange.last) {
+            // Offset is after this directive - adjust for the length difference
+            val sourceLength = range.sourceRange.last - range.sourceRange.first + 1
+            val displayLength = range.displayRange.last - range.displayRange.first + 1
+            sourceOffset += sourceLength - displayLength
+        } else {
+            // Offset is inside the directive display - map to end of source directive
+            return range.sourceRange.last + 1
+        }
+    }
+
+    return sourceOffset.coerceAtLeast(0)
 }
 
 /**
@@ -220,7 +264,8 @@ private class GestureTracker(
     private val downPosition: Offset,
     private val state: EditorState,
     private val lineLayouts: List<LineLayoutInfo>,
-    private val touchSlop: Float
+    private val touchSlop: Float,
+    private val directiveResults: Map<String, DirectiveResult>
 ) {
     var longPressTriggered = false
         private set
@@ -248,7 +293,7 @@ private class GestureTracker(
         if (isScrollGesture) return
 
         longPressTriggered = true
-        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts)
+        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts, directiveResults)
         val (wordStart, wordEnd) = findWordBoundaries(state.text, globalOffset)
         anchorStart = wordStart
         anchorEnd = wordEnd
@@ -280,7 +325,7 @@ private class GestureTracker(
     }
 
     private fun updateDragSelection(position: Offset) {
-        val globalOffset = positionToGlobalOffset(position, state, lineLayouts)
+        val globalOffset = positionToGlobalOffset(position, state, lineLayouts, directiveResults)
         val selStart = minOf(anchorStart, globalOffset)
         val selEnd = maxOf(anchorEnd, globalOffset)
         state.setSelection(selStart, selEnd)
@@ -311,7 +356,7 @@ private class GestureTracker(
         onCursorPositioned: (Int) -> Unit,
         onTapOnSelection: ((Offset) -> Unit)?
     ) {
-        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts)
+        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts, directiveResults)
 
         // Check if tap is within existing selection
         if (state.hasSelection && isOffsetInSelection(globalOffset)) {
@@ -345,14 +390,15 @@ internal fun Modifier.editorPointerInput(
     longPressTimeoutMillis: Long,
     touchSlop: Float,
     scrollState: ScrollState?,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onCursorPositioned: (Int) -> Unit,
     onTapOnSelection: ((Offset) -> Unit)? = null,
     onSelectionCompleted: ((Offset) -> Unit)? = null
-): Modifier = this.pointerInput(scrollState) {
+): Modifier = this.pointerInput(scrollState, directiveResults) {
     coroutineScope {
         awaitPointerEventScope {
             while (true) {
-                val tracker = awaitGestureStart(state, lineLayouts, touchSlop) ?: continue
+                val tracker = awaitGestureStart(state, lineLayouts, touchSlop, directiveResults) ?: continue
 
                 val longPressJob = launchLongPressDetection(longPressTimeoutMillis, tracker)
 
@@ -371,14 +417,15 @@ internal fun Modifier.editorPointerInput(
 private suspend fun AwaitPointerEventScope.awaitGestureStart(
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
-    touchSlop: Float
+    touchSlop: Float,
+    directiveResults: Map<String, DirectiveResult>
 ): GestureTracker? {
     // Use Main pass so children (like DirectiveEditRow) can consume in Initial pass first
     val down = awaitPointerEvent(PointerEventPass.Main)
     val downChange = down.changes.firstOrNull { it.pressed } ?: return null
     // Skip if a child already consumed this event
     if (downChange.isConsumed) return null
-    return GestureTracker(downChange.position, state, lineLayouts, touchSlop)
+    return GestureTracker(downChange.position, state, lineLayouts, touchSlop, directiveResults)
 }
 
 /**

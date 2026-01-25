@@ -100,22 +100,23 @@ private fun rememberContextMenuState(): ContextMenuState {
 private fun rememberHandlePositions(
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
-    gutterOffsetPx: Float
+    gutterOffsetPx: Float,
+    directiveResults: Map<String, DirectiveResult>
 ): Pair<HandlePosition?, HandlePosition?> {
-    val startHandlePosition by remember(state.selection, lineLayouts, gutterOffsetPx) {
+    val startHandlePosition by remember(state.selection, lineLayouts, gutterOffsetPx, directiveResults) {
         derivedStateOf {
             if (state.hasSelection) {
-                calculateHandlePosition(state.selection.min, state, lineLayouts)?.let { pos ->
+                calculateHandlePosition(state.selection.min, state, lineLayouts, directiveResults = directiveResults)?.let { pos ->
                     pos.copy(offset = Offset(pos.offset.x + gutterOffsetPx, pos.offset.y))
                 }
             } else null
         }
     }
 
-    val endHandlePosition by remember(state.selection, lineLayouts, gutterOffsetPx) {
+    val endHandlePosition by remember(state.selection, lineLayouts, gutterOffsetPx, directiveResults) {
         derivedStateOf {
             if (state.hasSelection) {
-                calculateHandlePosition(state.selection.max, state, lineLayouts, forEndHandle = true)?.let { pos ->
+                calculateHandlePosition(state.selection.max, state, lineLayouts, forEndHandle = true, directiveResults = directiveResults)?.let { pos ->
                     pos.copy(offset = Offset(pos.offset.x + gutterOffsetPx, pos.offset.y))
                 }
             } else null
@@ -202,7 +203,7 @@ fun HangingIndentEditor(
 
     // Handle positions
     val gutterOffsetPx = if (showGutter) with(density) { EditorConfig.GutterWidth.toPx() } else 0f
-    val (startHandlePosition, endHandlePosition) = rememberHandlePositions(state, lineLayouts, gutterOffsetPx)
+    val (startHandlePosition, endHandlePosition) = rememberHandlePositions(state, lineLayouts, gutterOffsetPx, directiveResults)
 
     // Render
     EditorLayout(
@@ -288,7 +289,8 @@ private fun EditorLayout(
             startHandlePosition = startHandlePosition,
             endHandlePosition = endHandlePosition,
             contextMenuState = contextMenuState,
-            clipboardManager = clipboardManager
+            clipboardManager = clipboardManager,
+            directiveResults = directiveResults
         )
     }
 }
@@ -365,15 +367,16 @@ private fun SelectionOverlay(
     startHandlePosition: HandlePosition?,
     endHandlePosition: HandlePosition?,
     contextMenuState: ContextMenuState,
-    clipboardManager: ClipboardManager
+    clipboardManager: ClipboardManager,
+    directiveResults: Map<String, DirectiveResult>
 ) {
     // Selection handles
     if (state.hasSelection) {
         SelectionHandles(
             startPosition = startHandlePosition,
             endPosition = endHandlePosition,
-            onStartHandleDrag = { handleDragState.updateSelectionFromDrag(true, it, state, lineLayouts) },
-            onEndHandleDrag = { handleDragState.updateSelectionFromDrag(false, it, state, lineLayouts) },
+            onStartHandleDrag = { handleDragState.updateSelectionFromDrag(true, it, state, lineLayouts, directiveResults) },
+            onEndHandleDrag = { handleDragState.updateSelectionFromDrag(false, it, state, lineLayouts, directiveResults) },
             onStartHandleDragEnd = { handleDragState.resetDragState(true) },
             onEndHandleDragEnd = { handleDragState.resetDragState(false) }
         )
@@ -460,6 +463,7 @@ private fun EditorContent(
                 longPressTimeoutMillis = viewConfiguration.longPressTimeoutMillis,
                 touchSlop = viewConfiguration.touchSlop,
                 scrollState = scrollState,
+                directiveResults = directiveResults,
                 onCursorPositioned = onCursorPositioned,
                 onTapOnSelection = onTapOnSelection,
                 // Wrap the callback to ignore the Offset parameter - we use selectionBounds for positioning

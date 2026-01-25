@@ -6,6 +6,8 @@ import org.alkaline.taskbrain.ui.currentnote.selection.PrefixSelectionOverlay
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToContentSelection
 import org.alkaline.taskbrain.ui.currentnote.ime.DirectiveAwareLineInput
 import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LineState
@@ -99,10 +101,21 @@ internal fun ControlledLineView(
         textMeasurer.measure(" ", textStyle).size.width.toFloat()
     }
 
-    // Convert line selection to content and prefix selection ranges
-    val contentSelectionRange = selectionRange?.let {
+    // Build display text info to map between source and display coordinates
+    val displayResult = remember(content, lineIndex, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineIndex, directiveResults)
+    }
+
+    // Convert line selection to content selection range (in source coordinates)
+    val sourceContentSelectionRange = selectionRange?.let {
         lineSelectionToContentSelection(it, prefix.length, content.length)
     }
+
+    // Map source selection to display selection for rendering
+    val displayContentSelectionRange = sourceContentSelectionRange?.let { sourceRange ->
+        mapSourceRangeToDisplayRange(sourceRange, displayResult)
+    }
+
     val prefixSelectionRange = selectionRange?.let {
         lineSelectionToPrefixSelection(it, prefix.length)
     }
@@ -162,10 +175,11 @@ internal fun ControlledLineView(
         // Content area - using LineTextInput with EditorController
         Box(modifier = Modifier.weight(1f)) {
             // Selection overlay behind text (including newline visualization)
-            if ((contentSelectionRange != null || selectionIncludesNewline) && contentTextLayout != null) {
+            // Use display coordinates since contentTextLayout is for display text
+            if ((displayContentSelectionRange != null || selectionIncludesNewline) && contentTextLayout != null) {
                 ContentSelectionOverlay(
-                    selectionRange = contentSelectionRange,
-                    contentLength = content.length,
+                    selectionRange = displayContentSelectionRange,
+                    contentLength = displayResult.displayText.length,
                     textLayout = contentTextLayout!!,
                     density = density,
                     includesNewline = selectionIncludesNewline,
@@ -198,5 +212,53 @@ internal fun ControlledLineView(
             )
         }
     }
+}
+
+/**
+ * Maps a source text range to display text range.
+ * Handles directives that may have different lengths in source vs display.
+ */
+private fun mapSourceRangeToDisplayRange(
+    sourceRange: IntRange,
+    displayResult: DisplayTextResult
+): IntRange {
+    if (displayResult.directiveDisplayRanges.isEmpty()) {
+        return sourceRange
+    }
+
+    val displayStart = mapSourceToDisplayOffset(sourceRange.first, displayResult)
+    // For the end, we use last + 1 because ranges are [start, end) exclusive
+    val displayEnd = mapSourceToDisplayOffset(sourceRange.last + 1, displayResult)
+
+    return displayStart until displayEnd
+}
+
+/**
+ * Maps a cursor position from source text to display text.
+ */
+private fun mapSourceToDisplayOffset(sourceOffset: Int, displayResult: DisplayTextResult): Int {
+    if (displayResult.directiveDisplayRanges.isEmpty()) {
+        return sourceOffset
+    }
+
+    var displayOffset = sourceOffset
+
+    for (range in displayResult.directiveDisplayRanges) {
+        if (sourceOffset <= range.sourceRange.first) {
+            // Offset is before this directive - no adjustment needed
+            break
+        } else if (sourceOffset > range.sourceRange.last) {
+            // Offset is after this directive - adjust for the length difference
+            val sourceLength = range.sourceRange.last - range.sourceRange.first + 1
+            val displayLength = range.displayRange.last - range.displayRange.first + 1
+            displayOffset += displayLength - sourceLength
+        } else {
+            // Offset is inside the directive - map to corresponding position in display
+            // Map proportionally or to the end of display directive
+            return range.displayRange.last + 1
+        }
+    }
+
+    return displayOffset.coerceAtLeast(0)
 }
 

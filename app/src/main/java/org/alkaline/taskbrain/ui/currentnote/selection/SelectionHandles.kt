@@ -15,6 +15,9 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import org.alkaline.taskbrain.dsl.DirectiveResult
+import org.alkaline.taskbrain.dsl.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
@@ -179,17 +182,19 @@ fun SelectionHandles(
 /**
  * Calculates the handle position for a given global offset in the editor.
  *
- * @param globalOffset The character offset in the full text
+ * @param globalOffset The character offset in the full text (source coordinates)
  * @param state The editor state
  * @param lineLayouts Layout information for each line
  * @param forEndHandle If true, handles positioned at line boundaries will stay at end of previous line
+ * @param directiveResults Map of directive results for display text calculation
  * @return HandlePosition with screen coordinates, or null if position cannot be determined
  */
 internal fun calculateHandlePosition(
     globalOffset: Int,
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
-    forEndHandle: Boolean = false
+    forEndHandle: Boolean = false,
+    directiveResults: Map<String, DirectiveResult> = emptyMap()
 ): HandlePosition? {
     if (state.lines.isEmpty()) return null
 
@@ -207,13 +212,22 @@ internal fun calculateHandlePosition(
     val layoutInfo = lineLayouts.getOrNull(lineIndex) ?: return null
     val textLayout = layoutInfo.textLayoutResult ?: return null
 
+    // Build display text info to map between source and display coordinates
+    val displayResult = DirectiveSegmenter.buildDisplayText(
+        lineState.content, lineIndex, directiveResults
+    )
+
     // Convert to content-local offset (offset within the content, not including prefix)
     val prefixLength = lineState.prefix.length
-    val contentOffset = (localOffset - prefixLength).coerceIn(0, lineState.content.length)
+    val sourceContentOffset = (localOffset - prefixLength).coerceIn(0, lineState.content.length)
 
-    // Get cursor rect from the text layout
+    // Map source content offset to display content offset
+    val displayContentOffset = mapSourceToDisplayOffset(sourceContentOffset, displayResult)
+        .coerceIn(0, displayResult.displayText.length)
+
+    // Get cursor rect from the text layout (which is for display text)
     val cursorRect = try {
-        textLayout.getCursorRect(contentOffset)
+        textLayout.getCursorRect(displayContentOffset)
     } catch (e: Exception) {
         return null
     }
@@ -230,4 +244,32 @@ internal fun calculateHandlePosition(
         offset = Offset(screenX, screenY),
         lineHeight = lineHeight
     )
+}
+
+/**
+ * Maps a cursor position from source text to display text.
+ */
+private fun mapSourceToDisplayOffset(sourceOffset: Int, displayResult: DisplayTextResult): Int {
+    if (displayResult.directiveDisplayRanges.isEmpty()) {
+        return sourceOffset
+    }
+
+    var displayOffset = sourceOffset
+
+    for (range in displayResult.directiveDisplayRanges) {
+        if (sourceOffset <= range.sourceRange.first) {
+            // Offset is before this directive - no adjustment needed
+            break
+        } else if (sourceOffset > range.sourceRange.last) {
+            // Offset is after this directive - adjust for the length difference
+            val sourceLength = range.sourceRange.last - range.sourceRange.first + 1
+            val displayLength = range.displayRange.last - range.displayRange.first + 1
+            displayOffset += displayLength - sourceLength
+        } else {
+            // Offset is inside the directive - map to end of display directive
+            return range.displayRange.last + 1
+        }
+    }
+
+    return displayOffset.coerceAtLeast(0)
 }

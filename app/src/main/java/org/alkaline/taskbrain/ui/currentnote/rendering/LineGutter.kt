@@ -232,8 +232,8 @@ private fun GutterContent(
         val lineContent = state.lines.getOrNull(index)?.content ?: ""
         val lineDirectives = DirectiveFinder.findDirectives(lineContent)
         for (found in lineDirectives) {
-            val hash = found.hash()
-            val result = directiveResults[hash]
+            val key = DirectiveFinder.directiveKey(index, found.startOffset)
+            val result = directiveResults[key]
             if (result != null && !result.collapsed) {
                 GutterGap(height = DirectiveEditRowGapHeight, width = EditorConfig.GutterWidth)
             }
