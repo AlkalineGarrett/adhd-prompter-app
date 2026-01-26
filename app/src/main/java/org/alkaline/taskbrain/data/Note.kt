@@ -14,4 +14,6 @@ data class Note(
     val tags: List<String> = emptyList(),
     val containedNotes: List<String> = emptyList(),
     val state: String? = null,
+    /** Unique path identifier for this note (URL-safe: alphanumeric, -, _, /). */
+    val path: String = "",
 )

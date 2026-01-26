@@ -1,13 +1,21 @@
 package org.alkaline.taskbrain.dsl.runtime
 
+import org.alkaline.taskbrain.data.Note
+
 /**
  * Execution environment for DSL evaluation.
- * Holds variable bindings and context for directive execution.
+ * Holds variable bindings, context data, and resources for directive execution.
  *
- * Milestone 1: Minimal implementation - will be expanded for variables and scopes.
+ * Milestone 1: Minimal implementation with variables and scopes.
+ * Milestone 5: Adds note list for find() operations.
  */
 class Environment(
-    private val parent: Environment? = null
+    private val parent: Environment? = null,
+    /**
+     * Optional list of notes available for find() operations.
+     * This is set at the root environment and inherited by children.
+     */
+    private val notes: List<Note>? = null
 ) {
     private val variables = mutableMapOf<String, DslValue>()
 
@@ -28,11 +36,25 @@ class Environment(
 
     /**
      * Create a child environment for nested scopes.
+     * Inherits the notes from the parent.
      */
-    fun child(): Environment = Environment(this)
+    fun child(): Environment = Environment(parent = this, notes = getNotes())
 
     /**
      * Capture the current environment for closures.
      */
     fun capture(): Environment = this
+
+    /**
+     * Get the list of notes available for find() operations.
+     * Searches up the parent chain if not set locally.
+     */
+    fun getNotes(): List<Note>? = notes ?: parent?.getNotes()
+
+    companion object {
+        /**
+         * Create an environment with a list of notes for find() operations.
+         */
+        fun withNotes(notes: List<Note>): Environment = Environment(notes = notes)
+    }
 }

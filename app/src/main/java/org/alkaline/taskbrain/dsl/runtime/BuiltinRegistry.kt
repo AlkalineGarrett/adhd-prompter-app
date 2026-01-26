@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.dsl.builtins.ArithmeticFunctions
 import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
+import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
 import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.Expression
@@ -68,6 +69,7 @@ data class BuiltinFunction(
  *
  * Milestone 3: Adds arithmetic functions.
  * Milestone 4: Adds pattern support to containsDynamicCalls.
+ * Milestone 5: Adds note functions (find).
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -78,6 +80,7 @@ object BuiltinRegistry {
         CharacterConstants.register(this)
         ArithmeticFunctions.register(this)
         PatternFunctions.register(this)
+        NoteFunctions.register(this)
     }
 
     /**

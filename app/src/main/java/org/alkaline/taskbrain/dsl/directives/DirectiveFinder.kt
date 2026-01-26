@@ -1,9 +1,11 @@
 package org.alkaline.taskbrain.dsl.directives
 
+import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.LexerException
 import org.alkaline.taskbrain.dsl.language.ParseException
 import org.alkaline.taskbrain.dsl.language.Parser
+import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
 
@@ -73,13 +75,15 @@ object DirectiveFinder {
      * Parse and execute a single directive, returning the result.
      *
      * @param sourceText The directive source text (including brackets)
+     * @param notes Optional list of notes for find() operations
      * @return DirectiveResult containing either the value or an error
      */
-    fun executeDirective(sourceText: String): DirectiveResult {
+    fun executeDirective(sourceText: String, notes: List<Note>? = null): DirectiveResult {
         return try {
             val tokens = Lexer(sourceText).tokenize()
             val directive = Parser(tokens, sourceText).parseDirective()
-            val value = Executor().execute(directive)
+            val env = if (notes != null) Environment.withNotes(notes) else Environment()
+            val value = Executor().execute(directive, env)
             DirectiveResult.success(value)
         } catch (e: LexerException) {
             DirectiveResult.failure("Lexer error: ${e.message}")
@@ -97,11 +101,16 @@ object DirectiveFinder {
      *
      * @param content The note content (single line)
      * @param lineIndex The line index (for position-based keys)
+     * @param notes Optional list of notes for find() operations
      * @return Map of directive position key to execution result
      */
-    fun executeAllDirectives(content: String, lineIndex: Int): Map<String, DirectiveResult> {
+    fun executeAllDirectives(
+        content: String,
+        lineIndex: Int,
+        notes: List<Note>? = null
+    ): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
-            directiveKey(lineIndex, found.startOffset) to executeDirective(found.sourceText)
+            directiveKey(lineIndex, found.startOffset) to executeDirective(found.sourceText, notes)
         }
     }
 }

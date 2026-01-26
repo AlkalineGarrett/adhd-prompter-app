@@ -431,6 +431,7 @@ Searches for notes matching criteria.
 
 **Parameters:**
 - `path`: A string or pattern to match against note paths
+- `name`: A string or pattern to match against the note's name (first line of content)
 - `where`: A lambda predicate for filtering
 
 **Returns**: A list of matching notes (empty list if none found).
@@ -439,6 +440,8 @@ Searches for notes matching criteria.
 ```
 [find(path: "2026-01-15")]                                    # Exact path match
 [find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]        # All ISO date paths
+[find(name: "Shopping List")]                                 # Exact name match
+[find(name: pattern("Meeting" any*(0..)))]                    # Names starting with "Meeting"
 [find(where: lambda[after(i.modified, add_days(date, -1))])]  # Modified after yesterday
 [find(path: pattern("journal/" any*(1..)), where: lambda[before(i.created, add_days(date, -7))])]
 ```

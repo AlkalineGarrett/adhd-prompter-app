@@ -1,5 +1,7 @@
 package org.alkaline.taskbrain.dsl.runtime
 
+import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.language.CharClass
 import org.alkaline.taskbrain.dsl.language.CharClassType
 import org.alkaline.taskbrain.dsl.language.PatternElement
@@ -17,6 +19,7 @@ import java.time.format.DateTimeFormatter
  *
  * Milestone 2: Adds DateVal, TimeVal, DateTimeVal.
  * Milestone 4: Adds PatternVal for pattern matching, BooleanVal for matches().
+ * Milestone 5: Adds NoteVal and ListVal for find() function.
  */
 sealed class DslValue {
     /**
@@ -60,6 +63,16 @@ sealed class DslValue {
                     // Patterns are stored as regex string; reconstruct PatternVal
                     val regexString = value as String
                     PatternVal.fromRegexString(regexString)
+                }
+                "note" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val noteMap = value as Map<String, Any?>
+                    NoteVal.deserialize(noteMap)
+                }
+                "list" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val items = (value as List<Map<String, Any?>>).map { deserialize(it) }
+                    ListVal(items)
                 }
                 else -> throw IllegalArgumentException("Unknown DslValue type: $type")
             }
@@ -231,4 +244,84 @@ data class PatternVal(
             }
         }
     }
+}
+
+/**
+ * A note value, wrapping a Note object from the data layer.
+ * Created by the find() function or note references.
+ *
+ * Milestone 5.
+ */
+data class NoteVal(val note: Note) : DslValue() {
+    override val typeName: String = "note"
+
+    override fun toDisplayString(): String {
+        // Display the path if set, otherwise the first line of content, otherwise the id
+        return when {
+            note.path.isNotEmpty() -> note.path
+            note.content.isNotEmpty() -> note.content.lines().firstOrNull() ?: note.id
+            else -> note.id
+        }
+    }
+
+    override fun serializeValue(): Any = mapOf(
+        "id" to note.id,
+        "userId" to note.userId,
+        "path" to note.path,
+        "content" to note.content,
+        "createdAt" to note.createdAt?.toDate()?.time,
+        "updatedAt" to note.updatedAt?.toDate()?.time,
+        "lastAccessedAt" to note.lastAccessedAt?.toDate()?.time
+    )
+
+    companion object {
+        /**
+         * Deserialize a NoteVal from a Firestore map.
+         */
+        fun deserialize(map: Map<String, Any?>): NoteVal {
+            val createdAtMillis = map["createdAt"] as? Long
+            val updatedAtMillis = map["updatedAt"] as? Long
+            val lastAccessedAtMillis = map["lastAccessedAt"] as? Long
+
+            val note = Note(
+                id = map["id"] as? String ?: "",
+                userId = map["userId"] as? String ?: "",
+                path = map["path"] as? String ?: "",
+                content = map["content"] as? String ?: "",
+                createdAt = createdAtMillis?.let { Timestamp(java.util.Date(it)) },
+                updatedAt = updatedAtMillis?.let { Timestamp(java.util.Date(it)) },
+                lastAccessedAt = lastAccessedAtMillis?.let { Timestamp(java.util.Date(it)) }
+            )
+            return NoteVal(note)
+        }
+    }
+}
+
+/**
+ * A list value containing other DslValues.
+ * Created by the find() function, list() function, etc.
+ *
+ * Milestone 5.
+ */
+data class ListVal(val items: List<DslValue>) : DslValue() {
+    override val typeName: String = "list"
+
+    override fun toDisplayString(): String {
+        if (items.isEmpty()) return "[]"
+        return "[${items.joinToString(", ") { it.toDisplayString() }}]"
+    }
+
+    override fun serializeValue(): Any = items.map { it.serialize() }
+
+    /** Number of items in the list. */
+    val size: Int get() = items.size
+
+    /** Check if the list is empty. */
+    fun isEmpty(): Boolean = items.isEmpty()
+
+    /** Check if the list is not empty. */
+    fun isNotEmpty(): Boolean = items.isNotEmpty()
+
+    /** Get an item by index, or null if out of bounds. */
+    operator fun get(index: Int): DslValue? = items.getOrNull(index)
 }

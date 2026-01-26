@@ -575,41 +575,100 @@ object PatternFunctions {
 
 ---
 
-## Milestone 5: Find with Pattern
+## Milestone 5: Find with Pattern ✅ COMPLETE
 
-**Target:** `[find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]`
+**Target:** `[find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]`, `[find(name: "Shopping List")]`
+
+### Implementation Summary
+
+**Changes made:**
+1. Added `path` field to Note model (`data/Note.kt`) and updated `schema.md`
+2. Added `NoteVal` and `ListVal` types to `DslValue.kt` with serialization/deserialization
+3. Extended `Environment` to carry optional note list for find operations
+4. Created `NoteFunctions.kt` with `find(path: ...)` function supporting both exact string match and pattern match
+5. Registered `NoteFunctions` in `BuiltinRegistry`
+6. Updated `DirectiveFinder` to accept and pass notes to executor via environment
+7. Updated `CurrentNoteViewModel` to load and pass notes to directive execution
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `path` | String or Pattern | Match against note's `path` field |
+| `name` | String or Pattern | Match against note's name (first line of content) |
+| `where` | Lambda | Predicate for filtering (Milestone 7) |
+
+All parameters are optional. Multiple parameters are combined with AND logic.
 
 ### Builtins: NoteFunctions.kt
 ```kotlin
+// Implemented in builtins/NoteFunctions.kt
 "find" to { args, env ->
-    val pathPattern = args.named("path") as? PatternVal
-    val whereLambda = args.named("where") as? LambdaVal  // Later milestone
+    val pathArg = args["path"]
+    val nameArg = args["name"]
+    val notes = env.getNotes() ?: emptyList()
 
-    val notes = noteRepository.getAllNotes()  // Or optimized query
     val filtered = notes.filter { note ->
-        val pathMatches = pathPattern?.compiledRegex?.matches(note.path) ?: true
-        // whereLambda check comes in Milestone 7
-        pathMatches
+        val pathMatches = when (pathArg) {
+            null -> true
+            is StringVal -> note.path == pathArg.value
+            is PatternVal -> pathArg.matches(note.path)
+            else -> throw ExecutionException("path must be string or pattern")
+        }
+        val nameMatches = when (nameArg) {
+            null -> true
+            is StringVal -> note.content.lines().firstOrNull() == nameArg.value
+            is PatternVal -> nameArg.matches(note.content.lines().firstOrNull() ?: "")
+            else -> throw ExecutionException("name must be string or pattern")
+        }
+        pathMatches && nameMatches
     }
     ListVal(filtered.map { NoteVal(it) })
 }
 ```
 
-### Types Additions
+### Types Additions (in DslValue.kt)
 ```kotlin
 data class NoteVal(val note: Note) : DslValue()
 data class ListVal(val items: List<DslValue>) : DslValue()
 ```
 
-### Query Optimization
+### Environment Extension
+```kotlin
+class Environment(
+    private val parent: Environment? = null,
+    private val notes: List<Note>? = null  // For find() operations
+) {
+    fun getNotes(): List<Note>? = notes ?: parent?.getNotes()
+
+    companion object {
+        fun withNotes(notes: List<Note>): Environment
+    }
+}
+```
+
+### DirectiveFinder Update
+```kotlin
+fun executeDirective(sourceText: String, notes: List<Note>? = null): DirectiveResult
+fun executeAllDirectives(content: String, lineIndex: Int, notes: List<Note>? = null): Map<String, DirectiveResult>
+```
+
+### Query Optimization (Future)
 - For prefix patterns (e.g., `"journal/" any*(1..)`), use Firestore range query
 - For regex patterns, fetch candidates and filter client-side
 - Consider indexing common path prefixes
 
-### Tests
-- Find returns matching notes
-- Empty list when no matches
-- Pattern matching is correct
+### Tests (NoteFunctionsTest.kt)
+- Find with no notes returns empty list ✅
+- Find with exact path returns matching note ✅
+- Find with pattern returns matching notes ✅
+- Find returns empty list when no matches ✅
+- Find without arguments returns all notes ✅
+- NoteVal/ListVal serialization round-trip ✅
+- Display strings work correctly ✅
+- Find with exact name returns matching note ✅
+- Find with name pattern returns matching notes ✅
+- Find with both path and name filters ✅
 
 ---
 
