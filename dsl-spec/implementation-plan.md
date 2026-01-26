@@ -744,7 +744,84 @@ is PropertyAccess -> {
 
 ---
 
-## Milestone 7: Lambda
+## Milestone 7: Note Mutation
+
+**Target:** `[.path: "x"]`, `[maybe_new(...)]`, `[.append(...)]`
+
+### Parser Additions
+- Assignment syntax: `.prop: value` or `expr.prop: value`
+- Statement separation with `;`
+
+### AST Nodes
+```kotlin
+data class Assignment(val target: Expression, val value: Expression) : Expression()
+data class StatementList(val statements: List<Expression>) : Expression()
+```
+
+### Builtins: NoteFunctions.kt
+```kotlin
+"new" to { args, env ->
+    val path = args.named("path")!!.asString()
+    val content = args.named("content")?.asString() ?: ""
+
+    if (noteRepository.noteExistsAtPath(path)) {
+        error("Note already exists at path: $path")
+    }
+
+    val note = noteRepository.createNote(path, content)
+    NoteVal(note)
+}
+
+"maybe_new" to { args, env ->
+    val path = args.named("path")!!.asString()
+    val maybeContent = args.named("maybe_content")?.asString() ?: ""
+
+    val existing = noteRepository.findByPath(path)
+    if (existing != null) {
+        NoteVal(existing)
+    } else {
+        val note = noteRepository.createNote(path, maybeContent)
+        NoteVal(note)
+    }
+}
+```
+
+### Method-Style Calls
+```kotlin
+// .append on notes
+fun NoteVal.append(text: String): NoteVal {
+    noteRepository.appendToNote(note.id, text)
+    return this  // Return note for chaining
+}
+```
+
+### Executor
+```kotlin
+is Assignment -> {
+    val value = evaluate(expr.value, env)
+    when (val target = expr.target) {
+        is PropertyAccess -> {
+            val targetObj = evaluate(target.target, env)
+            when (targetObj) {
+                is NoteVal -> targetObj.setProperty(target.property, value)
+                else -> error("Cannot assign to property on ${targetObj.type}")
+            }
+        }
+        else -> error("Invalid assignment target")
+    }
+    value
+}
+```
+
+### Tests
+- `new` creates note, errors on duplicate
+- `maybe_new` is idempotent
+- `.append` adds content
+- Property assignment works
+
+---
+
+## Milestone 8: Lambda
 
 **Target:** `[lambda[parse_date i.path]]`
 
@@ -817,7 +894,7 @@ fun invokeLambda(lambda: LambdaVal, args: List<DslValue>): DslValue {
 
 ---
 
-## Milestone 8: Sort
+## Milestone 9: Sort
 
 **Target:** `[sort(find(...), key: lambda[parse_date i.path], order: desc)]`
 
@@ -850,7 +927,7 @@ fun invokeLambda(lambda: LambdaVal, args: List<DslValue>): DslValue {
 
 ---
 
-## Milestone 9: View
+## Milestone 10: View
 
 **Target:** `[view find(...)]`, `[view sort find(...), ...]`
 
@@ -931,7 +1008,7 @@ class Executor {
 
 ---
 
-## Milestone 10: Refresh (Target 2)
+## Milestone 11: Refresh (Target 2)
 
 **Target:** `[refresh view sort find(path: pattern(...)), key: lambda[...], order: desc]`
 
@@ -973,7 +1050,7 @@ fun extractDependencies(ast: Expression): DirectiveDependencies {
 
 ---
 
-## Milestone 11: Deferred Execution
+## Milestone 12: Deferred Execution
 
 **Target:** `[later date]`, `[later[...]]`
 
@@ -1033,83 +1110,6 @@ fun resolveDeferred(deferred: DeferredVal): DslValue {
 - Auto-propagation works
 - `run` forces evaluation
 - Variable capture preserves values
-
----
-
-## Milestone 12: Note Mutation
-
-**Target:** `[.path: "x"]`, `[maybe_new(...)]`, `[.append(...)]`
-
-### Parser Additions
-- Assignment syntax: `.prop: value` or `expr.prop: value`
-- Statement separation with `;`
-
-### AST Nodes
-```kotlin
-data class Assignment(val target: Expression, val value: Expression) : Expression()
-data class StatementList(val statements: List<Expression>) : Expression()
-```
-
-### Builtins: NoteFunctions.kt
-```kotlin
-"new" to { args, env ->
-    val path = args.named("path")!!.asString()
-    val content = args.named("content")?.asString() ?: ""
-
-    if (noteRepository.noteExistsAtPath(path)) {
-        error("Note already exists at path: $path")
-    }
-
-    val note = noteRepository.createNote(path, content)
-    NoteVal(note)
-}
-
-"maybe_new" to { args, env ->
-    val path = args.named("path")!!.asString()
-    val maybeContent = args.named("maybe_content")?.asString() ?: ""
-
-    val existing = noteRepository.findByPath(path)
-    if (existing != null) {
-        NoteVal(existing)
-    } else {
-        val note = noteRepository.createNote(path, maybeContent)
-        NoteVal(note)
-    }
-}
-```
-
-### Method-Style Calls
-```kotlin
-// .append on notes
-fun NoteVal.append(text: String): NoteVal {
-    noteRepository.appendToNote(note.id, text)
-    return this  // Return note for chaining
-}
-```
-
-### Executor
-```kotlin
-is Assignment -> {
-    val value = evaluate(expr.value, env)
-    when (val target = expr.target) {
-        is PropertyAccess -> {
-            val targetObj = evaluate(target.target, env)
-            when (targetObj) {
-                is NoteVal -> targetObj.setProperty(target.property, value)
-                else -> error("Cannot assign to property on ${targetObj.type}")
-            }
-        }
-        else -> error("Invalid assignment target")
-    }
-    value
-}
-```
-
-### Tests
-- `new` creates note, errors on duplicate
-- `maybe_new` is idempotent
-- `.append` adds content
-- Property assignment works
 
 ---
 
