@@ -3,9 +3,11 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.dsl.builtins.ArithmeticFunctions
 import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
+import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
+import org.alkaline.taskbrain.dsl.language.PatternExpr
 import org.alkaline.taskbrain.dsl.language.StringLiteral
 
 /**
@@ -65,6 +67,7 @@ data class BuiltinFunction(
  * Registry of all builtin functions available in the DSL.
  *
  * Milestone 3: Adds arithmetic functions.
+ * Milestone 4: Adds pattern support to containsDynamicCalls.
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -74,6 +77,7 @@ object BuiltinRegistry {
         DateFunctions.register(this)
         CharacterConstants.register(this)
         ArithmeticFunctions.register(this)
+        PatternFunctions.register(this)
     }
 
     /**
@@ -112,6 +116,7 @@ object BuiltinRegistry {
         return when (expr) {
             is NumberLiteral -> false
             is StringLiteral -> false
+            is PatternExpr -> false  // Patterns are static
             is CallExpr -> {
                 isDynamic(expr.name) ||
                     expr.args.any { containsDynamicCalls(it) } ||

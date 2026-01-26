@@ -10,8 +10,21 @@ package org.alkaline.taskbrain.dsl.language
  * 2. Parenthesized: [add(1, 2)] or [foo(bar: "baz")]
  *
  * Space-separated nesting still works inside parens: [a(b c, d)] -> a(b(c), d)
+ *
+ * Milestone 4: Adds pattern(...) special parsing for mobile-friendly pattern matching.
  */
 class Parser(private val tokens: List<Token>, private val source: String) {
+
+    companion object {
+        /** Valid character class names for pattern matching. */
+        private val CHAR_CLASS_NAMES = mapOf(
+            "digit" to CharClassType.DIGIT,
+            "letter" to CharClassType.LETTER,
+            "space" to CharClassType.SPACE,
+            "punct" to CharClassType.PUNCT,
+            "any" to CharClassType.ANY
+        )
+    }
     private var current = 0
 
     /**
@@ -95,7 +108,12 @@ class Parser(private val tokens: List<Token>, private val source: String) {
 
                 // Check for parenthesized argument list
                 if (match(TokenType.LPAREN)) {
-                    parseParenthesizedCall(name, position)
+                    // Special case: pattern(...) has its own parsing mode
+                    if (name == "pattern") {
+                        parsePatternExpression(position)
+                    } else {
+                        parseParenthesizedCall(name, position)
+                    }
                 } else {
                     // An identifier alone becomes a zero-arg function call
                     CallExpr(name, emptyList(), position)
@@ -207,6 +225,160 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     private fun consume(type: TokenType, message: String): Token {
         if (check(type)) return advance()
         throw ParseException(message, peek().position)
+    }
+
+    // ========================================================================
+    // Pattern Parsing (Milestone 4)
+    // ========================================================================
+
+    /**
+     * Parse a pattern expression: pattern(digit*4 "-" digit*2 "-" digit*2)
+     * Called after 'pattern(' has been consumed.
+     *
+     * Pattern syntax:
+     * - Character classes: digit, letter, space, punct, any
+     * - Quantifiers: *4, *any, *(0..5), *(1..)
+     * - Literals: "string"
+     */
+    private fun parsePatternExpression(position: Int): PatternExpr {
+        val elements = mutableListOf<PatternElement>()
+
+        // Parse pattern elements until we hit RPAREN
+        while (!check(TokenType.RPAREN)) {
+            elements.add(parsePatternElement())
+        }
+
+        consume(TokenType.RPAREN, "Expected ')' after pattern elements")
+
+        if (elements.isEmpty()) {
+            throw ParseException("Pattern cannot be empty", position)
+        }
+
+        return PatternExpr(elements, position)
+    }
+
+    /**
+     * Parse a single pattern element (possibly with a quantifier).
+     */
+    private fun parsePatternElement(): PatternElement {
+        val baseElement = parseBasePatternElement()
+
+        // Check for optional quantifier
+        return if (check(TokenType.STAR)) {
+            parseQuantifiedElement(baseElement)
+        } else {
+            baseElement
+        }
+    }
+
+    /**
+     * Parse a base pattern element (before quantifier).
+     */
+    private fun parseBasePatternElement(): PatternElement {
+        return when {
+            match(TokenType.STRING) -> {
+                val token = previous()
+                PatternLiteral(token.literal as String, token.position)
+            }
+            match(TokenType.IDENTIFIER) -> {
+                val token = previous()
+                val name = token.literal as String
+                val charClassType = CHAR_CLASS_NAMES[name]
+                    ?: throw ParseException(
+                        "Unknown pattern character class '$name'. " +
+                        "Valid classes are: ${CHAR_CLASS_NAMES.keys.joinToString()}",
+                        token.position
+                    )
+                CharClass(charClassType, token.position)
+            }
+            else -> throw ParseException(
+                "Expected pattern element (character class or string literal)",
+                peek().position
+            )
+        }
+    }
+
+    /**
+     * Parse a quantified pattern element: element*4, element*any, element*(0..5)
+     * Called when STAR is the current token.
+     */
+    private fun parseQuantifiedElement(element: PatternElement): Quantified {
+        val starToken = advance() // consume STAR
+        val quantifier = parseQuantifier()
+        return Quantified(element, quantifier, element.position)
+    }
+
+    /**
+     * Parse a quantifier after the STAR token.
+     * Forms: *4, *any, *(0..5), *(1..)
+     */
+    private fun parseQuantifier(): Quantifier {
+        return when {
+            match(TokenType.NUMBER) -> {
+                // *4 - exact count
+                val token = previous()
+                val count = (token.literal as Double).toInt()
+                if (count < 0) {
+                    throw ParseException("Quantifier count must be non-negative", token.position)
+                }
+                Quantifier.Exact(count)
+            }
+            match(TokenType.IDENTIFIER) -> {
+                // *any - match any number of times
+                val token = previous()
+                val name = token.literal as String
+                if (name != "any") {
+                    throw ParseException(
+                        "Expected quantifier: number, 'any', or '(min..max)'. Got '$name'",
+                        token.position
+                    )
+                }
+                Quantifier.Any
+            }
+            match(TokenType.LPAREN) -> {
+                // *(0..5) or *(1..) - range quantifier
+                parseRangeQuantifier()
+            }
+            else -> throw ParseException(
+                "Expected quantifier after '*': number, 'any', or '(min..max)'",
+                peek().position
+            )
+        }
+    }
+
+    /**
+     * Parse a range quantifier: (0..5) or (1..)
+     * Called after LPAREN has been consumed.
+     */
+    private fun parseRangeQuantifier(): Quantifier.Range {
+        // Parse minimum
+        val minToken = consume(TokenType.NUMBER, "Expected minimum in range quantifier")
+        val min = (minToken.literal as Double).toInt()
+        if (min < 0) {
+            throw ParseException("Range minimum must be non-negative", minToken.position)
+        }
+
+        // Expect ..
+        consume(TokenType.DOTDOT, "Expected '..' in range quantifier")
+
+        // Parse maximum (optional - if missing, it's unbounded)
+        val max: Int? = if (check(TokenType.NUMBER)) {
+            val maxToken = advance()
+            val maxVal = (maxToken.literal as Double).toInt()
+            if (maxVal < min) {
+                throw ParseException(
+                    "Range maximum ($maxVal) must be >= minimum ($min)",
+                    maxToken.position
+                )
+            }
+            maxVal
+        } else {
+            null // unbounded
+        }
+
+        consume(TokenType.RPAREN, "Expected ')' after range quantifier")
+
+        return Quantifier.Range(min, max)
     }
 }
 

@@ -68,3 +68,77 @@ data class Directive(
     val sourceText: String,
     val startPosition: Int
 )
+
+// ============================================================================
+// Pattern AST Nodes (Milestone 4)
+// ============================================================================
+
+/**
+ * Character class types for pattern matching.
+ */
+enum class CharClassType {
+    DIGIT,   // Matches 0-9
+    LETTER,  // Matches a-z, A-Z
+    SPACE,   // Matches whitespace
+    PUNCT,   // Matches punctuation
+    ANY      // Matches any character
+}
+
+/**
+ * Quantifier for pattern elements.
+ */
+sealed class Quantifier {
+    /** Matches exactly n times. Example: *4 */
+    data class Exact(val n: Int) : Quantifier()
+
+    /** Matches between min and max times. max=null means unbounded. Example: *(0..5), *(1..) */
+    data class Range(val min: Int, val max: Int?) : Quantifier()
+
+    /** Matches any number of times (0+). Equivalent to Range(0, null). Example: *any */
+    data object Any : Quantifier()
+}
+
+/**
+ * A single element in a pattern.
+ */
+sealed class PatternElement {
+    /** The position in source where this element starts */
+    abstract val position: Int
+}
+
+/**
+ * A character class in a pattern.
+ * Example: digit, letter, space, punct, any
+ */
+data class CharClass(
+    val type: CharClassType,
+    override val position: Int
+) : PatternElement()
+
+/**
+ * A literal string in a pattern.
+ * Example: "-" in pattern(digit*4 "-" digit*2)
+ */
+data class PatternLiteral(
+    val value: String,
+    override val position: Int
+) : PatternElement()
+
+/**
+ * A quantified pattern element.
+ * Example: digit*4, letter*any, any*(1..)
+ */
+data class Quantified(
+    val element: PatternElement,
+    val quantifier: Quantifier,
+    override val position: Int
+) : PatternElement()
+
+/**
+ * A complete pattern expression.
+ * Example: pattern(digit*4 "-" digit*2 "-" digit*2)
+ */
+data class PatternExpr(
+    val elements: List<PatternElement>,
+    override val position: Int
+) : Expression()

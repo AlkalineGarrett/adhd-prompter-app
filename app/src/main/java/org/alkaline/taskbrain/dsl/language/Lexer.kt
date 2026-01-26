@@ -5,6 +5,7 @@ package org.alkaline.taskbrain.dsl.language
  * Converts source text into a sequence of tokens.
  *
  * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
+ * Milestone 4: Adds star (*) and dot-dot (..) for pattern quantifiers.
  *
  * Note: Strings have no escape sequences (mobile-friendly design).
  * Special characters like quotes and newlines are inserted using
@@ -37,6 +38,8 @@ class Lexer(private val source: String) {
             ')' -> addToken(TokenType.RPAREN)
             ',' -> addToken(TokenType.COMMA)
             ':' -> addToken(TokenType.COLON)
+            '*' -> addToken(TokenType.STAR)
+            '.' -> dotOrDotDot()
             '"' -> string()
             ' ', '\t', '\r', '\n' -> { /* skip whitespace */ }
             else -> when {
@@ -44,6 +47,21 @@ class Lexer(private val source: String) {
                 c.isIdentifierStart() -> identifier()
                 else -> throw LexerException("Unexpected character '$c'", current - 1)
             }
+        }
+    }
+
+    /**
+     * Handle '.' - either a single dot (for property access, Milestone 6)
+     * or '..' for pattern range quantifiers (Milestone 4).
+     */
+    private fun dotOrDotDot() {
+        if (peek() == '.') {
+            advance() // consume second '.'
+            addToken(TokenType.DOTDOT)
+        } else {
+            // Single dot - for now, treat as unexpected since Milestone 6 isn't implemented
+            // TODO: In Milestone 6, add DOT token type for property access
+            throw LexerException("Unexpected character '.' (single dot not yet supported)", current - 1)
         }
     }
 

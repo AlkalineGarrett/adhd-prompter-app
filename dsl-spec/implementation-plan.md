@@ -22,16 +22,23 @@ DSL files are organized into subpackages under `app/src/main/java/org/alkaline/t
 **runtime/** - Execution engine and values
 ```
 ├── DslValue.kt               # Runtime values with serialization (NumberVal, StringVal, DateVal, etc.)
-├── BuiltinRegistry.kt        # Function registry + Arguments + BuiltinFunction
+├── BuiltinRegistry.kt        # Function registry + Arguments + BuiltinFunction (with isDynamic flag)
 ├── Executor.kt               # AST interpreter (+ ExecutionException)
 └── Environment.kt            # Variable scopes and bindings
 ```
+
+**BuiltinFunction.isDynamic**: Each registered function has an `isDynamic` flag:
+- `true` for functions that return different results each call (e.g., `date`, `datetime`, `time`)
+- `false` for pure/static functions (e.g., `add`, `qt`, `nl`)
+
+**BuiltinRegistry.containsDynamicCalls(expr)**: Recursively checks if an AST contains any dynamic function calls. Used to determine if a directive needs re-execution when confirmed (dynamic directives are re-executed; static ones use cached results).
 
 **builtins/** - Library functions (extensible)
 ```
 ├── DateFunctions.kt          # date, datetime, time (dynamic)
 ├── ArithmeticFunctions.kt    # add, sub, mul, div, mod (static)
-└── CharacterConstants.kt     # qt, nl, tab, ret (special chars for mobile)
+├── CharacterConstants.kt     # qt, nl, tab, ret (special chars for mobile)
+└── PatternFunctions.kt       # matches (static) - Milestone 4
 ```
 
 **directives/** - Directive lifecycle management
@@ -42,6 +49,15 @@ DSL files are organized into subpackages under `app/src/main/java/org/alkaline/t
 ├── DirectiveResultRepository.kt  # Firestore storage for results
 └── DirectiveSegment.kt       # Segment types + DirectiveSegmenter + DisplayTextResult
 ```
+
+**DirectiveInstance UUID Matching Algorithm** (`matchDirectiveInstances`):
+Preserves UUIDs across text edits using a 4-pass priority system:
+1. **Exact match**: Same line, same offset, same text → reuse UUID
+2. **Same line shift**: Same line, same text, different offset → reuse UUID (text shifted)
+3. **Line move**: Different line, same text, **unique candidate only** → reuse UUID (avoids ambiguity when multiple identical directives exist)
+4. **No match**: Generate new UUID
+
+The uniqueness check in pass 3 is critical: if multiple existing directives have the same text, we don't guess which one moved—we generate new UUIDs to avoid incorrect cache associations.
 
 **ui/** - Compose presentation layer
 ```
@@ -65,7 +81,7 @@ dsl/
 
 **Test structure** mirrors main source under `app/src/test/java/org/alkaline/taskbrain/dsl/`:
 ```
-├── language/                 # LexerTest, ParserTest
+├── language/                 # LexerTest, ParserTest, PatternTest
 ├── runtime/                  # ExecutorTest
 └── directives/               # DirectiveFinderTest, DirectiveInstanceTest, DirectiveResultTest, DirectiveSegmenterTest
 ```
@@ -197,7 +213,17 @@ data class StringVal(val value: String) : DslValue()
 ### Directive Finding (DirectiveFinder.kt)
 ```kotlin
 object DirectiveFinder {
-    // Pattern matches [...] without nested brackets
+    /**
+     * Creates a position-based key for a directive.
+     * Format: "lineIndex:startOffset" (e.g., "3:15" for line 3, offset 15)
+     *
+     * Position-based keys (not hash-based) allow multiple identical directives
+     * (e.g., two [now] on different lines) to have separate cached results.
+     */
+    fun directiveKey(lineIndex: Int, startOffset: Int): String
+
+    // Pattern: \[[^\[\]]*\] - matches [...] that doesn't contain [ or ] inside.
+    // Stricter than \[.*?\] to explicitly reject nested brackets until nesting is supported.
     private val DIRECTIVE_PATTERN = Regex("""\[[^\[\]]*\]""")
 
     data class FoundDirective(
@@ -248,6 +274,18 @@ object DirectiveSegmenter {
 - Lines with computed directives render in display mode (no text editing)
 - Directive results shown in dashed boxes (green border for success, red for error)
 - Tapping a directive expands it for editing
+
+**Dashed Border Styling:**
+- Stroke width: 1dp
+- Dash length: 4dp
+- Gap length: 2dp
+- Corner radius: 3dp
+
+**Empty Result Placeholder:**
+When a directive evaluates to an empty string, a vertical dashed line is displayed:
+- Dimensions: 12dp × 16dp
+- Stroke width: 1.5dp, dash: 3dp, gap: 2dp
+- Provides a tappable target for editing the directive
 
 **Edit Mode (DirectiveEditRow.kt):**
 - Appears below the line when directive is tapped
@@ -378,6 +416,15 @@ data class TimeVal(val value: LocalTime) : DslValue()
 data class DateTimeVal(val value: LocalDateTime) : DslValue()
 ```
 
+**Serialization vs Display Formats**: DslValue uses different formats for storage and display:
+
+| Type | Serialization (Firestore) | Display (UI) |
+|------|---------------------------|--------------|
+| DateVal | `ISO_LOCAL_DATE` (2026-01-25) | `yyyy-MM-dd` (2026-01-25) |
+| TimeVal | `ISO_LOCAL_TIME` (14:30:00.000) | `HH:mm:ss` (14:30:00) |
+| DateTimeVal | `ISO_LOCAL_DATE_TIME` (2026-01-25T14:30:00) | `yyyy-MM-dd, HH:mm:ss` (2026-01-25, 14:30:00) |
+| NumberVal | Double | Integer format if whole number (42 not 42.0) |
+
 ### Tests
 - `[date]` returns today's date
 - `[datetime]` returns current date and time
@@ -432,9 +479,15 @@ data class CallExpr(
 
 ---
 
-## Milestone 4: Patterns
+## Milestone 4: Patterns ✅ COMPLETE
 
-**Target:** `[pattern(digit*4 "-" digit*2 "-" digit*2)]`
+**Target:** `[pattern(digit*4 "-" digit*2 "-" digit*2)]`, `[matches("2026-01-15", pattern(...))]`
+
+### Lexer Additions
+| Token Type | Pattern |
+|------------|---------|
+| `STAR` | `*` |
+| `DOTDOT` | `..` |
 
 ### Parser Additions
 - Special parsing mode inside `pattern(...)`
@@ -442,35 +495,46 @@ data class CallExpr(
 - Quantifiers: `*4`, `*any`, `*(0..5)`, `*(1..)`
 - Literals in quotes: `"-"`
 
-### AST Nodes
+### AST Nodes (Expression.kt)
 ```kotlin
-sealed class PatternElement
-data class CharClass(val type: CharClassType) : PatternElement()
-data class PatternLiteral(val value: String) : PatternElement()
-data class Quantified(val element: PatternElement, val quantifier: Quantifier) : PatternElement()
+enum class CharClassType { DIGIT, LETTER, SPACE, PUNCT, ANY }
 
-sealed class Quantifier
-data class Exact(val n: Int) : Quantifier()
-data class Range(val min: Int, val max: Int?) : Quantifier()  // null max = unbounded
-object Any : Quantifier()
+sealed class Quantifier {
+    data class Exact(val n: Int) : Quantifier()
+    data class Range(val min: Int, val max: Int?) : Quantifier()
+    data object Any : Quantifier()
+}
+
+sealed class PatternElement {
+    abstract val position: Int
+}
+data class CharClass(val type: CharClassType, override val position: Int) : PatternElement()
+data class PatternLiteral(val value: String, override val position: Int) : PatternElement()
+data class Quantified(val element: PatternElement, val quantifier: Quantifier, override val position: Int) : PatternElement()
+
+data class PatternExpr(val elements: List<PatternElement>, override val position: Int) : Expression()
 ```
 
-### Types
+### Types (DslValue.kt)
 ```kotlin
+data class BooleanVal(val value: Boolean) : DslValue()
+
 data class PatternVal(
     val elements: List<PatternElement>,
     val compiledRegex: Regex
-) : DslValue()
+) : DslValue() {
+    fun matches(input: String): Boolean = compiledRegex.matches(input)
+
+    companion object {
+        fun compile(elements: List<PatternElement>): PatternVal
+        fun fromRegexString(regexString: String): PatternVal  // For deserialization
+    }
+}
 ```
 
-### Pattern Compilation
+### Pattern Compilation (in PatternVal.companion)
 ```kotlin
-fun compilePattern(elements: List<PatternElement>): Regex {
-    val pattern = elements.joinToString("") { elementToRegex(it) }
-    return Regex(pattern)
-}
-
-fun elementToRegex(el: PatternElement): String = when (el) {
+private fun elementToRegex(el: PatternElement): String = when (el) {
     is CharClass -> when (el.type) {
         DIGIT -> "\\d"
         LETTER -> "[a-zA-Z]"
@@ -481,12 +545,33 @@ fun elementToRegex(el: PatternElement): String = when (el) {
     is PatternLiteral -> Regex.escape(el.value)
     is Quantified -> "${elementToRegex(el.element)}${quantifierToRegex(el.quantifier)}"
 }
+
+private fun quantifierToRegex(q: Quantifier): String = when (q) {
+    is Quantifier.Exact -> "{${q.n}}"
+    is Quantifier.Any -> "*"
+    is Quantifier.Range -> if (q.max == null) "{${q.min},}" else "{${q.min},${q.max}}"
+}
+```
+
+### Builtins: PatternFunctions.kt
+```kotlin
+object PatternFunctions {
+    fun register(registry: BuiltinRegistry)
+}
+
+"matches" to { args, env ->
+    val string = args[0] as StringVal
+    val pattern = args[1] as PatternVal
+    BooleanVal(pattern.matches(string.value))
+}
 ```
 
 ### Tests
 - `pattern(digit*4 "-" digit*2 "-" digit*2)` matches "2026-01-15"
 - Quantifier variations work correctly
-- Non-matching strings return false
+- `matches("2026-01-15", pattern(...))` returns true
+- `matches("not-a-date", pattern(...))` returns false
+- Error handling for wrong argument types
 
 ---
 

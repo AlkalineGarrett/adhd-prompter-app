@@ -35,6 +35,7 @@ Directives are enclosed in square brackets: `[...]`
 - Directives may span multiple lines (ends at closing `]`)
 - Multi-line directives: lines before closing `]` should be indented for readability
 - Multiple directives allowed per line: `text [dir1] more text [dir2]`
+- **Directive identity**: Each directive is identified by its position (line number + character offset), not just its text. This means multiple identical directives (e.g., two `[date]` on different lines) are tracked and cached independently.
 
 ### Comments
 
@@ -125,9 +126,9 @@ All built-in function and constant names are reserved and cannot be used as vari
 - **Number**: Integer or decimal values
 - **String**: Text enclosed in double quotes
 - **Boolean**: Result of comparison functions (`true`/`false`)
-- **Datetime**: Combined date and time value (from `datetime` function or combining date and time)
-- **Date**: Date-only value (from `date` function or parsing)
-- **Time**: Time value with full precision including seconds/ms (from `time` function); supports same arithmetic as dates
+- **Datetime**: Combined date and time value (from `datetime` function or combining date and time); displays as `yyyy-MM-dd, HH:mm:ss` (e.g., "2026-01-25, 14:30:00")
+- **Date**: Date-only value (from `date` function or parsing); displays as `yyyy-MM-dd` (e.g., "2026-01-25")
+- **Time**: Time value with full precision including seconds/ms (from `time` function); displays as `HH:mm:ss` (e.g., "14:30:00"); supports same arithmetic as dates
 
 ### Composite Types
 
@@ -283,6 +284,10 @@ Re-executes when underlying data changes:
 ---
 
 ## Built-in Functions
+
+**Dynamic vs Static Functions**: Functions are classified as either dynamic or static:
+- **Dynamic functions** (e.g., `date`, `datetime`, `time`) can return different results on each call. Directives containing dynamic functions are re-executed when confirmed.
+- **Static functions** (e.g., `add`, `qt`, `nl`) always return the same result for the same inputs. Their results are cached and reused.
 
 ### Comparison (Function-Style)
 
@@ -546,6 +551,7 @@ Directives execute **on save**. Before save, pending directives show an indicato
 - **Default**: Show the computed result; directive is collapsed
 - **Expand**: A small button reveals/hides the original directive
 - **State persistence**: Collapsed/expanded state is saved and restored when the note is reloaded
+- **Empty results**: When a directive evaluates to an empty string, a vertical dashed line placeholder is displayed to provide a tappable target for editing
 
 ### Caching
 

@@ -4,12 +4,14 @@ import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.Directive
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
+import org.alkaline.taskbrain.dsl.language.PatternExpr
 import org.alkaline.taskbrain.dsl.language.StringLiteral
 
 /**
  * Evaluates DSL expressions and produces runtime values.
  *
  * Milestone 3: Supports parenthesized calls with named arguments.
+ * Milestone 4: Supports pattern expressions.
  */
 class Executor {
 
@@ -28,7 +30,15 @@ class Executor {
             is NumberLiteral -> NumberVal(expr.value)
             is StringLiteral -> StringVal(expr.value)
             is CallExpr -> evaluateCall(expr, env)
+            is PatternExpr -> evaluatePattern(expr)
         }
+    }
+
+    /**
+     * Evaluate a pattern expression to produce a PatternVal.
+     */
+    private fun evaluatePattern(expr: PatternExpr): PatternVal {
+        return PatternVal.compile(expr.elements)
     }
 
     /**
