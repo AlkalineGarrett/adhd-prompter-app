@@ -4,6 +4,7 @@ package org.alkaline.taskbrain.dsl.language
  * Token types recognized by the DSL lexer.
  * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
  * Milestone 4: Adds star and dot-dot for pattern quantifiers.
+ * Milestone 6: Adds dot for property access.
  */
 enum class TokenType {
     // Delimiters
@@ -14,7 +15,8 @@ enum class TokenType {
     COMMA,       // ,
     COLON,       // :
 
-    // Pattern operators (Milestone 4)
+    // Operators
+    DOT,         // . (property access, current note reference) - Milestone 6
     STAR,        // * (quantifier prefix)
     DOTDOT,      // .. (range separator in quantifiers)
 

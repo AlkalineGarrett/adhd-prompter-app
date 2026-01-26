@@ -11,6 +11,7 @@ import org.alkaline.taskbrain.dsl.language.Quantifier
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
@@ -250,7 +251,8 @@ data class PatternVal(
  * A note value, wrapping a Note object from the data layer.
  * Created by the find() function or note references.
  *
- * Milestone 5.
+ * Milestone 5: Basic NoteVal with serialization.
+ * Milestone 6: Adds property access for [.path], [.created], etc.
  */
 data class NoteVal(val note: Note) : DslValue() {
     override val typeName: String = "note"
@@ -273,6 +275,37 @@ data class NoteVal(val note: Note) : DslValue() {
         "updatedAt" to note.updatedAt?.toDate()?.time,
         "lastAccessedAt" to note.lastAccessedAt?.toDate()?.time
     )
+
+    /**
+     * Get a property value from the note.
+     *
+     * Supported properties:
+     * - `id`: String - Firebase ID
+     * - `path`: String - Unique path identifier
+     * - `name`: String - First line of content
+     * - `created`: DateTime - Creation timestamp
+     * - `modified`: DateTime - Last modification timestamp
+     * - `viewed`: DateTime - Last viewed timestamp
+     *
+     * Milestone 6.
+     */
+    fun getProperty(property: String): DslValue {
+        return when (property) {
+            "id" -> StringVal(note.id)
+            "path" -> StringVal(note.path)
+            "name" -> StringVal(note.content.lines().firstOrNull() ?: "")
+            "created" -> note.createdAt?.let {
+                DateTimeVal(it.toDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime())
+            } ?: throw ExecutionException("Note has no created date")
+            "modified" -> note.updatedAt?.let {
+                DateTimeVal(it.toDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime())
+            } ?: throw ExecutionException("Note has no modified date")
+            "viewed" -> note.lastAccessedAt?.let {
+                DateTimeVal(it.toDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime())
+            } ?: throw ExecutionException("Note has no viewed date")
+            else -> throw ExecutionException("Unknown property '$property' on note")
+        }
+    }
 
     companion object {
         /**

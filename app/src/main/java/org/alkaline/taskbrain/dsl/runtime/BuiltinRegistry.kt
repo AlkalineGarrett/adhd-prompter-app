@@ -6,9 +6,11 @@ import org.alkaline.taskbrain.dsl.builtins.DateFunctions
 import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
 import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
 import org.alkaline.taskbrain.dsl.language.CallExpr
+import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.PatternExpr
+import org.alkaline.taskbrain.dsl.language.PropertyAccess
 import org.alkaline.taskbrain.dsl.language.StringLiteral
 
 /**
@@ -120,6 +122,8 @@ object BuiltinRegistry {
             is NumberLiteral -> false
             is StringLiteral -> false
             is PatternExpr -> false  // Patterns are static
+            is CurrentNoteRef -> false  // Current note reference is static (Milestone 6)
+            is PropertyAccess -> containsDynamicCalls(expr.target)  // Check the target (Milestone 6)
             is CallExpr -> {
                 isDynamic(expr.name) ||
                     expr.args.any { containsDynamicCalls(it) } ||

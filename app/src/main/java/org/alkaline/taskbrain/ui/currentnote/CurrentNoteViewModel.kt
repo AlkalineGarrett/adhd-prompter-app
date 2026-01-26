@@ -95,6 +95,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     // Cached notes for find() operations in directives
     private var cachedNotes: List<Note>? = null
 
+    // Cached current note for [.] reference in directives (Milestone 6)
+    private var cachedCurrentNote: Note? = null
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
@@ -433,6 +436,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     /**
      * Loads notes for use in find() operations within directives.
      * Notes are cached and reused until explicitly refreshed.
+     * Also caches the current note for [.] reference (Milestone 6).
      * Call this before executing directives that may use find().
      */
     private suspend fun ensureNotesLoaded(): List<Note> {
@@ -441,17 +445,20 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         val result = repository.loadUserNotes()
         val notes = result.getOrNull() ?: emptyList()
         cachedNotes = notes
+        cachedCurrentNote = notes.find { it.id == currentNoteId }
         return notes
     }
 
     /**
      * Refreshes the cached notes for find() operations.
+     * Also updates the cached current note for [.] reference (Milestone 6).
      * Call this when notes may have changed (e.g., after save).
      */
     private suspend fun refreshNotesCache(): List<Note> {
         val result = repository.loadUserNotes()
         val notes = result.getOrNull() ?: emptyList()
         cachedNotes = notes
+        cachedCurrentNote = notes.find { it.id == currentNoteId }
         return notes
     }
 
@@ -487,9 +494,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // Load notes for find() operations
             val notes = ensureNotesLoaded()
 
-            // Execute missing directives
+            // Execute missing directives (pass current note for [.] reference - Milestone 6)
             val executedResults = missingInstances.associate { instance ->
-                instance.uuid to DirectiveFinder.executeDirective(instance.sourceText, notes)
+                instance.uuid to DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
             }
 
             // Merge new results into CURRENT state (not the captured snapshot)
@@ -530,10 +537,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // Refresh notes cache (notes may have changed after save)
             val notes = refreshNotesCache()
 
-            // Execute all directives with UUID-based keys
+            // Execute all directives with UUID-based keys (pass current note for [.] reference - Milestone 6)
             val freshResults = mutableMapOf<String, DirectiveResult>()
             for (instance in updatedInstances) {
-                val result = DirectiveFinder.executeDirective(instance.sourceText, notes)
+                val result = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
                 freshResults[instance.uuid] = result
             }
 
@@ -613,9 +620,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         // Load notes for find() operations
         val notes = ensureNotesLoaded()
 
-        // Execute missing directives
+        // Execute missing directives (pass current note for [.] reference - Milestone 6)
         for (instance in missingInstances) {
-            val result = DirectiveFinder.executeDirective(instance.sourceText, notes)
+            val result = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
             uuidResults[instance.uuid] = result
             // Store in Firestore using text hash
             val textHash = DirectiveResult.hashDirective(instance.sourceText)
@@ -647,7 +654,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 return
             }
 
-            val newResult = DirectiveFinder.executeDirective(sourceText, cachedNotes).copy(collapsed = false)
+            val newResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = false)
             val updated = current.toMutableMap()
             updated[directiveUuid] = newResult
             _directiveResults.value = updated
@@ -673,7 +680,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
         // Always re-execute to get fresh value (important for dynamic directives like [now])
-        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes).copy(collapsed = true)
+        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = true)
         current[directiveUuid] = freshResult
         _directiveResults.value = current
 
@@ -691,7 +698,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
         // Re-execute to get fresh value but keep expanded
-        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes).copy(collapsed = false)
+        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = false)
         current[directiveUuid] = freshResult
         _directiveResults.value = current
 
@@ -769,7 +776,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     current[instance.uuid] = existing.copy(collapsed = false)
                 } else {
                     // Execute the directive and set it to expanded
-                    val result = DirectiveFinder.executeDirective(instance.sourceText, cachedNotes)
+                    val result = DirectiveFinder.executeDirective(instance.sourceText, cachedNotes, cachedCurrentNote)
                     current[instance.uuid] = result.copy(collapsed = false)
                 }
             }

@@ -59,9 +59,8 @@ class Lexer(private val source: String) {
             advance() // consume second '.'
             addToken(TokenType.DOTDOT)
         } else {
-            // Single dot - for now, treat as unexpected since Milestone 6 isn't implemented
-            // TODO: In Milestone 6, add DOT token type for property access
-            throw LexerException("Unexpected character '.' (single dot not yet supported)", current - 1)
+            // Single dot - for property access (Milestone 6)
+            addToken(TokenType.DOT)
         }
     }
 

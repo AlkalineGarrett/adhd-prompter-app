@@ -52,11 +52,12 @@ class PatternTest {
     }
 
     @Test
-    fun `lexer rejects single dot`() {
-        val exception = assertThrows(LexerException::class.java) {
-            Lexer(".").tokenize()
-        }
-        assertTrue(exception.message!!.contains("single dot not yet supported"))
+    fun `lexer accepts single dot for property access`() {
+        // Milestone 6: Single dots are now supported for property access
+        val tokens = Lexer(".").tokenize()
+        assertEquals(2, tokens.size)
+        assertEquals(TokenType.DOT, tokens[0].type)
+        assertEquals(TokenType.EOF, tokens[1].type)
     }
 
     @Test

@@ -672,27 +672,27 @@ fun executeAllDirectives(content: String, lineIndex: Int, notes: List<Note>? = n
 
 ---
 
-## Milestone 6: Note Properties
+## Milestone 6: Note Properties ✅ COMPLETE
 
 **Target:** `[.path]`, `[i.path]`, `[parse_date i.path]`
 
-### Lexer Additions
+### Lexer Additions ✅
 | Token Type | Pattern |
 |------------|---------|
 | `DOT` | `.` |
 
-### Parser Additions
+### Parser Additions ✅
 - `.` alone → current note reference
 - `.prop` → current note property access
 - `expr.prop` → property access on expression result
 
-### AST Nodes
+### AST Nodes ✅
 ```kotlin
-object CurrentNoteRef : Expression()
-data class PropertyAccess(val target: Expression, val property: String) : Expression()
+data class CurrentNoteRef(override val position: Int) : Expression()
+data class PropertyAccess(val target: Expression, val property: String, override val position: Int) : Expression()
 ```
 
-### Executor
+### Executor ✅
 ```kotlin
 is CurrentNoteRef -> env.getCurrentNote()
 is PropertyAccess -> {
@@ -704,14 +704,49 @@ is PropertyAccess -> {
 }
 ```
 
-### Note Properties
-| Property | Type | Access |
-|----------|------|--------|
-| `path` | String | Read/Write |
-| `content` | String | Read/Write |
-| `created` | Date | Read |
-| `modified` | Date | Read |
-| `viewed` | Date | Read |
+### Note Properties ✅
+| Property   | Type | Access |
+|------------|------|------|
+| `id`       | String | Read |
+| `path`     | String | Read/Write |
+| `name`     | String | Read/Write |
+| `created`  | DateTime | Read |
+| `modified` | DateTime | Read |
+| `viewed`   | DateTime | Read |
+
+* id: the firebase id of the note
+* name: the first line of the note
+
+### Environment Additions ✅
+- `currentNote: Note?` parameter added to Environment
+- `getCurrentNote(): NoteVal?` method added
+- `Environment.withCurrentNote()` and `Environment.withNotesAndCurrentNote()` factory methods
+
+### Integration ✅
+- DirectiveFinder.executeDirective accepts optional currentNote parameter
+- CurrentNoteViewModel caches and passes current note to directive execution
+
+### Tests ✅
+- Lexer tokenizes single dot ✅
+- Parser parses standalone dot as CurrentNoteRef ✅
+- Parser parses dot with property as PropertyAccess ✅
+- `[.]` returns current note when in environment ✅
+- `[.]` throws when no current note ✅
+- `[.path]` returns current note's path ✅
+- `[.id]` returns note ID ✅
+- `[.name]` returns first line of content ✅
+- `[.created]` returns creation date ✅
+- `[.modified]` returns modified date ✅
+- `[.viewed]` returns viewed date ✅
+- Date properties throw when null ✅
+- Unknown property throws error ✅
+- Property access on non-NoteVal throws ✅
+
+---
+
+## Milestone 7: Lambda
+
+**Target:** `[lambda[parse_date i.path]]`
 
 ### Builtins Additions
 ```kotlin
@@ -720,17 +755,6 @@ is PropertyAccess -> {
     DateVal(LocalDate.parse(str))
 }
 ```
-
-### Tests
-- `[.path]` returns current note's path
-- `[.modified]` returns date
-- Property access on found notes works
-
----
-
-## Milestone 7: Lambda
-
-**Target:** `[lambda[parse_date i.path]]`
 
 ### Lexer Additions
 - `LAMBDA` keyword token

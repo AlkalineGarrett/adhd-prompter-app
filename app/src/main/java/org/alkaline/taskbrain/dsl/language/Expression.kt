@@ -70,6 +70,30 @@ data class Directive(
 )
 
 // ============================================================================
+// Note Property AST Nodes (Milestone 6)
+// ============================================================================
+
+/**
+ * Reference to the current note.
+ * Example: [.] refers to the note containing the directive
+ *
+ * Milestone 6.
+ */
+data class CurrentNoteRef(override val position: Int) : Expression()
+
+/**
+ * Property access on an expression result.
+ * Example: [.path] (property on current note), [find(...).path] (property on result)
+ *
+ * Milestone 6.
+ */
+data class PropertyAccess(
+    val target: Expression,
+    val property: String,
+    override val position: Int
+) : Expression()
+
+// ============================================================================
 // Pattern AST Nodes (Milestone 4)
 // ============================================================================
 

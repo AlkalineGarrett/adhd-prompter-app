@@ -1,10 +1,12 @@
 package org.alkaline.taskbrain.dsl.runtime
 
 import org.alkaline.taskbrain.dsl.language.CallExpr
+import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Directive
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.PatternExpr
+import org.alkaline.taskbrain.dsl.language.PropertyAccess
 import org.alkaline.taskbrain.dsl.language.StringLiteral
 
 /**
@@ -12,6 +14,7 @@ import org.alkaline.taskbrain.dsl.language.StringLiteral
  *
  * Milestone 3: Supports parenthesized calls with named arguments.
  * Milestone 4: Supports pattern expressions.
+ * Milestone 6: Supports current note reference and property access.
  */
 class Executor {
 
@@ -31,6 +34,39 @@ class Executor {
             is StringLiteral -> StringVal(expr.value)
             is CallExpr -> evaluateCall(expr, env)
             is PatternExpr -> evaluatePattern(expr)
+            is CurrentNoteRef -> evaluateCurrentNoteRef(expr, env)
+            is PropertyAccess -> evaluatePropertyAccess(expr, env)
+        }
+    }
+
+    /**
+     * Evaluate a current note reference.
+     * Returns the current note from the environment.
+     *
+     * Milestone 6.
+     */
+    private fun evaluateCurrentNoteRef(expr: CurrentNoteRef, env: Environment): NoteVal {
+        return env.getCurrentNote()
+            ?: throw ExecutionException(
+                "No current note in context (use [.] only within a note)",
+                expr.position
+            )
+    }
+
+    /**
+     * Evaluate property access on an expression.
+     * Example: note.path, note.created
+     *
+     * Milestone 6.
+     */
+    private fun evaluatePropertyAccess(expr: PropertyAccess, env: Environment): DslValue {
+        val target = evaluate(expr.target, env)
+        return when (target) {
+            is NoteVal -> target.getProperty(expr.property)
+            else -> throw ExecutionException(
+                "Cannot access property '${expr.property}' on ${target.typeName}",
+                expr.position
+            )
         }
     }
 

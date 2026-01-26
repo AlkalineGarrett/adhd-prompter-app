@@ -14,6 +14,7 @@ import org.alkaline.taskbrain.dsl.runtime.Executor
  *
  * A directive is text enclosed in square brackets: [...]
  * Milestone 1: Simple non-nested matching with \[.*?\]
+ * Milestone 6: Adds current note context for [.] reference.
  */
 object DirectiveFinder {
 
@@ -76,13 +77,18 @@ object DirectiveFinder {
      *
      * @param sourceText The directive source text (including brackets)
      * @param notes Optional list of notes for find() operations
+     * @param currentNote Optional current note for [.] reference (Milestone 6)
      * @return DirectiveResult containing either the value or an error
      */
-    fun executeDirective(sourceText: String, notes: List<Note>? = null): DirectiveResult {
+    fun executeDirective(
+        sourceText: String,
+        notes: List<Note>? = null,
+        currentNote: Note? = null
+    ): DirectiveResult {
         return try {
             val tokens = Lexer(sourceText).tokenize()
             val directive = Parser(tokens, sourceText).parseDirective()
-            val env = if (notes != null) Environment.withNotes(notes) else Environment()
+            val env = createEnvironment(notes, currentNote)
             val value = Executor().execute(directive, env)
             DirectiveResult.success(value)
         } catch (e: LexerException) {
@@ -97,20 +103,39 @@ object DirectiveFinder {
     }
 
     /**
+     * Create an environment with the appropriate context.
+     */
+    private fun createEnvironment(notes: List<Note>?, currentNote: Note?): Environment {
+        return when {
+            notes != null && currentNote != null ->
+                Environment.withNotesAndCurrentNote(notes, currentNote)
+            notes != null ->
+                Environment.withNotes(notes)
+            currentNote != null ->
+                Environment.withCurrentNote(currentNote)
+            else ->
+                Environment()
+        }
+    }
+
+    /**
      * Find, parse, and execute all directives in the content.
      *
      * @param content The note content (single line)
      * @param lineIndex The line index (for position-based keys)
      * @param notes Optional list of notes for find() operations
+     * @param currentNote Optional current note for [.] reference (Milestone 6)
      * @return Map of directive position key to execution result
      */
     fun executeAllDirectives(
         content: String,
         lineIndex: Int,
-        notes: List<Note>? = null
+        notes: List<Note>? = null,
+        currentNote: Note? = null
     ): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
-            directiveKey(lineIndex, found.startOffset) to executeDirective(found.sourceText, notes)
+            directiveKey(lineIndex, found.startOffset) to
+                executeDirective(found.sourceText, notes, currentNote)
         }
     }
 }

@@ -12,6 +12,7 @@ package org.alkaline.taskbrain.dsl.language
  * Space-separated nesting still works inside parens: [a(b c, d)] -> a(b(c), d)
  *
  * Milestone 4: Adds pattern(...) special parsing for mobile-friendly pattern matching.
+ * Milestone 6: Adds dot operator for current note reference and property access.
  */
 class Parser(private val tokens: List<Token>, private val source: String) {
 
@@ -57,7 +58,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Uses right-to-left nesting: [a b c] -> a(b(c))
      */
     private fun parseCallChain(): Expression {
-        val first = parsePrimary()
+        val first = parsePostfix(parsePrimary())
 
         // If the first element is not an identifier, it can't start a call chain
         if (first !is CallExpr) {
@@ -77,6 +78,26 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     /**
+     * Parse postfix operators (property access chains).
+     * Example: expr.path.name -> PropertyAccess(PropertyAccess(expr, "path"), "name")
+     *
+     * Milestone 6.
+     */
+    private fun parsePostfix(expr: Expression): Expression {
+        var result = expr
+
+        // Keep consuming .identifier chains
+        while (match(TokenType.DOT)) {
+            val dotPosition = previous().position
+            val propToken = consume(TokenType.IDENTIFIER, "Expected property name after '.'")
+            val propName = propToken.literal as String
+            result = PropertyAccess(result, propName, dotPosition)
+        }
+
+        return result
+    }
+
+    /**
      * Check if we're at the start of another expression.
      * Not at: ], ), ,, :, or EOF
      */
@@ -89,7 +110,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     /**
-     * Parse a primary expression (literal, identifier, or parenthesized call).
+     * Parse a primary expression (literal, identifier, current note ref, or parenthesized call).
      */
     private fun parsePrimary(): Expression {
         return when {
@@ -100,6 +121,21 @@ class Parser(private val tokens: List<Token>, private val source: String) {
             match(TokenType.STRING) -> {
                 val token = previous()
                 StringLiteral(token.literal as String, token.position)
+            }
+            match(TokenType.DOT) -> {
+                // Current note reference: [.] or [.path]
+                val position = previous().position
+                val currentNoteRef = CurrentNoteRef(position)
+
+                // Check if followed by identifier for immediate property access [.path]
+                if (check(TokenType.IDENTIFIER)) {
+                    val propToken = advance()
+                    val propName = propToken.literal as String
+                    PropertyAccess(currentNoteRef, propName, position)
+                } else {
+                    // Just [.] - return current note reference
+                    currentNoteRef
+                }
             }
             match(TokenType.IDENTIFIER) -> {
                 val token = previous()
