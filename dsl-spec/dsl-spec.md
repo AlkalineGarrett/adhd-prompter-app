@@ -147,7 +147,7 @@ Notes have two members for hierarchy navigation: `up` and `root`. These follow s
 
 **Examples:**
 - `[.up.path]` reads the parent note's path
-- `[.root.content]` reads the root note's content
+- `[.root.name]` reads the root note's name (first line)
 - `[.up(2).append("text")]` appends to the grandparent note
 - `[n: 2; .up(n).path]` uses a variable for the level
 
@@ -194,11 +194,12 @@ Notes have the following properties:
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
+| `id` | String | read | Firebase document ID |
 | `path` | String | read/write | Unique path identifier (globally enforced) |
-| `content` | String | read/write | Full text content of the note |
-| `created` | Date | read | Creation timestamp |
-| `modified` | Date | read | Last modification timestamp |
-| `viewed` | Date | read | Last viewed timestamp |
+| `name` | String | read/write | First line of note content (the note's title) |
+| `created` | DateTime | read | Creation timestamp |
+| `modified` | DateTime | read | Last modification timestamp |
+| `viewed` | DateTime | read | Last viewed timestamp |
 | `up` | Note | read | Parent note; 0-arg returns parent, 1-arg `up(n)` returns ancestor n levels up; returns `undefined` if ancestor doesn't exist |
 | `root` | Note | read | Root ancestor (top-level note with no parent) |
 
@@ -210,9 +211,11 @@ Examples:
 ```
 [.path]                    # Read current line's path
 [.path: "journal/2026"]    # Set current line's path
+[.name]                    # Read current line's name (first line)
+[.name: "New Title"]       # Set current line's name
 [.modified]                # Read current line's last modified date
 [.up.path]                 # Read parent note's path
-[.root.content]            # Read root note's content
+[.root.name]               # Read root note's name
 [.up.append("child note")] # Append to parent note
 ```
 
