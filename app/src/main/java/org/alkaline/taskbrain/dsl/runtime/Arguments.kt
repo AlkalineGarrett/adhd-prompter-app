@@ -105,4 +105,11 @@ data class Arguments(
         return arg as? PatternVal
             ?: throw ExecutionException("'$funcName' $paramName must be a pattern, got ${arg.typeName}")
     }
+
+    /**
+     * Get a named argument as LambdaVal, or null if not present.
+     *
+     * Milestone 8.
+     */
+    fun getLambda(name: String): LambdaVal? = named[name] as? LambdaVal
 }

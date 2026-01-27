@@ -18,6 +18,7 @@ object DynamicCallAnalyzer {
      * Milestone 4: Added PatternExpr support.
      * Milestone 6: Added CurrentNoteRef and PropertyAccess support.
      * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall support.
+     * Milestone 8: Added LambdaExpr support.
      *
      * @param expr The expression to analyze
      * @return true if the expression contains any dynamic calls
@@ -30,6 +31,7 @@ object DynamicCallAnalyzer {
             is CurrentNoteRef -> false  // Current note reference is static
             is PropertyAccess -> containsDynamicCalls(expr.target)  // Check the target
             is VariableRef -> false  // Variables themselves are static
+            is LambdaExpr -> containsDynamicCalls(expr.body)  // Check the lambda body
             is Assignment -> {
                 // Check both target and value
                 containsDynamicCalls(expr.target) || containsDynamicCalls(expr.value)

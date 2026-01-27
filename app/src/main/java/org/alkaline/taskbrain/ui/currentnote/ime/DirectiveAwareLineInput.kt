@@ -46,8 +46,9 @@ import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 
 // Directive box colors
-private val DirectiveErrorColor = Color(0xFFF44336)
-private val DirectiveSuccessColor = Color(0xFF4CAF50)
+private val DirectiveErrorColor = Color(0xFFF44336)    // Red
+private val DirectiveWarningColor = Color(0xFFFF9800)  // Orange
+private val DirectiveSuccessColor = Color(0xFF4CAF50)  // Green
 
 // Dashed box drawing parameters
 private object DirectiveBoxStyle {
@@ -249,7 +250,11 @@ private fun DirectiveOverlayText(
 
                     // Draw dashed boxes around directive portions
                     for (range in displayResult.directiveDisplayRanges) {
-                        val boxColor = if (range.hasError) DirectiveErrorColor else DirectiveSuccessColor
+                        val boxColor = when {
+                            range.hasError -> DirectiveErrorColor
+                            range.hasWarning -> DirectiveWarningColor
+                            else -> DirectiveSuccessColor
+                        }
                         val startOffset = range.displayRange.first.coerceIn(0, displayResult.displayText.length)
                         val endOffset = (range.displayRange.last + 1).coerceIn(0, displayResult.displayText.length)
                         val padding = DirectiveBoxStyle.padding.toPx()

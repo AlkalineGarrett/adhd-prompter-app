@@ -221,3 +221,19 @@ data class PatternExpr(
     val elements: List<PatternElement>,
     override val position: Int
 ) : Expression()
+
+// ============================================================================
+// Lambda AST Node (Milestone 8)
+// ============================================================================
+
+/**
+ * A lambda expression with implicit parameter binding.
+ * Example: [lambda[i.path]] creates a lambda with param "i" and body "i.path"
+ *
+ * Milestone 8.
+ */
+data class LambdaExpr(
+    val params: List<String>,  // Parameter names (e.g., ["i"] for implicit form)
+    val body: Expression,
+    override val position: Int
+) : Expression()

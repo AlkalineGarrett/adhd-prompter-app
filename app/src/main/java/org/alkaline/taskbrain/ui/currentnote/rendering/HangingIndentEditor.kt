@@ -483,6 +483,7 @@ private fun EditorContent(
                                 initialText = found.sourceText,
                                 textStyle = textStyle,
                                 errorMessage = result.error,
+                                warningMessage = result.warning?.displayMessage,
                                 onRefresh = { newText ->
                                     onDirectiveRefresh?.invoke(index, key, found.sourceText, newText)
                                 },

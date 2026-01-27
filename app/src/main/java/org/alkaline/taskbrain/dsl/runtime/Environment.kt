@@ -56,13 +56,16 @@ class Environment private constructor(
     /**
      * Create a child environment for nested scopes.
      * Inherits the note context from the parent.
+     *
+     * Milestone 8: Propagates executor for lambda invocation.
      */
     fun child(): Environment = Environment(
         parent = this,
         context = NoteContext(
             notes = getNotes(),
             currentNote = getCurrentNoteRaw(),
-            noteOperations = getNoteOperations()
+            noteOperations = getNoteOperations(),
+            executor = getExecutor()
         )
     )
 
@@ -94,6 +97,30 @@ class Environment private constructor(
      * Searches up the parent chain if not set locally.
      */
     fun getNoteOperations(): NoteOperations? = context.noteOperations ?: parent?.getNoteOperations()
+
+    /**
+     * Get the executor for lambda invocation.
+     * Searches up the parent chain if not set locally.
+     *
+     * Milestone 8.
+     */
+    fun getExecutor(): Executor? = context.executor ?: parent?.getExecutor()
+
+    /**
+     * Create a child environment with an executor set.
+     * Used by Executor to inject itself for lambda invocation.
+     *
+     * Milestone 8.
+     */
+    fun withExecutor(executor: Executor): Environment = Environment(
+        parent = this,
+        context = NoteContext(
+            notes = getNotes(),
+            currentNote = getCurrentNoteRaw(),
+            noteOperations = getNoteOperations(),
+            executor = executor
+        )
+    )
 
     /**
      * Find a note by ID from the available notes.

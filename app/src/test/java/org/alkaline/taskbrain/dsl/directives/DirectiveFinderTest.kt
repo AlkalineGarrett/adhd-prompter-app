@@ -85,6 +85,68 @@ class DirectiveFinderTest {
 
     // endregion
 
+    // region Nested brackets (Milestone 8 - lambdas)
+
+    @Test
+    fun `finds directive with nested brackets`() {
+        val content = "Test [lambda[i]] here"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        assertEquals(1, directives.size)
+        assertEquals("[lambda[i]]", directives[0].sourceText)
+        assertEquals(5, directives[0].startOffset)
+        assertEquals(16, directives[0].endOffset)
+    }
+
+    @Test
+    fun `finds directive with deeply nested brackets`() {
+        val content = "[lambda[matches(i.path, pattern(digit*4))]]"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        assertEquals(1, directives.size)
+        assertEquals(content, directives[0].sourceText)
+    }
+
+    @Test
+    fun `finds multiple directives with nested brackets`() {
+        val content = "[lambda[i.path]] and [lambda[i.name]]"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        assertEquals(2, directives.size)
+        assertEquals("[lambda[i.path]]", directives[0].sourceText)
+        assertEquals("[lambda[i.name]]", directives[1].sourceText)
+    }
+
+    @Test
+    fun `finds mixed nested and simple directives`() {
+        val content = "[42] then [lambda[i]] then [\"hello\"]"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        assertEquals(3, directives.size)
+        assertEquals("[42]", directives[0].sourceText)
+        assertEquals("[lambda[i]]", directives[1].sourceText)
+        assertEquals("[\"hello\"]", directives[2].sourceText)
+    }
+
+    @Test
+    fun `handles unmatched opening bracket`() {
+        val content = "Test [unclosed"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        assertTrue(directives.isEmpty())
+    }
+
+    @Test
+    fun `handles unmatched nested bracket`() {
+        val content = "Test [lambda[unclosed]"
+        val directives = DirectiveFinder.findDirectives(content)
+
+        // The outer bracket is unmatched, so no directive found
+        assertTrue(directives.isEmpty())
+    }
+
+    // endregion
+
     // region Executing directives
 
     @Test
@@ -160,6 +222,51 @@ class DirectiveFinderTest {
     fun `executeAllDirectives returns empty map for no directives`() {
         val results = DirectiveFinder.executeAllDirectives("No directives here", 0)
         assertTrue(results.isEmpty())
+    }
+
+    // endregion
+
+    // region No-effect warnings (Milestone 8)
+
+    @Test
+    fun `lambda at top level returns warning`() {
+        val execResult = DirectiveFinder.executeDirective("[lambda[i]]")
+
+        assertNull(execResult.result.error)
+        assertNotNull(execResult.result.warning)
+        assertEquals(DirectiveWarningType.NO_EFFECT_LAMBDA, execResult.result.warning)
+        assertTrue(execResult.result.hasWarning)
+    }
+
+    @Test
+    fun `lambda with body at top level returns warning`() {
+        val execResult = DirectiveFinder.executeDirective("[lambda[i.path]]")
+
+        assertNull(execResult.result.error)
+        assertEquals(DirectiveWarningType.NO_EFFECT_LAMBDA, execResult.result.warning)
+    }
+
+    @Test
+    fun `pattern at top level returns warning`() {
+        val execResult = DirectiveFinder.executeDirective("[pattern(digit*4)]")
+
+        assertNull(execResult.result.error)
+        assertNotNull(execResult.result.warning)
+        assertEquals(DirectiveWarningType.NO_EFFECT_PATTERN, execResult.result.warning)
+    }
+
+    @Test
+    fun `warning display message is descriptive`() {
+        assertEquals("Uncalled lambda has no effect", DirectiveWarningType.NO_EFFECT_LAMBDA.displayMessage)
+        assertEquals("Unused pattern has no effect", DirectiveWarningType.NO_EFFECT_PATTERN.displayMessage)
+    }
+
+    @Test
+    fun `warning result toDisplayString shows warning message`() {
+        val result = DirectiveResult.warning(DirectiveWarningType.NO_EFFECT_LAMBDA)
+
+        assertTrue(result.toDisplayString().contains("Warning"))
+        assertTrue(result.toDisplayString().contains("Uncalled lambda"))
     }
 
     // endregion

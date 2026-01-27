@@ -2,10 +2,12 @@ package org.alkaline.taskbrain.dsl.builtins
 
 import kotlinx.coroutines.runBlocking
 import org.alkaline.taskbrain.dsl.runtime.Arguments
+import org.alkaline.taskbrain.dsl.runtime.BooleanVal
 import org.alkaline.taskbrain.dsl.runtime.BuiltinFunction
 import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 import org.alkaline.taskbrain.dsl.runtime.DslValue
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
+import org.alkaline.taskbrain.dsl.runtime.LambdaVal
 import org.alkaline.taskbrain.dsl.runtime.ListVal
 import org.alkaline.taskbrain.dsl.runtime.NoteOperationException
 import org.alkaline.taskbrain.dsl.runtime.NoteVal
@@ -27,12 +29,12 @@ object NoteFunctions {
     }
 
     /**
-     * find(path: ..., name: ...) - Search for notes matching criteria.
+     * find(path: ..., name: ..., where: ...) - Search for notes matching criteria.
      *
      * Parameters:
      * - path: A string (exact match) or pattern to match against note paths
      * - name: A string (exact match) or pattern to match against note names (first line of content)
-     * - where: A lambda predicate for filtering (future milestone)
+     * - where: A lambda predicate for filtering (takes note as 'i', returns boolean)
      *
      * All parameters are optional. Multiple parameters are combined with AND logic.
      *
@@ -43,10 +45,13 @@ object NoteFunctions {
      *   [find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]  - Pattern match on path
      *   [find(name: "Shopping List")]                           - Exact name match
      *   [find(name: pattern("Meeting" any*(0..)))]              - Names starting with "Meeting"
+     *   [find(where: lambda[matches(i.path, pattern(digit*4))])] - Lambda filter
      *   [find(path: pattern("journal/" any*(1..)), name: pattern(digit*4 "-" digit*2 "-" digit*2))]
      *
      * Note: The notes must be pre-loaded and passed to the Environment before execution.
      * If no notes are available in the environment, returns an empty list.
+     *
+     * Milestone 8: Added where: lambda support.
      */
     private val findFunction = BuiltinFunction(
         name = "find",
@@ -54,7 +59,7 @@ object NoteFunctions {
     ) { args, env ->
         val pathArg = args["path"]
         val nameArg = args["name"]
-        // val whereArg = args["where"]  // Future milestone (lambda)
+        val whereArg = args.getLambda("where")
 
         // Get the list of notes from the environment
         val notes = env.getNotes()
@@ -63,15 +68,36 @@ object NoteFunctions {
             return@BuiltinFunction ListVal(emptyList())
         }
 
-        // Filter notes based on path and name arguments (AND logic)
+        // Filter notes based on path, name, and where arguments (AND logic)
         val filtered = notes.filter { note ->
             val pathMatches = matchesFilter(pathArg, note.path, "path")
             val nameMatches = matchesFilter(nameArg, getNoteName(note.content), "name")
-            pathMatches && nameMatches
-            // Future: && whereArg?.let { invokeLambda(it, NoteVal(note)).asBoolean() } ?: true
+            val whereMatches = evaluateWhereLambda(whereArg, note, env)
+            pathMatches && nameMatches && whereMatches
         }
 
         ListVal(filtered.map { NoteVal(it) })
+    }
+
+    /**
+     * Evaluate a where lambda against a note.
+     * Returns true if no lambda provided, or the boolean result of the lambda.
+     *
+     * Milestone 8.
+     */
+    private fun evaluateWhereLambda(
+        lambda: LambdaVal?,
+        note: org.alkaline.taskbrain.data.Note,
+        env: org.alkaline.taskbrain.dsl.runtime.Environment
+    ): Boolean {
+        if (lambda == null) return true
+
+        val executor = env.getExecutor()
+            ?: throw ExecutionException("'find' where: requires an executor in the environment")
+
+        val result = executor.invokeLambda(lambda, listOf(NoteVal(note)))
+        return (result as? BooleanVal)?.value
+            ?: throw ExecutionException("'find' where: lambda must return a boolean, got ${result.typeName}")
     }
 
     /**

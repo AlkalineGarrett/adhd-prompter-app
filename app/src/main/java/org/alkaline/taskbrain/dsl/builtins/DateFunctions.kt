@@ -4,10 +4,13 @@ import org.alkaline.taskbrain.dsl.runtime.BuiltinFunction
 import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 import org.alkaline.taskbrain.dsl.runtime.DateTimeVal
 import org.alkaline.taskbrain.dsl.runtime.DateVal
+import org.alkaline.taskbrain.dsl.runtime.ExecutionException
+import org.alkaline.taskbrain.dsl.runtime.StringVal
 import org.alkaline.taskbrain.dsl.runtime.TimeVal
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.format.DateTimeParseException
 
 /**
  * Date and time builtin functions.
@@ -20,6 +23,7 @@ object DateFunctions {
         registry.register(dateFunction)
         registry.register(datetimeFunction)
         registry.register(timeFunction)
+        registry.register(parseDateFunction)
     }
 
     /**
@@ -59,5 +63,26 @@ object DateFunctions {
     ) { args, _ ->
         args.requireNoArgs("time")
         TimeVal(LocalTime.now())
+    }
+
+    /**
+     * parse_date - Parses a string into a date value.
+     * Not dynamic: pure function, same input always produces same output.
+     * Example: [parse_date "2026-01-15"] -> DateVal(2026-01-15)
+     *
+     * Milestone 8.
+     */
+    private val parseDateFunction = BuiltinFunction(
+        name = "parse_date",
+        isDynamic = false
+    ) { args, _ ->
+        args.requireExactCount(1, "parse_date")
+        val str = args[0] as? StringVal
+            ?: throw ExecutionException("'parse_date' argument must be a string, got ${args[0]?.typeName}")
+        try {
+            DateVal(LocalDate.parse(str.value))
+        } catch (e: DateTimeParseException) {
+            throw ExecutionException("'parse_date' failed to parse date: '${str.value}'")
+        }
     }
 }

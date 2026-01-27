@@ -280,6 +280,32 @@ Creates a single-argument function where `i` is the implicit parameter:
 
 **Note**: The implicit parameter `i` is only available in this form.
 
+### Lambda Invocation
+
+Lambdas are invoked like builtins - a bare identifier calls the function:
+
+```
+[f: lambda[add(i, 1)]; f(5)]     # Calls f with i=5, returns 6
+[f: lambda[mul(i, 2)]; f(10)]    # Calls f with i=10, returns 20
+```
+
+**Invocation semantics** (consistent with builtins):
+- `[f]` where f is a lambda → tries to call with 0 args → **error** (lambda requires 1 argument)
+- `[f(x)]` → calls lambda with `i` bound to `x`
+- `[later f]` → returns the lambda without calling (for passing to other functions)
+
+**Chained calls**:
+```
+[f: lambda[mul(i, 2)]; g: lambda[add(i, 10)]; f(g(5))]    # g(5)=15, f(15)=30
+```
+
+**Errors**:
+```
+[f: lambda[i]; f]           # Error: lambda requires 1 argument
+[f: lambda[i]; f(1, 2)]     # Error: lambda requires 1 argument, got 2
+[x: 5; x(10)]               # Error: Cannot call number as a function
+```
+
 ### `lambda(params)[...]` - Lambda with Named Parameters
 
 Creates a multi-argument function with explicit parameter names. The implicit `i` is not available in this form:
@@ -618,7 +644,30 @@ Each directive in a note executes independently. Directives cannot reference oth
 
 ---
 
-## Error Handling
+## Error and Warning Handling
+
+### Directive States
+
+Directives can be in one of three visual states:
+
+| State | Border Color | Meaning |
+|-------|--------------|---------|
+| Success | Green dashed | Executed successfully with displayable result |
+| Warning | Orange dashed | Executed but produced no meaningful effect |
+| Error | Red dashed | Failed to parse or execute |
+
+### No-Effect Warnings
+
+Some values cannot be meaningfully displayed or stored as top-level directive results. These produce warnings rather than errors:
+
+| Value Type | Warning Message |
+|------------|-----------------|
+| `lambda[...]` | "Uncalled lambda has no effect" |
+| `pattern(...)` | "Unused pattern has no effect" |
+
+**Resolution**: These values are meant to be passed to functions:
+- Lambdas → `find(where: lambda[...])`, `sort(key: lambda[...])`
+- Patterns → `find(path: pattern(...))`, `matches(str, pattern(...))`
 
 ### Parse Errors
 

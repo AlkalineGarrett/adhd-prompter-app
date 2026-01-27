@@ -46,6 +46,8 @@ object IdempotencyAnalyzer {
     /**
      * Analyze an expression for idempotency.
      *
+     * Milestone 8: Added LambdaExpr support.
+     *
      * @param expr The expression to analyze
      * @return AnalysisResult indicating whether the expression is idempotent
      */
@@ -66,6 +68,9 @@ object IdempotencyAnalyzer {
 
             // Pattern expressions are idempotent (they're just values)
             is PatternExpr -> AnalysisResult.IDEMPOTENT
+
+            // Lambda expressions - analyze the body for idempotency
+            is LambdaExpr -> analyze(expr.body)
 
             // Function calls - check if the function is non-idempotent
             is CallExpr -> analyzeCallExpr(expr)

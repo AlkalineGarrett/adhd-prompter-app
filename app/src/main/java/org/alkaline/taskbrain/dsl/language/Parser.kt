@@ -282,6 +282,9 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                     } else {
                         parseParenthesizedCall(name, position)
                     }
+                } else if (name == "lambda" && check(TokenType.LBRACKET)) {
+                    // Special case: lambda[...] creates a lambda expression
+                    parseLambdaExpression(position)
                 } else {
                     // An identifier alone becomes a zero-arg function call
                     CallExpr(name, emptyList(), position)
@@ -547,6 +550,26 @@ class Parser(private val tokens: List<Token>, private val source: String) {
         consume(TokenType.RPAREN, "Expected ')' after range quantifier")
 
         return Quantifier.Range(min, max)
+    }
+
+    // ========================================================================
+    // Lambda Parsing (Milestone 8)
+    // ========================================================================
+
+    /**
+     * Parse a lambda expression: lambda[body]
+     * Called when 'lambda' identifier has been consumed and '[' is next.
+     *
+     * The lambda implicitly binds the parameter 'i'.
+     * Example: lambda[i.path] creates LambdaExpr(["i"], PropertyAccess(...))
+     *
+     * Milestone 8.
+     */
+    private fun parseLambdaExpression(position: Int): LambdaExpr {
+        consume(TokenType.LBRACKET, "Expected '[' after 'lambda'")
+        val body = parseExpression()
+        consume(TokenType.RBRACKET, "Expected ']' to close lambda body")
+        return LambdaExpr(params = listOf("i"), body = body, position = position)
     }
 }
 

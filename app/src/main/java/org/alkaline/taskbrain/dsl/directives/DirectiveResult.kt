@@ -5,14 +5,34 @@ import org.alkaline.taskbrain.dsl.runtime.DslValue
 import java.security.MessageDigest
 
 /**
+ * Types of warnings that can occur during directive execution.
+ * Warnings indicate the directive executed but produced no meaningful result.
+ *
+ * Milestone 8.
+ */
+enum class DirectiveWarningType(val displayMessage: String) {
+    /** Lambda created but never called - has no effect */
+    NO_EFFECT_LAMBDA("Uncalled lambda has no effect"),
+
+    /** Pattern created but never used for matching */
+    NO_EFFECT_PATTERN("Unused pattern has no effect")
+}
+
+/**
  * Represents a cached directive execution result stored in Firestore.
  *
  * Stored at: notes/{noteId}/directiveResults/{directiveHash}
+ *
+ * States:
+ * - Success: result is non-null, error is null, warning is null
+ * - Error: error is non-null
+ * - Warning: warning is non-null (may also have result for display purposes)
  */
 data class DirectiveResult(
     val result: Map<String, Any?>? = null,  // Serialized DslValue
     val executedAt: Timestamp? = null,
     val error: String? = null,
+    val warning: DirectiveWarningType? = null,
     val collapsed: Boolean = true
 ) {
     /**
@@ -32,11 +52,12 @@ data class DirectiveResult(
     /**
      * Get the display string for this result.
      * @param fallback Text to display if result has no value (not an error, just not computed)
-     * @return Error message, computed value, or fallback
+     * @return Error message, warning message, computed value, or fallback
      */
     fun toDisplayString(fallback: String = "..."): String {
         return when {
             error != null -> "Error: $error"
+            warning != null -> "Warning: ${warning.displayMessage}"
             result != null -> toValue()?.toDisplayString() ?: "null"
             else -> fallback
         }
@@ -45,6 +66,10 @@ data class DirectiveResult(
     /** True if this result has a computed value (not an error, not pending) */
     val isComputed: Boolean
         get() = result != null && error == null
+
+    /** True if this result has a warning */
+    val hasWarning: Boolean
+        get() = warning != null
 
     companion object {
         /**
@@ -65,6 +90,21 @@ data class DirectiveResult(
             return DirectiveResult(
                 result = null,
                 error = errorMessage,
+                collapsed = collapsed
+            )
+        }
+
+        /**
+         * Create a DirectiveResult with a warning.
+         * The directive executed but produced no meaningful effect.
+         *
+         * Milestone 8.
+         */
+        fun warning(warningType: DirectiveWarningType, collapsed: Boolean = true): DirectiveResult {
+            return DirectiveResult(
+                result = null,
+                error = null,
+                warning = warningType,
                 collapsed = collapsed
             )
         }

@@ -58,16 +58,20 @@ private const val FontSizeScale = 0.9f
  * @param initialText The initial directive source text (e.g., "[42]")
  * @param textStyle The text style to use
  * @param errorMessage Optional error message to display (from failed execution)
+ * @param warningMessage Optional warning message to display (from no-effect execution)
  * @param onRefresh Called when user taps refresh to recompute without closing
  * @param onConfirm Called when user confirms the edit (check button or collapse)
  * @param onCancel Called when user cancels the edit (X button)
  * @param onHeightMeasured Called with the measured height in pixels after layout
+ *
+ * Milestone 8: Added warningMessage parameter.
  */
 @Composable
 fun DirectiveEditRow(
     initialText: String,
     textStyle: TextStyle,
     errorMessage: String? = null,
+    warningMessage: String? = null,
     onRefresh: ((currentText: String) -> Unit)? = null,
     onConfirm: (newText: String) -> Unit,
     onCancel: () -> Unit,
@@ -177,6 +181,28 @@ fun DirectiveEditRow(
                     Text(
                         text = errorMessage,
                         color = DirectiveColors.ErrorText,
+                        fontSize = (textStyle.fontSize.value * FontSizeScale * 0.9f).sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // Warning message row (if present) - below the edit row, aligned with text field
+        // Milestone 8: Added for no-effect warnings.
+        if (warningMessage != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DirectiveColors.WarningBackground)
+                    .padding(start = RowStartPadding + IndicatorSize + TextFieldStartPadding, end = RowEndPadding, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = warningMessage,
+                        color = DirectiveColors.WarningText,
                         fontSize = (textStyle.fontSize.value * FontSizeScale * 0.9f).sp,
                         maxLines = 3,
                         overflow = TextOverflow.Ellipsis

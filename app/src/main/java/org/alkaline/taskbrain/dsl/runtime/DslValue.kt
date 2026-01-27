@@ -28,3 +28,6 @@ typealias NoteVal = org.alkaline.taskbrain.dsl.runtime.values.NoteVal
 
 // Re-export list value
 typealias ListVal = org.alkaline.taskbrain.dsl.runtime.values.ListVal
+
+// Re-export lambda value (Milestone 8)
+typealias LambdaVal = org.alkaline.taskbrain.dsl.runtime.values.LambdaVal

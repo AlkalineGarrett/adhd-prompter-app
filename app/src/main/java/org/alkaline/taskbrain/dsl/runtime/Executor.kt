@@ -5,6 +5,7 @@ import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Directive
 import org.alkaline.taskbrain.dsl.language.Expression
+import org.alkaline.taskbrain.dsl.language.LambdaExpr
 import org.alkaline.taskbrain.dsl.language.MethodCall
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.PatternExpr
@@ -20,20 +21,41 @@ import org.alkaline.taskbrain.dsl.language.VariableRef
  * Milestone 4: Supports pattern expressions.
  * Milestone 6: Supports current note reference and property access.
  * Milestone 7: Supports assignment, statement lists, variables, and method calls.
+ * Milestone 8: Supports lambda expressions and invocation.
  */
 class Executor {
 
     /**
      * Execute a directive and return its result.
+     * Injects this executor into the environment for lambda invocation.
+     *
+     * Milestone 8: Added executor injection.
      */
     fun execute(directive: Directive, env: Environment = Environment()): DslValue {
-        return evaluate(directive.expression, env)
+        // Create an environment with this executor available for lambda invocation
+        val execEnv = createExecutionEnvironment(env)
+        return evaluate(directive.expression, execEnv)
+    }
+
+    /**
+     * Create an execution environment with this executor available.
+     * Creates a child environment of baseEnv to preserve variable bindings.
+     */
+    private fun createExecutionEnvironment(baseEnv: Environment): Environment {
+        // If the environment already has an executor, use it as-is
+        if (baseEnv.getExecutor() != null) {
+            return baseEnv
+        }
+        // Otherwise, create a child environment with this executor
+        // This preserves variable bindings from baseEnv
+        return baseEnv.withExecutor(this)
     }
 
     /**
      * Evaluate an expression to produce a value.
      *
      * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
+     * Milestone 8: Added LambdaExpr.
      */
     fun evaluate(expr: Expression, env: Environment): DslValue {
         return when (expr) {
@@ -47,7 +69,32 @@ class Executor {
             is StatementList -> evaluateStatementList(expr, env)
             is VariableRef -> evaluateVariableRef(expr, env)
             is MethodCall -> evaluateMethodCall(expr, env)
+            is LambdaExpr -> evaluateLambda(expr, env)
         }
+    }
+
+    /**
+     * Evaluate a lambda expression to produce a LambdaVal.
+     * Captures the current environment for closure semantics.
+     *
+     * Milestone 8.
+     */
+    private fun evaluateLambda(expr: LambdaExpr, env: Environment): LambdaVal {
+        return LambdaVal(expr.params, expr.body, env.capture())
+    }
+
+    /**
+     * Invoke a lambda with the given arguments.
+     * Creates a child environment with parameters bound to arguments.
+     *
+     * Milestone 8.
+     */
+    fun invokeLambda(lambda: LambdaVal, args: List<DslValue>): DslValue {
+        val localEnv = lambda.capturedEnv.child()
+        lambda.params.zip(args).forEach { (param, arg) ->
+            localEnv.define(param, arg)
+        }
+        return evaluate(lambda.body, localEnv)
     }
 
     /**
@@ -187,17 +234,59 @@ class Executor {
      * Evaluate a function call expression.
      *
      * Milestone 7: For zero-arg calls, first check if it's a variable reference.
+     * Milestone 8: Support direct lambda invocation with f(arg) syntax.
+     *
+     * Semantics: Bare identifier invokes (like builtins). Use `later f` to get reference.
+     * - [f] where f is lambda → tries to call with 0 args → error (lambda requires 1 arg)
+     * - [f(x)] → calls lambda with i=x
+     * - [later f] → returns the lambda without calling
      */
     private fun evaluateCall(expr: CallExpr, env: Environment): DslValue {
-        // For zero-arg calls, first check if this is a variable reference
-        // This allows [x: 5; x] where second 'x' refers to the variable
-        if (expr.args.isEmpty() && expr.namedArgs.isEmpty()) {
-            val variableValue = env.get(expr.name)
-            if (variableValue != null) {
-                return variableValue
+        // Check if this is a variable
+        val variableValue = env.get(expr.name)
+
+        if (variableValue != null) {
+            // Variable exists - handle based on type
+            return when (variableValue) {
+                is LambdaVal -> {
+                    // Lambda invocation: evaluate args and call
+                    val argValues = expr.args.map { evaluate(it, env) }
+
+                    // Validate argument count (lambdas have exactly 1 param: i)
+                    if (argValues.size != variableValue.params.size) {
+                        throw ExecutionException(
+                            "Lambda requires ${variableValue.params.size} argument(s), got ${argValues.size}",
+                            expr.position
+                        )
+                    }
+
+                    // Named args not supported for lambda invocation yet
+                    if (expr.namedArgs.isNotEmpty()) {
+                        throw ExecutionException(
+                            "Named arguments not supported for lambda invocation",
+                            expr.position
+                        )
+                    }
+
+                    invokeLambda(variableValue, argValues)
+                }
+                else -> {
+                    // Non-lambda variable
+                    if (expr.args.isEmpty() && expr.namedArgs.isEmpty()) {
+                        // Zero-arg: return the value
+                        variableValue
+                    } else {
+                        // Has args: error - can't call a non-lambda
+                        throw ExecutionException(
+                            "Cannot call ${variableValue.typeName} as a function",
+                            expr.position
+                        )
+                    }
+                }
             }
         }
 
+        // Not a variable - look up builtin function
         val function = BuiltinRegistry.get(expr.name)
             ?: throw ExecutionException(
                 "Unknown function or variable '${expr.name}'",

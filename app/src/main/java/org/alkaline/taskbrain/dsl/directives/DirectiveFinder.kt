@@ -9,9 +9,11 @@ import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
+import org.alkaline.taskbrain.dsl.runtime.LambdaVal
 import org.alkaline.taskbrain.dsl.runtime.NoteContext
 import org.alkaline.taskbrain.dsl.runtime.NoteMutation
 import org.alkaline.taskbrain.dsl.runtime.NoteOperations
+import org.alkaline.taskbrain.dsl.runtime.PatternVal
 
 /**
  * Result of executing a directive, including any mutations that occurred.
@@ -42,8 +44,6 @@ object DirectiveFinder {
      * @return A string key like "3:15" for line 3, offset 15
      */
     fun directiveKey(lineIndex: Int, startOffset: Int): String = "$lineIndex:$startOffset"
-    // Non-greedy match for [...] - will need to handle nesting in later milestones
-    private val DIRECTIVE_PATTERN = Regex("""\[[^\[\]]*\]""")
 
     /**
      * A located directive in note content.
@@ -65,25 +65,55 @@ object DirectiveFinder {
 
     /**
      * Find all directives in the given content.
+     * Handles nested brackets for lambda syntax: [lambda[...]]
+     *
+     * Milestone 8: Updated to support nested brackets.
      *
      * @param content The note content to search
      * @return List of found directives in order of appearance
      */
     fun findDirectives(content: String): List<FoundDirective> {
-        return DIRECTIVE_PATTERN.findAll(content).map { match ->
-            FoundDirective(
-                sourceText = match.value,
-                startOffset = match.range.first,
-                endOffset = match.range.last + 1
-            )
-        }.toList()
+        val directives = mutableListOf<FoundDirective>()
+        var i = 0
+
+        while (i < content.length) {
+            if (content[i] == '[') {
+                val startOffset = i
+                var depth = 1
+                i++
+
+                // Find matching closing bracket, tracking nesting depth
+                while (i < content.length && depth > 0) {
+                    when (content[i]) {
+                        '[' -> depth++
+                        ']' -> depth--
+                    }
+                    i++
+                }
+
+                // Only add if we found a matching closing bracket
+                if (depth == 0) {
+                    directives.add(
+                        FoundDirective(
+                            sourceText = content.substring(startOffset, i),
+                            startOffset = startOffset,
+                            endOffset = i
+                        )
+                    )
+                }
+            } else {
+                i++
+            }
+        }
+
+        return directives
     }
 
     /**
      * Check if the given text contains any directives.
      */
     fun containsDirectives(content: String): Boolean {
-        return DIRECTIVE_PATTERN.containsMatchIn(content)
+        return findDirectives(content).isNotEmpty()
     }
 
     /**
@@ -116,6 +146,16 @@ object DirectiveFinder {
             }
 
             val value = Executor().execute(directive, env)
+
+            // Check for no-effect values that can't be meaningfully displayed
+            val warningType = checkNoEffectValue(value)
+            if (warningType != null) {
+                return DirectiveExecutionResult(
+                    DirectiveResult.warning(warningType),
+                    env.getMutations()
+                )
+            }
+
             DirectiveExecutionResult(DirectiveResult.success(value), env.getMutations())
         } catch (e: LexerException) {
             DirectiveExecutionResult(DirectiveResult.failure("Lexer error: ${e.message}"), env.getMutations())
@@ -137,6 +177,20 @@ object DirectiveFinder {
         noteOperations: NoteOperations?
     ): Environment {
         return Environment(NoteContext(notes, currentNote, noteOperations))
+    }
+
+    /**
+     * Check if a value is a no-effect value that produces a warning.
+     * These are values that can't be meaningfully displayed or stored.
+     *
+     * Milestone 8.
+     */
+    private fun checkNoEffectValue(value: org.alkaline.taskbrain.dsl.runtime.DslValue): DirectiveWarningType? {
+        return when (value) {
+            is LambdaVal -> DirectiveWarningType.NO_EFFECT_LAMBDA
+            is PatternVal -> DirectiveWarningType.NO_EFFECT_PATTERN
+            else -> null
+        }
     }
 
     /**

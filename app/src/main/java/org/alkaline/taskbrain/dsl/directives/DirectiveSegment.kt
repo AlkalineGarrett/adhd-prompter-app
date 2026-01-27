@@ -166,7 +166,8 @@ object DirectiveSegmenter {
                             sourceText = segment.sourceText,
                             displayText = displayText,
                             isComputed = segment.isComputed,
-                            hasError = segment.result?.error != null
+                            hasError = segment.result?.error != null,
+                            hasWarning = segment.result?.hasWarning ?: false
                         )
                     )
                 }
@@ -192,6 +193,8 @@ data class DisplayTextResult(
 
 /**
  * Tracks where a directive appears in both source and display text.
+ *
+ * Milestone 8: Added hasWarning for no-effect warnings.
  */
 data class DirectiveDisplayRange(
     val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
@@ -200,5 +203,6 @@ data class DirectiveDisplayRange(
     val sourceText: String,
     val displayText: String,
     val isComputed: Boolean,
-    val hasError: Boolean
+    val hasError: Boolean,
+    val hasWarning: Boolean = false
 )
