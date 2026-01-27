@@ -58,7 +58,9 @@ DSL files are organized into subpackages under `app/src/main/java/org/alkaline/t
 ├── ArithmeticFunctions.kt    # add, sub, mul, div, mod (static)
 ├── CharacterConstants.kt     # qt, nl, tab, ret (special chars for mobile)
 ├── PatternFunctions.kt       # matches (static)
-└── NoteFunctions.kt          # find, new, maybe_new (note operations)
+├── NoteFunctions.kt          # find, new, maybe_new (note operations)
+├── ListFunctions.kt          # list, sort, first (list operations) - Milestone 9
+└── SortConstants.kt          # ascending, descending (sort order constants) - Milestone 9
 ```
 
 **directives/** - Directive lifecycle management
@@ -111,7 +113,8 @@ dsl/
 │   ├── ExecutorTest.kt       # Execution tests
 │   └── NoteMutationTest.kt   # Note mutation tests (variable/property assignment, methods)
 ├── builtins/
-│   └── NoteFunctionsTest.kt  # find, new, maybe_new tests
+│   ├── NoteFunctionsTest.kt  # find, new, maybe_new tests
+│   └── ListFunctionsTest.kt  # sort, first tests (Milestone 9)
 └── directives/
     ├── DirectiveFinderTest.kt
     ├── DirectiveInstanceTest.kt
@@ -1093,36 +1096,128 @@ fun invokeLambda(lambda: LambdaVal, args: List<DslValue>): DslValue {
 
 ---
 
-## Milestone 9: Sort
+## Milestone 9: Sort ✅ COMPLETE
 
-**Target:** `[sort(find(...), key: lambda[parse_date i.path], order: desc)]`
+**Target:** `[sort(list(3, 1, 4), order: descending)]`, `[sort(find(...), key: lambda[i.path])]`
 
-### Builtins: ListFunctions.kt
+### Implementation Summary
+
+**Changes made:**
+1. Created `ListFunctions.kt` in `builtins/` with `list`, `sort`, and `first` functions
+2. Created `SortConstants.kt` with `ascending` and `descending` builtin constants
+3. Registered `ListFunctions` and `SortConstants` in `BuiltinRegistry`
+4. Implemented comparison logic for all DslValue types without requiring Comparable interface
+
+### Builtins: SortConstants.kt
 ```kotlin
-"sort" to { args, env ->
-    val list = args[0] as ListVal
-    val keyLambda = args.named("key") as? LambdaVal
-    val order = args.named("order")?.asString() ?: "asc"
+/**
+ * Sort order constants for mobile-friendly sorting.
+ *
+ * Full words like "ascending" and "descending" are preferred over abbreviations
+ * because mobile keyboards with autocorrect make complete words easier to type.
+ */
+object SortConstants {
+    const val ASCENDING = "ascending"
+    const val DESCENDING = "descending"
 
-    val sorted = list.items.sortedBy { item ->
-        keyLambda?.let { invokeLambda(it, listOf(item)) }
-            ?: item
+    private val ascendingConstant = BuiltinFunction("ascending") { args, _ ->
+        StringVal(ASCENDING)
     }
-
-    ListVal(if (order == "desc") sorted.reversed() else sorted)
+    private val descendingConstant = BuiltinFunction("descending") { args, _ ->
+        StringVal(DESCENDING)
+    }
 }
 ```
 
-### Comparison
-- DslValue needs `Comparable` implementation
-- Dates compare chronologically
-- Strings compare lexicographically
-- Numbers compare numerically
+### Builtins: ListFunctions.kt
+```kotlin
+/**
+ * list(a, b, c, ...) - Create a list from arguments.
+ * Returns: A ListVal containing all the arguments
+ */
+private val listFunction = BuiltinFunction(
+    name = "list",
+    isDynamic = false
+) { args, _ ->
+    ListVal(args.positional)
+}
 
-### Tests
-- Sort by extracted key
-- Ascending and descending order
-- Sort stability
+/**
+ * sort(list, key: lambda, order: ascending|descending) - Sort a list of values.
+ *
+ * Parameters:
+ * - First positional argument: The list to sort
+ * - key: Optional lambda to extract sort key from each item
+ * - order: Optional `ascending` (default) or `descending` for sort direction
+ *
+ * Returns: A new sorted ListVal
+ */
+private val sortFunction = BuiltinFunction(
+    name = "sort",
+    isDynamic = false
+) { args, env ->
+    val list = args[0] as? ListVal ?: throw ExecutionException(...)
+    val keyLambda = args.getLambda("key")
+    val isDescending = when (val orderArg = args["order"]) {
+        null -> false
+        is StringVal -> orderArg.value == SortConstants.DESCENDING
+        else -> throw ExecutionException(...)
+    }
+    val sorted = sortList(list.items, keyLambda, env)
+    ListVal(if (isDescending) sorted.reversed() else sorted)
+}
+
+/**
+ * first(list) - Get the first item from a list.
+ * Returns UndefinedVal if list is empty (graceful undefined access).
+ */
+private val firstFunction = BuiltinFunction(
+    name = "first",
+    isDynamic = false
+) { args, _ ->
+    val list = args[0] as? ListVal ?: throw ExecutionException(...)
+    list.items.firstOrNull() ?: UndefinedVal
+}
+```
+
+### Comparison Logic
+Implemented via `compareValues(a: DslValue, b: DslValue): Int` in `ListFunctions`:
+- **Same types**: Compare by value semantics
+- **Different types**: Compare by type precedence
+
+Type precedence (lowest to highest):
+- undefined < boolean < number < string < date < time < datetime < note < list < other
+
+Type-specific comparison:
+- Numbers: numerically
+- Strings: lexicographically
+- Dates/Times/DateTimes: chronologically
+- Booleans: false < true
+- Notes: by path, then name, then id
+- Lists: by size, then element-by-element
+
+### Tests (ListFunctionsTest.kt) ✅ All passing
+- list() creates empty list ✅
+- list() creates list of numbers/strings/mixed ✅
+- list() is classified as static ✅
+- ascending/descending constants work ✅
+- Sort empty/single-item lists ✅
+- Sort notes by default (path) ✅
+- Sort with key lambda ✅
+- Sort with order ascending/descending ✅
+- Sort with key lambda and order descending ✅
+- Sort list of numbers ascending/descending ✅
+- Sort list of strings ✅
+- Type-specific comparison (numbers, strings, dates, times, datetimes, booleans) ✅
+- Undefined sorts first ✅
+- Cross-type comparison uses type precedence ✅
+- Error handling (non-list, invalid order, wrong types) ✅
+- first() on non-empty list ✅
+- first() on empty list returns undefined ✅
+- first() with sort descending ✅
+- first(sort(list(...))) integration ✅
+- Integration: sort + find + lambda ✅
+- Functions classified as static ✅
 
 ---
 
@@ -1209,7 +1304,7 @@ class Executor {
 
 ## Milestone 11: Refresh (Target 2)
 
-**Target:** `[refresh view sort find(path: pattern(...)), key: lambda[...], order: desc]`
+**Target:** `[refresh view sort find(path: pattern(...)), key: lambda[...], order: descending]`
 
 ### Parser Additions
 - `refresh` as top-level modifier

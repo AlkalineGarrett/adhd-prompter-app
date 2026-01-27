@@ -3,8 +3,10 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.dsl.builtins.ArithmeticFunctions
 import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
+import org.alkaline.taskbrain.dsl.builtins.ListFunctions
 import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
 import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
+import org.alkaline.taskbrain.dsl.builtins.SortConstants
 
 /**
  * A builtin function that can be called from the DSL.
@@ -26,6 +28,7 @@ data class BuiltinFunction(
  *
  * Milestone 3: Adds arithmetic functions.
  * Milestone 5: Adds note functions (find).
+ * Milestone 9: Adds list functions (sort, first).
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -37,6 +40,8 @@ object BuiltinRegistry {
         ArithmeticFunctions.register(this)
         PatternFunctions.register(this)
         NoteFunctions.register(this)
+        ListFunctions.register(this)
+        SortConstants.register(this)
     }
 
     /**

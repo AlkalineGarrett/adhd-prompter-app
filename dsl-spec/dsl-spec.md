@@ -10,7 +10,7 @@ A domain-specific language for executable note directives in TaskBrain.
 
 - **Graceful undefined access**: Accessing non-existent data returns `undefined` rather than throwing an error. This includes: out-of-bounds list access (e.g., `first` on empty list), missing properties, and hierarchy navigation beyond available ancestors (e.g., `.up` on a root note). This reduces branching paths, code complexity, and typing on mobile. Use `maybe(expr)` to convert `undefined` to `empty` when needed.
 
-- **Single-word identifiers**: Built-in names are preferentially single words for brevity.
+- **Single-word identifiers**: Built-in names are preferentially single words for brevity. However, full words are preferred over abbreviations (e.g., `ascending` instead of `asc`) because mobile keyboards with autocorrect make complete words easier to type than abbreviations or quoted strings.
 
 - **Intuitive binding**: Easy to understand what binds to what.
 
@@ -115,7 +115,7 @@ Semicolon separates multiple statements within a directive:
 
 ### Reserved Words
 
-All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `datetime`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
+All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `datetime`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, `ascending`, `descending`, and all comparison/arithmetic function names.
 
 ### The Dot Operator: Note Hierarchy Navigation
 
@@ -384,6 +384,7 @@ Re-executes when underlying data changes:
 | `mul(a, b)` | Multiplication |
 | `div(a, b)` | Division |
 | `mod(a, b)` | Modulo |
+| `neg(a)` | Negation (e.g., `neg(5)` → `-5`) |
 
 ### Date/Time
 
@@ -457,7 +458,7 @@ Examples:
 |----------|-------------|
 | `list(a, b, c, ...)` | Create a list |
 | `first(list)` | Returns first item, or `undefined` if list is empty |
-| `sort(list, key:lambda, order:asc)` | Sort list; `key` extracts sort value; `order` is `asc` or `desc` |
+| `sort(list, key:lambda, order:ascending)` | Sort list; `key` extracts sort value; `order` is `ascending` (default) or `descending` |
 
 **Note**: `find` returns an empty list (not `undefined`) when no notes match. Use `maybe(first(find(...)))` to safely get a single note.
 
@@ -590,7 +591,7 @@ Creates a tappable button that executes an action:
 Dynamically fetches and inlines content from other notes:
 
 ```
-[view(sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: desc))]
+[view(sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: descending))]
 ```
 
 - **Parameter**: List of notes to display (use `sort()` if ordering is needed)
@@ -726,7 +727,7 @@ Schedule a one-time reminder for 9 AM tomorrow.
 [refresh view(sort(
   find(path: pattern(digit*4 "-" digit*2 "-" digit*2)),
   key: lambda[parse_date(i.path)],
-  order: desc
+  order: descending
 ))]
 ```
 Show all notes with ISO date paths, ordered most recent first. Refresh when any matching note changes.
