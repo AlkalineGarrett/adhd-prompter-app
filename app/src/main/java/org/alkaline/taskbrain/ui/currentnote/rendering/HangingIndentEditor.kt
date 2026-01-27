@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import org.alkaline.taskbrain.ui.currentnote.selection.ContextMenuState
 import org.alkaline.taskbrain.ui.currentnote.selection.GutterSelectionState
 import org.alkaline.taskbrain.ui.currentnote.selection.HandleDragState
 import org.alkaline.taskbrain.ui.currentnote.selection.HandlePosition
@@ -42,6 +43,8 @@ import org.alkaline.taskbrain.ui.currentnote.selection.rememberHandleDragState
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionBounds
 import org.alkaline.taskbrain.ui.currentnote.selection.calculateHandlePosition
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionHandles
+import org.alkaline.taskbrain.ui.currentnote.selection.createMenuActions
+import org.alkaline.taskbrain.ui.currentnote.selection.rememberContextMenuState
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.EditorState
@@ -53,42 +56,6 @@ import org.alkaline.taskbrain.ui.currentnote.rememberEditorState
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
-
-// =============================================================================
-// Context Menu State
-// =============================================================================
-
-/**
- * Manages context menu visibility and position.
- */
-private class ContextMenuState {
-    var isVisible by mutableStateOf(false)
-    var position by mutableStateOf(Offset.Zero)
-    var justDismissed by mutableStateOf(false)
-
-    fun show(at: Offset) {
-        position = at
-        isVisible = true
-    }
-
-    fun dismiss() {
-        isVisible = false
-        justDismissed = true
-    }
-
-    fun handleTapOnSelection(tapPosition: Offset) {
-        when {
-            justDismissed -> justDismissed = false
-            isVisible -> isVisible = false
-            else -> show(tapPosition)
-        }
-    }
-}
-
-@Composable
-private fun rememberContextMenuState(): ContextMenuState {
-    return remember { ContextMenuState() }
-}
 
 // =============================================================================
 // Handle Position Calculation
@@ -412,8 +379,7 @@ private fun SelectionOverlay(
             state = state,
             controller = controller,
             clipboardManager = clipboardManager,
-            onDismiss = { contextMenuState.isVisible = false },
-            onCursorPositioned = controller::setCursorFromGlobalOffset
+            onDismiss = { contextMenuState.isVisible = false }
         ),
         selectionBounds = selectionBounds
     )
@@ -602,35 +568,3 @@ private fun ControlledLineViewWrapper(
     )
 }
 
-// =============================================================================
-// Menu Actions
-// =============================================================================
-
-private fun createMenuActions(
-    state: EditorState,
-    controller: EditorController,
-    clipboardManager: ClipboardManager,
-    onDismiss: () -> Unit,
-    @Suppress("UNUSED_PARAMETER") onCursorPositioned: (Int) -> Unit
-): SelectionMenuActions = SelectionMenuActions(
-    onCopy = {
-        controller.copySelection(clipboardManager)
-        onDismiss()
-    },
-    onCut = {
-        controller.cutSelection(clipboardManager)
-        onDismiss()
-    },
-    onSelectAll = {
-        state.selectAll()
-        onDismiss()
-    },
-    onUnselect = {
-        controller.clearSelection()
-        onDismiss()
-    },
-    onDelete = {
-        controller.deleteSelectionWithUndo()
-        onDismiss()
-    }
-)

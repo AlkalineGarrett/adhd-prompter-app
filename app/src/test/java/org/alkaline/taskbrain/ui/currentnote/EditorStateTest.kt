@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import org.alkaline.taskbrain.ui.currentnote.selection.EditorSelection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull

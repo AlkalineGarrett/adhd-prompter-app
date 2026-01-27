@@ -9,12 +9,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
 import org.alkaline.taskbrain.R
+import org.alkaline.taskbrain.ui.currentnote.EditorController
+import org.alkaline.taskbrain.ui.currentnote.EditorState
 
 /**
  * Context menu actions that can be performed on selected text.
@@ -179,3 +182,39 @@ fun SelectionContextMenu(
         }
     }
 }
+
+/**
+ * Creates SelectionMenuActions for the selection context menu.
+ *
+ * @param state The editor state
+ * @param controller The editor controller for handling operations
+ * @param clipboardManager The clipboard manager for copy/cut operations
+ * @param onDismiss Callback to dismiss the menu after an action
+ */
+fun createMenuActions(
+    state: EditorState,
+    controller: EditorController,
+    clipboardManager: ClipboardManager,
+    onDismiss: () -> Unit
+): SelectionMenuActions = SelectionMenuActions(
+    onCopy = {
+        controller.copySelection(clipboardManager)
+        onDismiss()
+    },
+    onCut = {
+        controller.cutSelection(clipboardManager)
+        onDismiss()
+    },
+    onSelectAll = {
+        state.selectAll()
+        onDismiss()
+    },
+    onUnselect = {
+        controller.clearSelection()
+        onDismiss()
+    },
+    onDelete = {
+        controller.deleteSelectionWithUndo()
+        onDismiss()
+    }
+)

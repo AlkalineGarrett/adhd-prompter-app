@@ -1,7 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote
 
 import androidx.compose.runtime.Composable
-import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -9,189 +8,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
-
-/**
- * Represents the state of a single line in the editor.
- * Handles prefix extraction, cursor position, and line operations.
- */
-class LineState(
-    text: String,
-    cursorPosition: Int = text.length
-) {
-    var text by mutableStateOf(text)
-        private set
-    var cursorPosition by mutableIntStateOf(cursorPosition.coerceIn(0, text.length))
-        private set
-
-    /** The prefix portion (tabs + bullet/checkbox) */
-    val prefix: String get() = extractPrefix(text)
-
-    /** The content portion (after the prefix) */
-    val content: String get() {
-        val p = prefix
-        return if (p.length < text.length) text.substring(p.length) else ""
-    }
-
-    /** Cursor position relative to content (for the TextField) */
-    val contentCursorPosition: Int get() = (cursorPosition - prefix.length).coerceIn(0, content.length)
-
-    /**
-     * Updates the content portion of the line, keeping the prefix.
-     */
-    fun updateContent(newContent: String, newContentCursor: Int) {
-        text = prefix + newContent
-        cursorPosition = prefix.length + newContentCursor.coerceIn(0, newContent.length)
-    }
-
-    /**
-     * Updates the full line text and cursor position.
-     */
-    fun updateFull(newText: String, newCursor: Int) {
-        text = newText
-        cursorPosition = newCursor.coerceIn(0, newText.length)
-    }
-
-    /**
-     * Adds a tab at the beginning of the line.
-     */
-    fun indent() {
-        text = "\t" + text
-        cursorPosition = (cursorPosition + 1).coerceIn(0, text.length)
-    }
-
-    /**
-     * Removes a tab from the beginning of the line (if present).
-     */
-    fun unindent(): Boolean {
-        if (text.startsWith("\t")) {
-            text = text.substring(1)
-            cursorPosition = (cursorPosition - 1).coerceAtLeast(0)
-            return true
-        }
-        return false
-    }
-
-    /**
-     * Toggles bullet prefix on the line.
-     */
-    fun toggleBullet() {
-        val tabCount = text.takeWhile { it == '\t' }.length
-        val tabs = text.substring(0, tabCount)
-        val afterTabs = text.substring(tabCount)
-
-        val (newAfterTabs, cursorDelta) = when {
-            afterTabs.startsWith(LinePrefixes.BULLET) -> {
-                afterTabs.substring(LinePrefixes.BULLET.length) to -LinePrefixes.BULLET.length
-            }
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_UNCHECKED) -> {
-                LinePrefixes.BULLET + afterTabs.substring(LinePrefixes.CHECKBOX_UNCHECKED.length) to
-                    (LinePrefixes.BULLET.length - LinePrefixes.CHECKBOX_UNCHECKED.length)
-            }
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_CHECKED) -> {
-                LinePrefixes.BULLET + afterTabs.substring(LinePrefixes.CHECKBOX_CHECKED.length) to
-                    (LinePrefixes.BULLET.length - LinePrefixes.CHECKBOX_CHECKED.length)
-            }
-            else -> {
-                LinePrefixes.BULLET + afterTabs to LinePrefixes.BULLET.length
-            }
-        }
-
-        text = tabs + newAfterTabs
-        cursorPosition = (cursorPosition + cursorDelta).coerceIn(0, text.length)
-    }
-
-    /**
-     * Toggles checkbox prefix on the line.
-     * Cycles: nothing → unchecked → checked → removed
-     */
-    fun toggleCheckbox() {
-        val tabCount = text.takeWhile { it == '\t' }.length
-        val tabs = text.substring(0, tabCount)
-        val afterTabs = text.substring(tabCount)
-
-        val (newAfterTabs, cursorDelta) = when {
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_UNCHECKED) -> {
-                LinePrefixes.CHECKBOX_CHECKED + afterTabs.substring(LinePrefixes.CHECKBOX_UNCHECKED.length) to 0
-            }
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_CHECKED) -> {
-                afterTabs.substring(LinePrefixes.CHECKBOX_CHECKED.length) to -LinePrefixes.CHECKBOX_CHECKED.length
-            }
-            afterTabs.startsWith(LinePrefixes.BULLET) -> {
-                LinePrefixes.CHECKBOX_UNCHECKED + afterTabs.substring(LinePrefixes.BULLET.length) to
-                    (LinePrefixes.CHECKBOX_UNCHECKED.length - LinePrefixes.BULLET.length)
-            }
-            else -> {
-                LinePrefixes.CHECKBOX_UNCHECKED + afterTabs to LinePrefixes.CHECKBOX_UNCHECKED.length
-            }
-        }
-
-        text = tabs + newAfterTabs
-        cursorPosition = (cursorPosition + cursorDelta).coerceIn(0, text.length)
-    }
-
-    /**
-     * Toggles checkbox between checked and unchecked states only.
-     * Does not remove the checkbox. Only works if line already has a checkbox.
-     */
-    fun toggleCheckboxState() {
-        val tabCount = text.takeWhile { it == '\t' }.length
-        val tabs = text.substring(0, tabCount)
-        val afterTabs = text.substring(tabCount)
-
-        val newAfterTabs = when {
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_UNCHECKED) -> {
-                LinePrefixes.CHECKBOX_CHECKED + afterTabs.substring(LinePrefixes.CHECKBOX_UNCHECKED.length)
-            }
-            afterTabs.startsWith(LinePrefixes.CHECKBOX_CHECKED) -> {
-                LinePrefixes.CHECKBOX_UNCHECKED + afterTabs.substring(LinePrefixes.CHECKBOX_CHECKED.length)
-            }
-            else -> return // Not a checkbox, do nothing
-        }
-
-        text = tabs + newAfterTabs
-        // Cursor position doesn't change since checkbox length is the same
-    }
-
-    companion object {
-        /**
-         * Extracts the prefix (leading tabs + bullet/checkbox) from a line.
-         */
-        fun extractPrefix(line: String): String {
-            var position = 0
-
-            while (position < line.length && line[position] == '\t') {
-                position++
-            }
-
-            val afterTabs = if (position < line.length) line.substring(position) else ""
-            val prefixEnd = when {
-                afterTabs.startsWith(LinePrefixes.BULLET) -> position + LinePrefixes.BULLET.length
-                afterTabs.startsWith(LinePrefixes.CHECKBOX_UNCHECKED) -> position + LinePrefixes.CHECKBOX_UNCHECKED.length
-                afterTabs.startsWith(LinePrefixes.CHECKBOX_CHECKED) -> position + LinePrefixes.CHECKBOX_CHECKED.length
-                else -> position
-            }
-
-            return if (prefixEnd > 0) line.substring(0, prefixEnd) else ""
-        }
-    }
-}
-
-/**
- * Represents a selection range in the editor using global character offsets.
- */
-data class EditorSelection(
-    val start: Int,
-    val end: Int
-) {
-    val min: Int get() = minOf(start, end)
-    val max: Int get() = maxOf(start, end)
-    val isCollapsed: Boolean get() = start == end
-    val hasSelection: Boolean get() = start != end
-
-    companion object {
-        val None = EditorSelection(-1, -1)
-    }
-}
+import org.alkaline.taskbrain.ui.currentnote.move.MoveExecutor
+import org.alkaline.taskbrain.ui.currentnote.move.MoveTargetFinder
+import org.alkaline.taskbrain.ui.currentnote.selection.EditorSelection
+import org.alkaline.taskbrain.ui.currentnote.selection.SelectionCoordinates
+import org.alkaline.taskbrain.ui.currentnote.util.IndentationUtils
 
 /**
  * State holder for the entire editor.
@@ -237,57 +58,21 @@ class EditorState {
     /**
      * Gets the character offset where a line starts in the full text.
      */
-    fun getLineStartOffset(lineIndex: Int): Int {
-        var offset = 0
-        for (i in 0 until lineIndex.coerceIn(0, lines.size)) {
-            offset += lines[i].text.length + 1
-        }
-        return offset
-    }
+    fun getLineStartOffset(lineIndex: Int): Int =
+        SelectionCoordinates.getLineStartOffset(lines, lineIndex)
 
     /**
      * Gets the line index and local offset for a global character offset.
      */
-    fun getLineAndLocalOffset(globalOffset: Int): Pair<Int, Int> {
-        var remaining = globalOffset
-        for (i in lines.indices) {
-            val lineLength = lines[i].text.length
-            if (remaining <= lineLength) {
-                return i to remaining
-            }
-            remaining -= lineLength + 1
-        }
-        return (lines.lastIndex.coerceAtLeast(0)) to (lines.lastOrNull()?.text?.length ?: 0)
-    }
+    fun getLineAndLocalOffset(globalOffset: Int): Pair<Int, Int> =
+        SelectionCoordinates.getLineAndLocalOffset(lines, globalOffset)
 
     /**
      * Gets the selection range for a specific line (in local line offsets).
      * Returns null if the line has no selection.
      */
-    fun getLineSelection(lineIndex: Int): IntRange? {
-        if (!hasSelection || lineIndex !in lines.indices) {
-            return null
-        }
-
-        val lineStart = getLineStartOffset(lineIndex)
-        val lineEnd = lineStart + lines[lineIndex].text.length
-
-        val selMin = selection.min
-        val selMax = selection.max
-
-        if (selMax <= lineStart || selMin > lineEnd) {
-            return null
-        }
-
-        val localStart = (selMin - lineStart).coerceIn(0, lines[lineIndex].text.length)
-        val localEnd = (selMax - lineStart).coerceIn(0, lines[lineIndex].text.length)
-
-        if (localStart == localEnd) {
-            return null
-        }
-
-        return localStart until localEnd
-    }
+    fun getLineSelection(lineIndex: Int): IntRange? =
+        SelectionCoordinates.getLineSelection(lines, lineIndex, selection)
 
     fun setSelection(start: Int, end: Int) {
         selection = EditorSelection(start, end)
@@ -315,36 +100,8 @@ class EditorState {
      * The extension only applies when the FIRST line is fully selected (selection starts
      * at line beginning). Partial selections starting mid-line are not extended.
      */
-    private fun getEffectiveSelectionRange(fullText: String): Pair<Int, Int> {
-        val selStart = selection.min.coerceIn(0, fullText.length)
-        val selEnd = selection.max.coerceIn(0, fullText.length)
-
-        // Check if we should extend to include trailing newline
-        val extendedEnd = if (shouldExtendSelectionToNewline(fullText, selStart, selEnd)) {
-            selEnd + 1
-        } else {
-            selEnd
-        }
-
-        return selStart to extendedEnd
-    }
-
-    /**
-     * Checks if a selection should be extended to include the trailing newline.
-     *
-     * Returns true when:
-     * 1. Selection ends right before a newline (at end of line content)
-     * 2. Selection starts at the beginning of a line (position 0 or right after a newline)
-     */
-    private fun shouldExtendSelectionToNewline(fullText: String, selStart: Int, selEnd: Int): Boolean {
-        // Must end right before a newline
-        if (selEnd >= fullText.length || fullText[selEnd] != '\n') return false
-
-        // First line must be fully selected: selection starts at beginning of a line
-        // This means either position 0, or the character before is a newline
-        val startsAtLineBeginning = selStart == 0 || fullText[selStart - 1] == '\n'
-        return startsAtLineBeginning
-    }
+    private fun getEffectiveSelectionRange(fullText: String): Pair<Int, Int> =
+        SelectionCoordinates.getEffectiveSelectionRange(fullText, selection)
 
     fun getSelectedText(): String {
         if (!hasSelection) return ""
@@ -552,25 +309,14 @@ class EditorState {
      * Gets the indentation level of a line (number of leading tabs).
      * Empty lines have indent level 0.
      */
-    fun getIndentLevel(lineIndex: Int): Int {
-        val text = lines.getOrNull(lineIndex)?.text ?: return 0
-        if (text.isEmpty()) return 0
-        return text.takeWhile { it == '\t' }.length
-    }
+    fun getIndentLevel(lineIndex: Int): Int =
+        IndentationUtils.getIndentLevel(lines, lineIndex)
 
     /**
      * Gets the logical block for a line: the line itself plus all deeper-indented children below it.
      */
-    fun getLogicalBlock(startIndex: Int): IntRange {
-        if (startIndex !in lines.indices) return startIndex..startIndex
-        val startIndent = getIndentLevel(startIndex)
-        var endIndex = startIndex
-        for (i in (startIndex + 1) until lines.size) {
-            if (getIndentLevel(i) <= startIndent) break
-            endIndex = i
-        }
-        return startIndex..endIndex
-    }
+    fun getLogicalBlock(startIndex: Int): IntRange =
+        IndentationUtils.getLogicalBlock(lines, startIndex)
 
     /**
      * Gets the line indices covered by the current selection.
@@ -579,87 +325,30 @@ class EditorState {
      * If the selection ends exactly at position 0 of a line (e.g., gutter selection
      * that includes the trailing newline), the previous line is used as the end.
      */
-    fun getSelectedLineRange(): IntRange {
-        if (!hasSelection) {
-            return focusedLineIndex..focusedLineIndex
-        }
-        val startLine = getLineAndLocalOffset(selection.min).first
-        val (endLine, endLocal) = getLineAndLocalOffset(selection.max)
-
-        // If selection ends at the very start of a line (offset 0),
-        // consider the previous line as the actual end of the range
-        val adjustedEndLine = if (endLocal == 0 && endLine > startLine) {
-            endLine - 1
-        } else {
-            endLine
-        }
-
-        return startLine..adjustedEndLine
-    }
+    fun getSelectedLineRange(): IntRange =
+        SelectionCoordinates.getSelectedLineRange(lines, selection, focusedLineIndex)
 
     /**
      * Finds the target position for moving a range up.
      * Returns null if at document boundary.
      */
-    fun findMoveUpTarget(lineRange: IntRange): Int? {
-        if (lineRange.first <= 0) return null
-        val firstIndent = getIndentLevel(lineRange.first)
-        var target = lineRange.first - 1
-
-        // Find the head of the previous group at same-or-less indent.
-        // Skip over any deeper lines (children of a previous group).
-        while (target > 0 && getIndentLevel(target) > firstIndent) {
-            target--
-        }
-
-        // target is now at the head of the previous group (same-or-less indent)
-        return target
-    }
+    fun findMoveUpTarget(lineRange: IntRange): Int? =
+        MoveTargetFinder.findMoveUpTarget(lines, lineRange)
 
     /**
      * Finds the target position for moving a range down.
      * Returns null if at document boundary.
      */
-    fun findMoveDownTarget(lineRange: IntRange): Int? {
-        if (lineRange.last >= lines.lastIndex) return null
-        val firstIndent = getIndentLevel(lineRange.first)
-        var target = lineRange.last + 1
-        val targetIndent = getIndentLevel(target)
-
-        // Find end of target's logical block (at same-or-less indent)
-        if (targetIndent <= firstIndent) {
-            // Target is at same/less indent - find end of its block
-            while (target < lines.lastIndex && getIndentLevel(target + 1) > targetIndent) {
-                target++
-            }
-        }
-        // Target position is after the block
-        return target + 1
-    }
+    fun findMoveDownTarget(lineRange: IntRange): Int? =
+        MoveTargetFinder.findMoveDownTarget(lines, lineRange)
 
     /**
      * Gets the move target for the current state.
      * Handles both selection and no-selection cases, including the special case
      * where selected lines span different indent levels.
      */
-    fun getMoveTarget(moveUp: Boolean): Int? {
-        val range = if (hasSelection) getSelectedLineRange() else getLogicalBlock(focusedLineIndex)
-
-        if (hasSelection) {
-            // Check if first selected line is the shallowest
-            val shallowest = range.minOfOrNull { getIndentLevel(it) } ?: 0
-            val firstIndent = getIndentLevel(range.first)
-            if (firstIndent > shallowest) {
-                // First line isn't shallowest - move one line only
-                return if (moveUp) {
-                    if (range.first > 0) range.first - 1 else null
-                } else {
-                    if (range.last < lines.lastIndex) range.last + 2 else null
-                }
-            }
-        }
-        return if (moveUp) findMoveUpTarget(range) else findMoveDownTarget(range)
-    }
+    fun getMoveTarget(moveUp: Boolean): Int? =
+        MoveTargetFinder.getMoveTarget(lines, hasSelection, selection, focusedLineIndex, moveUp)
 
     /**
      * Checks if moving with the current selection would break parent-child relationships.
@@ -667,21 +356,8 @@ class EditorState {
      * 1. Selection excludes children of the first selected line (orphaning children below)
      * 2. First selected line isn't the shallowest in selection (selecting children without parent)
      */
-    fun wouldOrphanChildren(): Boolean {
-        if (!hasSelection) return false
-        val selectedRange = getSelectedLineRange()
-
-        // Check if first line isn't the shallowest (selecting children without their context)
-        val shallowest = selectedRange.minOfOrNull { getIndentLevel(it) } ?: 0
-        val firstIndent = getIndentLevel(selectedRange.first)
-        if (firstIndent > shallowest) {
-            return true
-        }
-
-        // Check if selection excludes children of the first line
-        val logicalBlock = getLogicalBlock(selectedRange.first)
-        return selectedRange.last < logicalBlock.last
-    }
+    fun wouldOrphanChildren(): Boolean =
+        MoveTargetFinder.wouldOrphanChildren(lines, hasSelection, selection, focusedLineIndex)
 
     /**
      * Moves lines from sourceRange to targetIndex.
@@ -689,132 +365,29 @@ class EditorState {
      * Returns the new range of the moved lines, or null if move failed.
      */
     internal fun moveLinesInternal(sourceRange: IntRange, targetIndex: Int): IntRange? {
-        // Validate parameters
-        if (sourceRange.first < 0 || sourceRange.last >= lines.size) return null
-        if (targetIndex < 0 || targetIndex > lines.size) return null
-        // No-op if target is within or adjacent to source
-        if (targetIndex >= sourceRange.first && targetIndex <= sourceRange.last + 1) return null
+        // Calculate the move result using pure function
+        val selectionForCalc = if (hasSelection) selection else null
+        val result = MoveExecutor.calculateMove(
+            lines = lines,
+            sourceRange = sourceRange,
+            targetIndex = targetIndex,
+            focusedLineIndex = focusedLineIndex,
+            selection = selectionForCalc
+        ) ?: return null
 
-        // Track focused line for adjustment
-        val oldFocusedLine = focusedLineIndex
-
-        // IMPORTANT: Capture selection info BEFORE modifying lines array
-        val hadSelection = hasSelection
-        val selStartLine: Int
-        val selStartLocal: Int
-        val selEndLine: Int
-        val selEndLocal: Int
-        if (hadSelection) {
-            val (sl, slo) = getLineAndLocalOffset(selection.start)
-            val (el, elo) = getLineAndLocalOffset(selection.end)
-            selStartLine = sl
-            selStartLocal = slo
-            selEndLine = el
-            selEndLocal = elo
-        } else {
-            selStartLine = -1
-            selStartLocal = 0
-            selEndLine = -1
-            selEndLocal = 0
+        // Apply the result to state
+        lines.clear()
+        result.newLines.forEach { lineText ->
+            lines.add(LineState(lineText))
         }
-
-        // Extract lines to move
-        val linesToMove = sourceRange.map { lines[it] }
-        val moveCount = linesToMove.size
-
-        // Remove lines (in reverse to maintain indices)
-        for (i in sourceRange.last downTo sourceRange.first) {
-            lines.removeAt(i)
-        }
-
-        // Adjust target index if we removed lines before it
-        val adjustedTarget = if (targetIndex > sourceRange.first) {
-            targetIndex - moveCount
-        } else {
-            targetIndex
-        }
-
-        // Insert lines at new position
-        linesToMove.forEachIndexed { index, line ->
-            lines.add(adjustedTarget + index, line)
-        }
-
-        // Calculate the new range of moved lines
-        val newRange = adjustedTarget until (adjustedTarget + moveCount)
-
-        // Adjust focused line index
-        focusedLineIndex = when {
-            oldFocusedLine in sourceRange -> {
-                // Focus was in moved block - follow it
-                val offsetInBlock = oldFocusedLine - sourceRange.first
-                adjustedTarget + offsetInBlock
-            }
-            targetIndex <= oldFocusedLine && sourceRange.first > oldFocusedLine -> {
-                // Moved lines inserted before focus, after their original position
-                oldFocusedLine + moveCount
-            }
-            sourceRange.first <= oldFocusedLine && targetIndex > oldFocusedLine -> {
-                // Moved lines removed before focus, inserted after
-                oldFocusedLine - moveCount
-            }
-            else -> oldFocusedLine
-        }
-
-        // Adjust selection using the line info captured BEFORE the move
-        if (hadSelection) {
-            val newStartLine = adjustLineIndexForMove(selStartLine, sourceRange, adjustedTarget, moveCount)
-
-            // If selection ends at offset 0 of a line, it conceptually means "end of previous line".
-            // We need to adjust the previous line (which may have moved) and then reference the next line.
-            val newEndLine: Int
-            val newEndLocal: Int
-            if (selEndLocal == 0 && selEndLine > 0) {
-                val adjustedPrevLine = adjustLineIndexForMove(selEndLine - 1, sourceRange, adjustedTarget, moveCount)
-                newEndLine = adjustedPrevLine + 1
-                newEndLocal = 0
-            } else {
-                newEndLine = adjustLineIndexForMove(selEndLine, sourceRange, adjustedTarget, moveCount)
-                newEndLocal = selEndLocal
-            }
-
-            val newSelStart = getLineStartOffset(newStartLine) +
-                selStartLocal.coerceAtMost(lines.getOrNull(newStartLine)?.text?.length ?: 0)
-            val newSelEnd = getLineStartOffset(newEndLine) +
-                newEndLocal.coerceAtMost(lines.getOrNull(newEndLine)?.text?.length ?: 0)
-
-            selection = EditorSelection(newSelStart, newSelEnd)
+        focusedLineIndex = result.newFocusedLineIndex
+        if (result.newSelection != null) {
+            selection = result.newSelection
         }
 
         requestFocusUpdate()
         notifyChange()
-        return newRange
-    }
-
-    /**
-     * Helper to adjust a line index after a move operation.
-     */
-    private fun adjustLineIndexForMove(
-        lineIndex: Int,
-        sourceRange: IntRange,
-        targetIndex: Int,
-        moveCount: Int
-    ): Int {
-        return when {
-            lineIndex in sourceRange -> {
-                // Line was in moved block - calculate new position
-                val offsetInBlock = lineIndex - sourceRange.first
-                targetIndex + offsetInBlock
-            }
-            targetIndex <= lineIndex && sourceRange.first > lineIndex -> {
-                // Moved lines inserted before this line, from after it
-                lineIndex + moveCount
-            }
-            sourceRange.first <= lineIndex && targetIndex > lineIndex -> {
-                // Moved lines removed before this line, inserted after it
-                lineIndex - moveCount
-            }
-            else -> lineIndex
-        }
+        return result.newRange
     }
 
     /**
