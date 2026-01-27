@@ -22,6 +22,28 @@ class NoteRepositoryOperations(
 
     private val notesCollection get() = db.collection("notes")
 
+    /**
+     * Convert a Firestore document to a Note, setting the id from the document.
+     */
+    private fun com.google.firebase.firestore.DocumentSnapshot.toNote(): Note? =
+        toObject(Note::class.java)?.copy(id = id)
+
+    /**
+     * Update fields on a note and return the updated note.
+     */
+    private suspend fun updateAndFetch(
+        noteId: String,
+        updates: Map<String, Any>
+    ): Note {
+        val noteRef = notesCollection.document(noteId)
+        val updatesWithTimestamp = updates + ("updatedAt" to FieldValue.serverTimestamp())
+        noteRef.update(updatesWithTimestamp).await()
+
+        val doc = noteRef.get().await()
+        return doc.toNote()
+            ?: throw NoteOperationException("Note not found after update: $noteId")
+    }
+
     override suspend fun createNote(path: String, content: String): Note {
         // Check if path already exists
         if (noteExistsAtPath(path)) {
@@ -52,8 +74,7 @@ class NoteRepositoryOperations(
 
     override suspend fun getNoteById(noteId: String): Note? {
         val doc = notesCollection.document(noteId).get().await()
-        if (!doc.exists()) return null
-        return doc.toObject(Note::class.java)?.copy(id = doc.id)
+        return if (doc.exists()) doc.toNote() else null
     }
 
     override suspend fun findByPath(path: String): Note? {
@@ -64,21 +85,11 @@ class NoteRepositoryOperations(
             .get()
             .await()
 
-        return query.documents.firstOrNull()?.let { doc ->
-            doc.toObject(Note::class.java)?.copy(id = doc.id)
-        }
+        return query.documents.firstOrNull()?.toNote()
     }
 
-    override suspend fun noteExistsAtPath(path: String): Boolean {
-        val query = notesCollection
-            .whereEqualTo("userId", userId)
-            .whereEqualTo("path", path)
-            .limit(1)
-            .get()
-            .await()
-
-        return query.documents.isNotEmpty()
-    }
+    override suspend fun noteExistsAtPath(path: String): Boolean =
+        findByPath(path) != null
 
     override suspend fun updatePath(noteId: String, newPath: String): Note {
         // Check if new path is already taken by another note
@@ -87,63 +98,22 @@ class NoteRepositoryOperations(
             throw NoteOperationException("Path already in use: $newPath")
         }
 
-        val noteRef = notesCollection.document(noteId)
-        noteRef.update(
-            mapOf(
-                "path" to newPath,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-        ).await()
-
-        // Fetch and return updated note
-        val doc = noteRef.get().await()
-        return doc.toObject(Note::class.java)?.copy(id = doc.id)
-            ?: throw NoteOperationException("Note not found after update: $noteId")
+        return updateAndFetch(noteId, mapOf("path" to newPath))
     }
 
     override suspend fun updateContent(noteId: String, newContent: String): Note {
-        val noteRef = notesCollection.document(noteId)
-        noteRef.update(
-            mapOf(
-                "content" to newContent,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-        ).await()
-
-        // Fetch and return updated note
-        val doc = noteRef.get().await()
-        return doc.toObject(Note::class.java)?.copy(id = doc.id)
-            ?: throw NoteOperationException("Note not found after update: $noteId")
+        return updateAndFetch(noteId, mapOf("content" to newContent))
     }
 
     override suspend fun appendToNote(noteId: String, text: String): Note {
-        val noteRef = notesCollection.document(noteId)
-
         // Get current content
-        val doc = noteRef.get().await()
-        val note = doc.toObject(Note::class.java)
+        val note = getNoteById(noteId)
             ?: throw NoteOperationException("Note not found: $noteId")
 
         // Append text (with newline if content exists)
-        val newContent = if (note.content.isEmpty()) {
-            text
-        } else {
-            "${note.content}\n$text"
-        }
+        val newContent = if (note.content.isEmpty()) text else "${note.content}\n$text"
 
-        // Update the note
-        noteRef.update(
-            mapOf(
-                "content" to newContent,
-                "updatedAt" to FieldValue.serverTimestamp()
-            )
-        ).await()
-
-        return note.copy(
-            id = doc.id,
-            content = newContent,
-            updatedAt = Timestamp.now()
-        )
+        return updateAndFetch(noteId, mapOf("content" to newContent))
     }
 
     companion object {

@@ -9,6 +9,7 @@ import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
+import org.alkaline.taskbrain.dsl.runtime.NoteContext
 import org.alkaline.taskbrain.dsl.runtime.NoteMutation
 import org.alkaline.taskbrain.dsl.runtime.NoteOperations
 
@@ -129,30 +130,13 @@ object DirectiveFinder {
 
     /**
      * Create an environment with the appropriate context.
-     *
-     * Milestone 7: Added noteOperations parameter.
      */
     private fun createEnvironment(
         notes: List<Note>?,
         currentNote: Note?,
         noteOperations: NoteOperations?
     ): Environment {
-        return when {
-            notes != null && currentNote != null && noteOperations != null ->
-                Environment.withAll(notes, currentNote, noteOperations)
-            notes != null && currentNote != null ->
-                Environment.withNotesAndCurrentNote(notes, currentNote)
-            currentNote != null && noteOperations != null ->
-                Environment(currentNote = currentNote, noteOperations = noteOperations)
-            notes != null ->
-                Environment.withNotes(notes)
-            currentNote != null ->
-                Environment.withCurrentNote(currentNote)
-            noteOperations != null ->
-                Environment.withNoteOperations(noteOperations)
-            else ->
-                Environment()
-        }
+        return Environment(NoteContext(notes, currentNote, noteOperations))
     }
 
     /**

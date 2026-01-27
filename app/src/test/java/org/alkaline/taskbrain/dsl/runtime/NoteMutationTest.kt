@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.Parser
+import org.alkaline.taskbrain.testutil.MockNoteOperations
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -39,100 +40,13 @@ class NoteMutationTest {
     ): DslValue {
         val tokens = Lexer(source).tokenize()
         val directive = Parser(tokens, source).parseDirective()
-        val env = when {
-            notes != null && currentNote != null && noteOps != null ->
-                Environment.withAll(notes, currentNote, noteOps)
-            notes != null && currentNote != null ->
-                Environment.withNotesAndCurrentNote(notes, currentNote)
-            currentNote != null && noteOps != null ->
-                Environment(currentNote = currentNote, noteOperations = noteOps)
-            currentNote != null ->
-                // Has current note but no note operations
-                Environment.withCurrentNote(currentNote)
-            notes != null ->
-                Environment.withNotes(notes)
-            noteOps != null ->
-                Environment.withNoteOperations(noteOps)
-            else ->
-                Environment()
-        }
+        val env = Environment(
+            notes = notes,
+            currentNote = currentNote,
+            noteOperations = noteOps
+        )
         return executor.execute(directive, env)
     }
-
-    // region Mock NoteOperations
-
-    /**
-     * Mock implementation of NoteOperations for testing.
-     */
-    class MockNoteOperations : NoteOperations {
-        private val notes = mutableMapOf<String, Note>()
-        private var idCounter = 1
-
-        // Tracking for assertions
-        val createdNotes = mutableListOf<Note>()
-        val updatedPaths = mutableListOf<Pair<String, String>>()  // (noteId, newPath)
-        val updatedContents = mutableListOf<Pair<String, String>>()  // (noteId, newContent)
-        val appendedTexts = mutableListOf<Pair<String, String>>()  // (noteId, text)
-
-        fun addNote(note: Note) {
-            notes[note.id] = note
-            notes[note.path] = note  // Also index by path for findByPath
-        }
-
-        override suspend fun createNote(path: String, content: String): Note {
-            val note = Note(
-                id = "new-note-${idCounter++}",
-                userId = "test-user",
-                path = path,
-                content = content,
-                createdAt = Timestamp(Date())
-            )
-            notes[note.id] = note
-            notes[path] = note
-            createdNotes.add(note)
-            return note
-        }
-
-        override suspend fun getNoteById(noteId: String): Note? {
-            return notes[noteId]
-        }
-
-        override suspend fun findByPath(path: String): Note? {
-            return notes.values.find { it.path == path }
-        }
-
-        override suspend fun noteExistsAtPath(path: String): Boolean {
-            return notes.values.any { it.path == path }
-        }
-
-        override suspend fun updatePath(noteId: String, newPath: String): Note {
-            val note = notes[noteId] ?: throw RuntimeException("Note not found: $noteId")
-            val updated = note.copy(path = newPath)
-            notes[noteId] = updated
-            notes[newPath] = updated
-            updatedPaths.add(noteId to newPath)
-            return updated
-        }
-
-        override suspend fun updateContent(noteId: String, newContent: String): Note {
-            val note = notes[noteId] ?: throw RuntimeException("Note not found: $noteId")
-            val updated = note.copy(content = newContent)
-            notes[noteId] = updated
-            updatedContents.add(noteId to newContent)
-            return updated
-        }
-
-        override suspend fun appendToNote(noteId: String, text: String): Note {
-            val note = notes[noteId] ?: throw RuntimeException("Note not found: $noteId")
-            val newContent = if (note.content.isEmpty()) text else "${note.content}\n$text"
-            val updated = note.copy(content = newContent)
-            notes[noteId] = updated
-            appendedTexts.add(noteId to text)
-            return updated
-        }
-    }
-
-    // endregion
 
     // region Sample notes
 

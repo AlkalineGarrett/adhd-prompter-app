@@ -3,28 +3,6 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.data.Note
 
 /**
- * Represents a mutation that occurred during directive execution.
- * Used to propagate changes back to the ViewModel for cache and UI updates.
- */
-data class NoteMutation(
-    val noteId: String,
-    val updatedNote: Note,
-    val mutationType: MutationType
-)
-
-/**
- * Types of mutations that can occur during directive execution.
- */
-enum class MutationType {
-    /** Note path was changed */
-    PATH_CHANGED,
-    /** Note content was changed (includes name changes) */
-    CONTENT_CHANGED,
-    /** Content was appended to the note */
-    CONTENT_APPENDED
-}
-
-/**
  * Execution environment for DSL evaluation.
  * Holds variable bindings, context data, and resources for directive execution.
  *
@@ -33,28 +11,25 @@ enum class MutationType {
  * Milestone 6: Adds current note for [.] reference and property access.
  * Milestone 7: Adds note operations for mutations and hierarchy navigation.
  */
-class Environment(
-    private val parent: Environment? = null,
-    /**
-     * Optional list of notes available for find() operations.
-     * This is set at the root environment and inherited by children.
-     */
-    private val notes: List<Note>? = null,
-    /**
-     * Optional current note for [.] reference and property access.
-     * This is the note containing the directive being executed.
-     *
-     * Milestone 6.
-     */
-    private val currentNote: Note? = null,
-    /**
-     * Optional note operations interface for performing mutations.
-     * This is set at the root environment and inherited by children.
-     *
-     * Milestone 7.
-     */
-    private val noteOperations: NoteOperations? = null
+class Environment private constructor(
+    private val parent: Environment?,
+    private val context: NoteContext
 ) {
+    /**
+     * Create a root environment with the given context.
+     */
+    constructor(context: NoteContext = NoteContext.EMPTY) : this(null, context)
+
+    /**
+     * Create a root environment with individual parameters.
+     * Convenience constructor for backward compatibility.
+     */
+    constructor(
+        notes: List<Note>? = null,
+        currentNote: Note? = null,
+        noteOperations: NoteOperations? = null
+    ) : this(NoteContext(notes, currentNote, noteOperations))
+
     private val variables = mutableMapOf<String, DslValue>()
 
     /**
@@ -80,15 +55,15 @@ class Environment(
 
     /**
      * Create a child environment for nested scopes.
-     * Inherits the notes, current note, and note operations from the parent.
-     *
-     * Milestone 7: Added noteOperations propagation.
+     * Inherits the note context from the parent.
      */
     fun child(): Environment = Environment(
         parent = this,
-        notes = getNotes(),
-        currentNote = getCurrentNoteRaw(),
-        noteOperations = getNoteOperations()
+        context = NoteContext(
+            notes = getNotes(),
+            currentNote = getCurrentNoteRaw(),
+            noteOperations = getNoteOperations()
+        )
     )
 
     /**
@@ -100,13 +75,11 @@ class Environment(
      * Get the list of notes available for find() operations.
      * Searches up the parent chain if not set locally.
      */
-    fun getNotes(): List<Note>? = notes ?: parent?.getNotes()
+    fun getNotes(): List<Note>? = context.notes ?: parent?.getNotes()
 
     /**
      * Get the current note as a NoteVal for [.] reference.
      * Searches up the parent chain if not set locally.
-     *
-     * Milestone 6.
      */
     fun getCurrentNote(): NoteVal? = getCurrentNoteRaw()?.let { NoteVal(it) }
 
@@ -114,15 +87,13 @@ class Environment(
      * Get the raw current note (without wrapping in NoteVal).
      * Used internally for environment propagation.
      */
-    private fun getCurrentNoteRaw(): Note? = currentNote ?: parent?.getCurrentNoteRaw()
+    private fun getCurrentNoteRaw(): Note? = context.currentNote ?: parent?.getCurrentNoteRaw()
 
     /**
      * Get the note operations interface for performing mutations.
      * Searches up the parent chain if not set locally.
-     *
-     * Milestone 7.
      */
-    fun getNoteOperations(): NoteOperations? = noteOperations ?: parent?.getNoteOperations()
+    fun getNoteOperations(): NoteOperations? = context.noteOperations ?: parent?.getNoteOperations()
 
     /**
      * Find a note by ID from the available notes.
@@ -189,46 +160,28 @@ class Environment(
 
     companion object {
         /**
-         * Create an environment with a list of notes for find() operations.
+         * Create an environment with the given note context.
          */
-        fun withNotes(notes: List<Note>): Environment = Environment(notes = notes)
+        fun withContext(context: NoteContext): Environment = Environment(context)
 
-        /**
-         * Create an environment with a current note for [.] reference.
-         *
-         * Milestone 6.
-         */
-        fun withCurrentNote(currentNote: Note): Environment = Environment(currentNote = currentNote)
+        // Convenience factory methods for common use cases
 
-        /**
-         * Create an environment with both notes list and current note.
-         *
-         * Milestone 6.
-         */
+        fun withNotes(notes: List<Note>): Environment =
+            Environment(notes = notes)
+
+        fun withCurrentNote(currentNote: Note): Environment =
+            Environment(currentNote = currentNote)
+
         fun withNotesAndCurrentNote(notes: List<Note>, currentNote: Note): Environment =
             Environment(notes = notes, currentNote = currentNote)
 
-        /**
-         * Create an environment with note operations for mutations.
-         *
-         * Milestone 7.
-         */
         fun withNoteOperations(noteOperations: NoteOperations): Environment =
             Environment(noteOperations = noteOperations)
 
-        /**
-         * Create a fully configured environment with all resources.
-         *
-         * Milestone 7.
-         */
         fun withAll(
             notes: List<Note>,
             currentNote: Note,
             noteOperations: NoteOperations
-        ): Environment = Environment(
-            notes = notes,
-            currentNote = currentNote,
-            noteOperations = noteOperations
-        )
+        ): Environment = Environment(notes = notes, currentNote = currentNote, noteOperations = noteOperations)
     }
 }
