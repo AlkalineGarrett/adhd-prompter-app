@@ -403,7 +403,7 @@ class PatternTest {
     @Test
     fun `pattern is classified as static`() {
         val directive = parse("[pattern(digit*4)]")
-        assertFalse(org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertFalse(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     // endregion

@@ -2,6 +2,7 @@ package org.alkaline.taskbrain.dsl.runtime
 
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.Directive
+import org.alkaline.taskbrain.dsl.language.DynamicCallAnalyzer
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.ParseException
@@ -405,31 +406,31 @@ class ExecutorTest {
     @Test
     fun `expression with date contains dynamic calls`() {
         val directive = parse("[date]")
-        assertTrue(BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertTrue(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     @Test
     fun `expression with datetime contains dynamic calls`() {
         val directive = parse("[datetime]")
-        assertTrue(BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertTrue(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     @Test
     fun `expression with only static functions has no dynamic calls`() {
         val directive = parse("[qt]")
-        assertFalse(BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertFalse(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     @Test
     fun `literal expression has no dynamic calls`() {
         val directive = parse("[42]")
-        assertFalse(BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertFalse(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     @Test
     fun `string literal has no dynamic calls`() {
         val directive = parse("[\"hello\"]")
-        assertFalse(BuiltinRegistry.containsDynamicCalls(directive.expression))
+        assertFalse(DynamicCallAnalyzer.containsDynamicCalls(directive.expression))
     }
 
     private fun parse(source: String): Directive {

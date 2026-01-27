@@ -5,55 +5,6 @@ import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
 import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
 import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
-import org.alkaline.taskbrain.dsl.language.Assignment
-import org.alkaline.taskbrain.dsl.language.CallExpr
-import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
-import org.alkaline.taskbrain.dsl.language.Expression
-import org.alkaline.taskbrain.dsl.language.MethodCall
-import org.alkaline.taskbrain.dsl.language.NumberLiteral
-import org.alkaline.taskbrain.dsl.language.PatternExpr
-import org.alkaline.taskbrain.dsl.language.PropertyAccess
-import org.alkaline.taskbrain.dsl.language.StatementList
-import org.alkaline.taskbrain.dsl.language.StringLiteral
-import org.alkaline.taskbrain.dsl.language.VariableRef
-
-/**
- * Container for function arguments, supporting both positional and named arguments.
- *
- * @property positional List of positional arguments in order
- * @property named Map of named argument name to value
- */
-data class Arguments(
-    val positional: List<DslValue>,
-    val named: Map<String, DslValue> = emptyMap()
-) {
-    /** Get a positional argument by index, or null if not present. */
-    operator fun get(index: Int): DslValue? = positional.getOrNull(index)
-
-    /** Get a named argument by name, or null if not present. */
-    operator fun get(name: String): DslValue? = named[name]
-
-    /** Get a positional argument, throwing if not present. */
-    fun require(index: Int, paramName: String = "argument $index"): DslValue =
-        positional.getOrNull(index)
-            ?: throw ExecutionException("Missing required $paramName")
-
-    /** Get a named argument, throwing if not present. */
-    fun requireNamed(name: String): DslValue =
-        named[name] ?: throw ExecutionException("Missing required argument '$name'")
-
-    /** Total number of positional arguments. */
-    val size: Int get() = positional.size
-
-    /** Check if any positional arguments were provided. */
-    fun hasPositional(): Boolean = positional.isNotEmpty()
-
-    /** Check if any named arguments were provided. */
-    fun hasNamed(): Boolean = named.isNotEmpty()
-
-    /** Check if a specific named argument was provided. */
-    fun hasNamed(name: String): Boolean = named.containsKey(name)
-}
 
 /**
  * A builtin function that can be called from the DSL.
@@ -74,9 +25,7 @@ data class BuiltinFunction(
  * Registry of all builtin functions available in the DSL.
  *
  * Milestone 3: Adds arithmetic functions.
- * Milestone 4: Adds pattern support to containsDynamicCalls.
  * Milestone 5: Adds note functions (find).
- * Milestone 7: Adds assignment, statement list, variable, and method call support.
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -117,38 +66,4 @@ object BuiltinRegistry {
      * Get all registered function names.
      */
     fun allNames(): Set<String> = functions.keys.toSet()
-
-    /**
-     * Check if an expression contains any dynamic function calls.
-     * Used to determine if a directive needs re-execution on confirm.
-     *
-     * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
-     */
-    fun containsDynamicCalls(expr: Expression): Boolean {
-        return when (expr) {
-            is NumberLiteral -> false
-            is StringLiteral -> false
-            is PatternExpr -> false  // Patterns are static
-            is CurrentNoteRef -> false  // Current note reference is static (Milestone 6)
-            is PropertyAccess -> containsDynamicCalls(expr.target)  // Check the target (Milestone 6)
-            is VariableRef -> false  // Variables themselves are static (Milestone 7)
-            is Assignment -> {
-                // Check both target and value (Milestone 7)
-                containsDynamicCalls(expr.target) || containsDynamicCalls(expr.value)
-            }
-            is StatementList -> {
-                // Check all statements (Milestone 7)
-                expr.statements.any { containsDynamicCalls(it) }
-            }
-            is MethodCall -> {
-                // Method calls on notes (like append) are considered dynamic (Milestone 7)
-                true
-            }
-            is CallExpr -> {
-                isDynamic(expr.name) ||
-                    expr.args.any { containsDynamicCalls(it) } ||
-                    expr.namedArgs.any { containsDynamicCalls(it.value) }
-            }
-        }
-    }
 }

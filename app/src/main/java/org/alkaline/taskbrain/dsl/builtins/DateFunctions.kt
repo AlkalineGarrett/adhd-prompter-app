@@ -4,7 +4,6 @@ import org.alkaline.taskbrain.dsl.runtime.BuiltinFunction
 import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 import org.alkaline.taskbrain.dsl.runtime.DateTimeVal
 import org.alkaline.taskbrain.dsl.runtime.DateVal
-import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.TimeVal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,9 +31,7 @@ object DateFunctions {
         name = "date",
         isDynamic = true
     ) { args, _ ->
-        if (args.hasPositional()) {
-            throw ExecutionException("'date' takes no arguments, got ${args.size}")
-        }
+        args.requireNoArgs("date")
         DateVal(LocalDate.now())
     }
 
@@ -47,9 +44,7 @@ object DateFunctions {
         name = "datetime",
         isDynamic = true
     ) { args, _ ->
-        if (args.hasPositional()) {
-            throw ExecutionException("'datetime' takes no arguments, got ${args.size}")
-        }
+        args.requireNoArgs("datetime")
         DateTimeVal(LocalDateTime.now())
     }
 
@@ -62,9 +57,7 @@ object DateFunctions {
         name = "time",
         isDynamic = true
     ) { args, _ ->
-        if (args.hasPositional()) {
-            throw ExecutionException("'time' takes no arguments, got ${args.size}")
-        }
+        args.requireNoArgs("time")
         TimeVal(LocalTime.now())
     }
 }
