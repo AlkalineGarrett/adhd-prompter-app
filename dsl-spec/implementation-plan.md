@@ -16,29 +16,49 @@ DSL files are organized into subpackages under `app/src/main/java/org/alkaline/t
 ├── Token.kt                  # Token data class with position
 ├── Lexer.kt                  # Tokenizes input string (+ LexerException)
 ├── Expression.kt             # AST node types + Directive wrapper
-└── Parser.kt                 # Recursive descent parser (+ ParseException)
+├── Parser.kt                 # Recursive descent parser (+ ParseException)
+├── DynamicCallAnalyzer.kt    # Checks if AST contains dynamic function calls
+└── IdempotencyAnalyzer.kt    # Analyzes idempotency of expressions
 ```
 
-**runtime/** - Execution engine and values
+**runtime/** - Execution engine and context
 ```
-├── DslValue.kt               # Runtime values with serialization (NumberVal, StringVal, DateVal, etc.)
-├── BuiltinRegistry.kt        # Function registry + Arguments + BuiltinFunction (with isDynamic flag)
-├── Executor.kt               # AST interpreter (+ ExecutionException)
-└── Environment.kt            # Variable scopes and bindings
+├── Executor.kt               # AST interpreter
+├── ExecutionException.kt     # Execution errors with position
+├── Environment.kt            # Variable scopes, note context, mutation tracking
+├── BuiltinRegistry.kt        # Function registry + BuiltinFunction
+├── Arguments.kt              # Container for positional + named args with validation
+├── NoteContext.kt            # Bundles notes/currentNote/noteOperations
+├── NoteOperations.kt         # Interface for note mutations
+├── NoteRepositoryOperations.kt  # NoteOperations impl using NoteRepository
+├── NoteMutation.kt           # Tracks mutations during execution
+├── NotePropertyHandler.kt    # Handles note property access/assignment
+└── NoteMethodHandler.kt      # Handles note method calls
+```
+
+**runtime/values/** - Runtime value types
+```
+├── DslValue.kt               # Base class with serialization/deserialization
+├── PrimitiveValues.kt        # UndefinedVal, NumberVal, StringVal, BooleanVal
+├── TemporalValues.kt         # DateVal, TimeVal, DateTimeVal
+├── PatternVal.kt             # Pattern values with regex compilation
+├── ListVal.kt                # List values
+└── NoteVal.kt                # Note values
 ```
 
 **BuiltinFunction.isDynamic**: Each registered function has an `isDynamic` flag:
 - `true` for functions that return different results each call (e.g., `date`, `datetime`, `time`)
 - `false` for pure/static functions (e.g., `add`, `qt`, `nl`)
 
-**BuiltinRegistry.containsDynamicCalls(expr)**: Recursively checks if an AST contains any dynamic function calls. Used to determine if a directive needs re-execution when confirmed (dynamic directives are re-executed; static ones use cached results).
+**DynamicCallAnalyzer.containsDynamicCalls(expr)**: Recursively checks if an AST contains any dynamic function calls. Used to determine if a directive needs re-execution when confirmed (dynamic directives are re-executed; static ones use cached results).
 
 **builtins/** - Library functions (extensible)
 ```
 ├── DateFunctions.kt          # date, datetime, time (dynamic)
 ├── ArithmeticFunctions.kt    # add, sub, mul, div, mod (static)
 ├── CharacterConstants.kt     # qt, nl, tab, ret (special chars for mobile)
-└── PatternFunctions.kt       # matches (static) - Milestone 4
+├── PatternFunctions.kt       # matches (static)
+└── NoteFunctions.kt          # find, new, maybe_new (note operations)
 ```
 
 **directives/** - Directive lifecycle management
@@ -81,10 +101,27 @@ dsl/
 
 **Test structure** mirrors main source under `app/src/test/java/org/alkaline/taskbrain/dsl/`:
 ```
-├── language/                 # LexerTest, ParserTest, PatternTest, NotePropertiesTest
-├── runtime/                  # ExecutorTest, NoteMutationTest
-├── builtins/                 # NoteFunctionsTest
-└── directives/               # DirectiveFinderTest, DirectiveInstanceTest, DirectiveResultTest, DirectiveSegmenterTest
+├── language/
+│   ├── LexerTest.kt          # Token tests
+│   ├── ParserTest.kt         # AST parsing tests
+│   ├── PatternTest.kt        # Pattern parsing/compilation tests
+│   ├── NotePropertiesTest.kt # Note properties and hierarchy navigation tests
+│   └── IdempotencyAnalyzerTest.kt  # Idempotency analysis tests
+├── runtime/
+│   ├── ExecutorTest.kt       # Execution tests
+│   └── NoteMutationTest.kt   # Note mutation tests (variable/property assignment, methods)
+├── builtins/
+│   └── NoteFunctionsTest.kt  # find, new, maybe_new tests
+└── directives/
+    ├── DirectiveFinderTest.kt
+    ├── DirectiveInstanceTest.kt
+    ├── DirectiveResultTest.kt
+    └── DirectiveSegmenterTest.kt
+```
+
+**Test utilities** under `app/src/test/java/org/alkaline/taskbrain/testutil/`:
+```
+└── MockNoteOperations.kt     # Mock implementation for testing note mutations
 ```
 
 ### 0.2 Firestore Schema Additions
@@ -173,7 +210,7 @@ data class Directive(
 )
 ```
 
-### Executor (Executor.kt, Environment.kt)
+### Executor (Executor.kt)
 ```kotlin
 class Executor {
     fun execute(directive: Directive, env: Environment = Environment()): DslValue
@@ -182,10 +219,16 @@ class Executor {
         is StringLiteral -> StringVal(expr.value)
     }
 }
+```
 
-class ExecutionException(message: String, val position: Int? = null) : RuntimeException
+### ExecutionException (ExecutionException.kt)
+```kotlin
+class ExecutionException(message: String, val position: Int? = null) : RuntimeException(message)
+```
 
-// Environment with parent scoping (minimal for M1, expanded later)
+### Environment (Environment.kt)
+```kotlin
+// Environment with parent scoping (minimal for M1, expanded in later milestones)
 class Environment(private val parent: Environment? = null) {
     fun define(name: String, value: DslValue)
     fun get(name: String): DslValue?
@@ -194,7 +237,9 @@ class Environment(private val parent: Environment? = null) {
 }
 ```
 
-### Types (DslValue.kt)
+### Types (runtime/values/)
+
+**DslValue.kt** - Base class:
 ```kotlin
 sealed class DslValue {
     abstract val typeName: String           // "number", "string"
@@ -204,11 +249,14 @@ sealed class DslValue {
         fun deserialize(map: Map<String, Any?>): DslValue
     }
 }
+```
 
-data class NumberVal(val value: Double) : DslValue() {
-    // Displays integers without decimal point (42 not 42.0)
-}
+**PrimitiveValues.kt** - Basic value types:
+```kotlin
+object UndefinedVal : DslValue()  // For graceful undefined access
+data class NumberVal(val value: Double) : DslValue()  // Displays integers without decimal
 data class StringVal(val value: String) : DslValue()
+data class BooleanVal(val value: Boolean) : DslValue()  // Added in Milestone 4
 ```
 
 ### Directive Finding (DirectiveFinder.kt)
@@ -410,7 +458,7 @@ object CharacterConstants {
 "ret" to { args, env -> StringVal(CharacterConstants.CARRIAGE_RETURN) }
 ```
 
-### Types Additions
+### Types Additions (TemporalValues.kt)
 ```kotlin
 data class DateVal(val value: LocalDate) : DslValue()
 data class TimeVal(val value: LocalTime) : DslValue()
@@ -462,6 +510,26 @@ data class CallExpr(
     val positionalArgs: List<Expression>,
     val namedArgs: List<NamedArg>
 ) : Expression()
+```
+
+### Arguments (Arguments.kt)
+```kotlin
+data class Arguments(
+    val positional: List<DslValue>,
+    val named: Map<String, DslValue> = emptyMap()
+) {
+    operator fun get(index: Int): DslValue?
+    operator fun get(name: String): DslValue?
+    fun require(index: Int, paramName: String): DslValue
+    fun requireNamed(name: String): DslValue
+
+    // Validation utilities
+    fun requireExactCount(count: Int, funcName: String)
+    fun requireNoArgs(funcName: String)
+    fun requireNumber(index: Int, funcName: String, paramName: String): NumberVal
+    fun requireString(index: Int, funcName: String, paramName: String): StringVal
+    fun requirePattern(index: Int, funcName: String, paramName: String): PatternVal
+}
 ```
 
 ### Builtins: ArithmeticFunctions.kt
@@ -516,10 +584,8 @@ data class Quantified(val element: PatternElement, val quantifier: Quantifier, o
 data class PatternExpr(val elements: List<PatternElement>, override val position: Int) : Expression()
 ```
 
-### Types (DslValue.kt)
+### Types (PatternVal.kt)
 ```kotlin
-data class BooleanVal(val value: Boolean) : DslValue()
-
 data class PatternVal(
     val elements: List<PatternElement>,
     val compiledRegex: Regex
@@ -532,6 +598,8 @@ data class PatternVal(
     }
 }
 ```
+
+Note: `BooleanVal` is in `PrimitiveValues.kt`.
 
 ### Pattern Compilation (in PatternVal.companion)
 ```kotlin
@@ -628,10 +696,21 @@ All parameters are optional. Multiple parameters are combined with AND logic.
 }
 ```
 
-### Types Additions (in DslValue.kt)
+### Types Additions (runtime/values/)
+
+**NoteVal.kt:**
 ```kotlin
-data class NoteVal(val note: Note) : DslValue()
-data class ListVal(val items: List<DslValue>) : DslValue()
+data class NoteVal(val note: Note) : DslValue() {
+    fun getProperty(name: String, env: Environment): DslValue  // Delegates to NotePropertyHandler
+}
+```
+
+**ListVal.kt:**
+```kotlin
+data class ListVal(val items: List<DslValue>) : DslValue() {
+    val size: Int get() = items.size
+    operator fun get(index: Int): DslValue = items[index]
+}
 ```
 
 ### Environment Extension
@@ -706,17 +785,21 @@ is PropertyAccess -> {
 ```
 
 ### Note Properties ✅
-| Property   | Type | Access |
-|------------|------|------|
-| `id`       | String | Read |
-| `path`     | String | Read/Write |
-| `name`     | String | Read/Write |
-| `created`  | DateTime | Read |
-| `modified` | DateTime | Read |
-| `viewed`   | DateTime | Read |
+| Property   | Type | Access | Milestone |
+|------------|------|--------|-----------|
+| `id`       | String | Read | 6 |
+| `path`     | String | Read/Write | 6 |
+| `name`     | String | Read/Write | 6 |
+| `created`  | DateTime | Read | 6 |
+| `modified` | DateTime | Read | 6 |
+| `viewed`   | DateTime | Read | 6 |
+| `up`       | Note/Undefined | Read | 7 |
+| `root`     | Note | Read | 7 |
 
 * id: the firebase id of the note
 * name: the first line of the note
+* up: parent note (returns UndefinedVal if no parent)
+* root: top-level ancestor (returns self if already root)
 
 ### Environment Additions ✅
 - `currentNote: Note?` parameter added to Environment
@@ -745,51 +828,62 @@ is PropertyAccess -> {
 
 ---
 
-## Milestone 7: Note Mutation & Hierarchy Navigation
+## Milestone 7: Note Mutation & Hierarchy Navigation ✅ COMPLETE
 
 **Target:** `[.path: "x"]`, `[maybe_new(...)]`, `[.append(...)]`, `[.up]`, `[.root]`
 
 ### Implementation Summary
 
-**Completed:**
-1. Added `SEMICOLON` token type to Lexer for statement separation
-2. Added AST nodes: `Assignment`, `StatementList`, `VariableRef`, `MethodCall`
-3. Updated Parser to handle:
+**All features completed:**
+
+1. **Lexer**: Added `SEMICOLON` token type for statement separation
+
+2. **AST nodes**: Added `Assignment`, `StatementList`, `VariableRef`, `MethodCall`
+
+3. **Parser** handles:
    - Variable assignment: `[x: 5]`
    - Property assignment: `[.path: "value"]`
    - Statement separation: `[x: 5; y: 10; add(x, y)]`
    - Method calls: `[.append("text")]`
-4. Updated Executor to evaluate new AST types
-5. Created `NoteOperations` interface for note mutations
-6. Added `setProperty` and `callMethod` methods to `NoteVal`
-7. Added `new` and `maybe_new` functions to `NoteFunctions`
-8. Updated `BuiltinRegistry.containsDynamicCalls()` for new AST types
 
-**TODO: Note Hierarchy Navigation**
+4. **Executor**: Evaluates all new AST types
 
-Add `up` and `root` members to `NoteVal` for navigating the note hierarchy:
+5. **NoteOperations interface** for mutations with `NoteRepositoryOperations` implementation
+
+6. **NoteMutation tracking**: `MutationType` enum (PATH_CHANGED, CONTENT_CHANGED, CONTENT_APPENDED)
+
+7. **NotePropertyHandler**: Property access/assignment including `.up`, `.root`
+
+8. **NoteMethodHandler**: Method calls `.append()`, `.up(n)`
+
+9. **NoteFunctions**: `new()` and `maybe_new()` functions
+
+10. **DynamicCallAnalyzer**: Extracted from BuiltinRegistry for AST analysis
+
+### Hierarchy Navigation
 
 | Member | Form | Description |
 |--------|------|-------------|
-| `up` | 0-arg: `.up`, `.up()` | Returns parent note (1 level up) |
-| `up` | 1-arg: `.up(n)` | Returns ancestor n levels up |
+| `up` | `.up` | Returns parent note (1 level up) |
+| `up` | `.up()` | Returns parent note (0-arg form) |
+| `up` | `.up(n)` | Returns ancestor n levels up |
 | `root` | `.root` | Returns root ancestor (top-level note) |
 
 **Equivalences:**
-- `[.up 0]`, `[.up(0)]` are equivalent to `[.]` (current line)
-- `[.up]`, `[.up()]`, `[.up 1]`, `[.up(1)]` all return the parent
-- `[.up.up]`, `[.up 2]`, `[.up(2)]` all return the grandparent
+- `[.up(0)]` is equivalent to `[.]` (current note)
+- `[.up]`, `[.up()]`, `[.up(1)]` all return the parent
+- `[.up.up]`, `[.up(2)]` both return the grandparent
 
 **Boundary behavior:**
-- If `.up(n)` exceeds the hierarchy depth, returns `undefined` (not an error)
-- `.root` on a top-level note returns that note (equivalent to `.`)
+- If `.up(n)` exceeds the hierarchy depth, returns `UndefinedVal` (not an error)
+- `.root` on a top-level note returns that note itself
 
 ### Lexer Additions
 | Token Type | Pattern |
 |------------|---------|
 | `SEMICOLON` | `;` |
 
-### AST Nodes
+### AST Nodes (Expression.kt)
 ```kotlin
 data class Assignment(val target: Expression, val value: Expression, override val position: Int) : Expression()
 data class StatementList(val statements: List<Expression>, override val position: Int) : Expression()
@@ -797,62 +891,112 @@ data class VariableRef(val name: String, override val position: Int) : Expressio
 data class MethodCall(val target: Expression, val methodName: String, val args: List<Expression>, val namedArgs: List<NamedArg>, override val position: Int) : Expression()
 ```
 
-### NoteOperations Interface
+### NoteOperations Interface (NoteOperations.kt)
 ```kotlin
 interface NoteOperations {
     suspend fun createNote(path: String, content: String): Note
     suspend fun findByPath(path: String): Note?
     suspend fun noteExistsAtPath(path: String): Boolean
+    suspend fun getNoteById(noteId: String): Note?
     suspend fun updatePath(noteId: String, newPath: String): Note
     suspend fun updateContent(noteId: String, newContent: String): Note
     suspend fun appendToNote(noteId: String, text: String): Note
 }
 ```
 
-### NoteVal Hierarchy Members (TODO)
+### NotePropertyHandler (NotePropertyHandler.kt)
 ```kotlin
-// In NoteVal
-fun getProperty(name: String): DslValue = when (name) {
-    "up" -> getUp(1)  // 0-arg form defaults to 1 level up
-    "root" -> getRoot()
-    // ... existing properties
+object NotePropertyHandler {
+    fun getProperty(noteVal: NoteVal, property: String, env: Environment): DslValue
+    fun setProperty(noteVal: NoteVal, property: String, value: DslValue, env: Environment)
+    internal fun getUp(note: Note, levels: Int, env: Environment): DslValue
 }
+```
 
-fun callMethod(name: String, args: Arguments, env: Environment): DslValue = when (name) {
-    "up" -> {
-        val levels = args.positionalOrNull(0)?.asInt() ?: 1
-        getUp(levels)
+Handles:
+- Read properties: `id`, `path`, `name`, `created`, `modified`, `viewed`, `up`, `root`
+- Write properties: `path`, `name`
+- Hierarchy navigation via `getUp()` helper (recursive with `UndefinedVal` boundary)
+
+### NoteMethodHandler (NoteMethodHandler.kt)
+```kotlin
+object NoteMethodHandler {
+    fun callMethod(noteVal: NoteVal, methodName: String, args: Arguments, env: Environment, position: Int): DslValue
+}
+```
+
+Handles:
+- `append(text)`: Appends text to note content
+- `up()`: Returns parent (delegates to NotePropertyHandler.getUp)
+- `up(n)`: Returns ancestor n levels up
+
+### NoteMutation Tracking (NoteMutation.kt)
+```kotlin
+data class NoteMutation(
+    val noteId: String,
+    val updatedNote: Note,
+    val mutationType: MutationType
+)
+
+enum class MutationType {
+    PATH_CHANGED,
+    CONTENT_CHANGED,
+    CONTENT_APPENDED
+}
+```
+
+### Environment (Environment.kt)
+```kotlin
+class Environment private constructor(
+    private val parent: Environment?,
+    private val context: NoteContext
+) {
+    // Variable management
+    fun define(name: String, value: DslValue)
+    fun get(name: String): DslValue?
+    fun child(): Environment
+    fun capture(): Environment
+
+    // Note context
+    fun getNotes(): List<Note>?
+    fun getCurrentNote(): NoteVal?
+    fun getNoteOperations(): NoteOperations?
+
+    // Hierarchy navigation
+    fun getNoteById(noteId: String): Note?
+    fun getParentNote(note: Note): Note?
+
+    // Mutation tracking
+    fun registerMutation(mutation: NoteMutation)
+    fun getMutations(): List<NoteMutation>
+    fun clearMutations()
+
+    companion object {
+        fun withContext(context: NoteContext): Environment
+        fun withNotes(notes: List<Note>): Environment
+        fun withCurrentNote(currentNote: Note): Environment
+        fun withNotesAndCurrentNote(notes: List<Note>, currentNote: Note): Environment
+        fun withNoteOperations(noteOperations: NoteOperations): Environment
+        fun withAll(notes: List<Note>, currentNote: Note, noteOperations: NoteOperations): Environment
     }
-    "append" -> { /* existing */ }
-    // ...
-}
-
-private fun getUp(levels: Int): DslValue {
-    if (levels == 0) return this
-    val parent = env.getParentNote(note.id) ?: return UndefinedVal
-    return if (levels == 1) NoteVal(parent) else NoteVal(parent).getUp(levels - 1)
-}
-
-private fun getRoot(): NoteVal {
-    val parent = env.getParentNote(note.id) ?: return this
-    return NoteVal(parent).getRoot()
 }
 ```
 
-### Environment Additions
+### NoteContext (NoteContext.kt)
 ```kotlin
-// Existing
-- `noteOperations: NoteOperations?` parameter added to Environment
-- `getNoteOperations(): NoteOperations?` method added
-- `Environment.withNoteOperations()` and `Environment.withAll()` factory methods
-
-// TODO: Add for hierarchy navigation
-- `getParentNote(noteId: String): Note?` method
-- Note hierarchy context passed to environment
+data class NoteContext(
+    val notes: List<Note>? = null,
+    val currentNote: Note? = null,
+    val noteOperations: NoteOperations? = null
+) {
+    companion object {
+        val EMPTY = NoteContext()
+    }
+}
 ```
 
-### Tests
-**Completed:**
+### Tests (all passing)
+**NoteMutationTest.kt:**
 - Variable assignment and references ✅
 - Statement separation with semicolons ✅
 - Property assignment on notes (.path, .name) ✅
@@ -861,18 +1005,18 @@ private fun getRoot(): NoteVal {
 - `maybe_new()` is idempotent (returns existing or creates new) ✅
 - Error handling for missing note operations ✅
 
-**TODO:**
-- `.up` returns parent note
-- `.up()` returns parent note (0-arg form)
-- `.up(1)` returns parent note
-- `.up(2)` returns grandparent note
-- `.up(0)` returns current note
-- `.up.up` chains correctly
-- `.up(n)` returns `undefined` when n exceeds hierarchy depth
-- `.root` returns top-level ancestor
-- `.root` on root note returns itself
-- `.up.path` accesses parent's path
-- `.root.append("text")` appends to root note
+**NotePropertiesTest.kt (hierarchy navigation):**
+- `.up` returns parent note ✅
+- `.up()` returns parent note (0-arg form) ✅
+- `.up(1)` returns parent note ✅
+- `.up(2)` returns grandparent note ✅
+- `.up(0)` returns current note ✅
+- `.up.up` chains correctly ✅
+- `.up(n)` returns `UndefinedVal` when n exceeds hierarchy depth ✅
+- `.root` returns top-level ancestor ✅
+- `.root` on root note returns itself ✅
+- `.up.path` accesses parent's path ✅
+- `.up(n)` with variable levels ✅
 
 ---
 
