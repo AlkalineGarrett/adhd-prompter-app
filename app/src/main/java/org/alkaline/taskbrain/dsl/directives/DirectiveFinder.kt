@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.dsl.directives
 
 import org.alkaline.taskbrain.data.Note
+import org.alkaline.taskbrain.dsl.language.IdempotencyAnalyzer
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.LexerException
 import org.alkaline.taskbrain.dsl.language.ParseException
@@ -8,6 +9,17 @@ import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
+import org.alkaline.taskbrain.dsl.runtime.NoteMutation
+import org.alkaline.taskbrain.dsl.runtime.NoteOperations
+
+/**
+ * Result of executing a directive, including any mutations that occurred.
+ * The result is for storage/display; mutations are for propagating changes.
+ */
+data class DirectiveExecutionResult(
+    val result: DirectiveResult,
+    val mutations: List<NoteMutation>
+)
 
 /**
  * Utility for finding directives in note content.
@@ -15,6 +27,7 @@ import org.alkaline.taskbrain.dsl.runtime.Executor
  * A directive is text enclosed in square brackets: [...]
  * Milestone 1: Simple non-nested matching with \[.*?\]
  * Milestone 6: Adds current note context for [.] reference.
+ * Milestone 7: Adds note operations for mutations.
  */
 object DirectiveFinder {
 
@@ -73,46 +86,70 @@ object DirectiveFinder {
     }
 
     /**
-     * Parse and execute a single directive, returning the result.
+     * Parse and execute a single directive, returning the result and any mutations.
      *
      * @param sourceText The directive source text (including brackets)
      * @param notes Optional list of notes for find() operations
      * @param currentNote Optional current note for [.] reference (Milestone 6)
-     * @return DirectiveResult containing either the value or an error
+     * @param noteOperations Optional note operations for mutations (Milestone 7)
+     * @return DirectiveExecutionResult containing the result and any mutations that occurred
      */
     fun executeDirective(
         sourceText: String,
         notes: List<Note>? = null,
-        currentNote: Note? = null
-    ): DirectiveResult {
+        currentNote: Note? = null,
+        noteOperations: NoteOperations? = null
+    ): DirectiveExecutionResult {
+        val env = createEnvironment(notes, currentNote, noteOperations)
         return try {
             val tokens = Lexer(sourceText).tokenize()
             val directive = Parser(tokens, sourceText).parseDirective()
-            val env = createEnvironment(notes, currentNote)
+
+            // Check idempotency before execution
+            val idempotencyResult = IdempotencyAnalyzer.analyze(directive.expression)
+            if (!idempotencyResult.isIdempotent) {
+                return DirectiveExecutionResult(
+                    DirectiveResult.failure(idempotencyResult.nonIdempotentReason ?: "Non-idempotent operation"),
+                    emptyList()
+                )
+            }
+
             val value = Executor().execute(directive, env)
-            DirectiveResult.success(value)
+            DirectiveExecutionResult(DirectiveResult.success(value), env.getMutations())
         } catch (e: LexerException) {
-            DirectiveResult.failure("Lexer error: ${e.message}")
+            DirectiveExecutionResult(DirectiveResult.failure("Lexer error: ${e.message}"), env.getMutations())
         } catch (e: ParseException) {
-            DirectiveResult.failure("Parse error: ${e.message}")
+            DirectiveExecutionResult(DirectiveResult.failure("Parse error: ${e.message}"), env.getMutations())
         } catch (e: ExecutionException) {
-            DirectiveResult.failure("Execution error: ${e.message}")
+            DirectiveExecutionResult(DirectiveResult.failure("Execution error: ${e.message}"), env.getMutations())
         } catch (e: Exception) {
-            DirectiveResult.failure("Unexpected error: ${e.message}")
+            DirectiveExecutionResult(DirectiveResult.failure("Unexpected error: ${e.message}"), env.getMutations())
         }
     }
 
     /**
      * Create an environment with the appropriate context.
+     *
+     * Milestone 7: Added noteOperations parameter.
      */
-    private fun createEnvironment(notes: List<Note>?, currentNote: Note?): Environment {
+    private fun createEnvironment(
+        notes: List<Note>?,
+        currentNote: Note?,
+        noteOperations: NoteOperations?
+    ): Environment {
         return when {
+            notes != null && currentNote != null && noteOperations != null ->
+                Environment.withAll(notes, currentNote, noteOperations)
             notes != null && currentNote != null ->
                 Environment.withNotesAndCurrentNote(notes, currentNote)
+            currentNote != null && noteOperations != null ->
+                Environment(currentNote = currentNote, noteOperations = noteOperations)
             notes != null ->
                 Environment.withNotes(notes)
             currentNote != null ->
                 Environment.withCurrentNote(currentNote)
+            noteOperations != null ->
+                Environment.withNoteOperations(noteOperations)
             else ->
                 Environment()
         }
@@ -135,7 +172,7 @@ object DirectiveFinder {
     ): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
             directiveKey(lineIndex, found.startOffset) to
-                executeDirective(found.sourceText, notes, currentNote)
+                executeDirective(found.sourceText, notes, currentNote).result
         }
     }
 }

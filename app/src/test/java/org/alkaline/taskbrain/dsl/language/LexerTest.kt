@@ -262,4 +262,54 @@ class LexerTest {
     }
 
     // endregion
+
+    // region Semicolon (Milestone 7)
+
+    @Test
+    fun `tokenizes semicolon`() {
+        val tokens = Lexer("[a; b]").tokenize()
+
+        assertEquals(6, tokens.size)
+        assertEquals(TokenType.LBRACKET, tokens[0].type)
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals(TokenType.SEMICOLON, tokens[2].type)
+        assertEquals(TokenType.IDENTIFIER, tokens[3].type)
+        assertEquals(TokenType.RBRACKET, tokens[4].type)
+    }
+
+    @Test
+    fun `tokenizes multiple semicolons`() {
+        val tokens = Lexer("[a; b; c]").tokenize()
+
+        assertEquals(8, tokens.size)
+        assertEquals(TokenType.SEMICOLON, tokens[2].type)
+        assertEquals(TokenType.SEMICOLON, tokens[4].type)
+    }
+
+    @Test
+    fun `tokenizes semicolon with whitespace`() {
+        val tokens = Lexer("[a ; b]").tokenize()
+
+        assertEquals(6, tokens.size)
+        assertEquals(TokenType.SEMICOLON, tokens[2].type)
+    }
+
+    @Test
+    fun `tokenizes assignment with semicolon`() {
+        val tokens = Lexer("[x: 5; y: 10]").tokenize()
+
+        assertEquals(10, tokens.size)
+        // x: 5
+        assertEquals(TokenType.IDENTIFIER, tokens[1].type)
+        assertEquals(TokenType.COLON, tokens[2].type)
+        assertEquals(TokenType.NUMBER, tokens[3].type)
+        // ;
+        assertEquals(TokenType.SEMICOLON, tokens[4].type)
+        // y: 10
+        assertEquals(TokenType.IDENTIFIER, tokens[5].type)
+        assertEquals(TokenType.COLON, tokens[6].type)
+        assertEquals(TokenType.NUMBER, tokens[7].type)
+    }
+
+    // endregion
 }

@@ -4,10 +4,17 @@ A domain-specific language for executable note directives in TaskBrain.
 
 ## Design Philosophy
 
-- **Mobile-first**: Minimize special characters since this is written on a phone
-- **Single-word identifiers**: Built-in names are preferentially single words
-- **Intuitive binding**: Easy to understand what binds to what
-- **Brackets for execution**: `[...]` denotes executable directives
+- **Mobile-first**: This DSL is primarily written on a phone, so ease of typing drives many design decisions.
+
+- **Minimize special characters**: Prefer built-in identifiers and functions over symbolic operators. For example, arithmetic uses `add(a, b)` instead of `a + b`, and comparison uses `gt(a, b)` instead of `a > b`. When special characters are necessary, prefer accessible characters commonly used in sentences: `.`, `(`, `)`, `,`, `:`, `"`.
+
+- **Graceful undefined access**: Accessing non-existent data returns `undefined` rather than throwing an error. This includes: out-of-bounds list access (e.g., `first` on empty list), missing properties, and hierarchy navigation beyond available ancestors (e.g., `.up` on a root note). This reduces branching paths, code complexity, and typing on mobile. Use `maybe(expr)` to convert `undefined` to `empty` when needed.
+
+- **Single-word identifiers**: Built-in names are preferentially single words for brevity.
+
+- **Intuitive binding**: Easy to understand what binds to what.
+
+- **Brackets for execution**: `[...]` denotes executable directives.
 
 ---
 
@@ -110,12 +117,43 @@ Semicolon separates multiple statements within a directive:
 
 All built-in function and constant names are reserved and cannot be used as variable names. This includes: `date`, `time`, `datetime`, `find`, `new`, `if`, `later`, `run`, `lambda`, `schedule`, `refresh`, `view`, `button`, `sort`, `first`, `list`, `string`, `qt`, `nl`, `tab`, `ret`, `pattern`, `true`, `false`, `undefined`, `empty`, and all comparison/arithmetic function names.
 
-### The Dot Operator: Current Note Reference
+### The Dot Operator: Note Hierarchy Navigation
 
-- `[.]` refers to the current note
-- `[.prop]` reads a property from the current note
-- `[.prop: value]` writes a property to the current note
-- `[obj.prop]` reads a property from an object
+The dot operator provides access to notes in the hierarchy relative to the directive's location.
+
+**Current line (the note containing the directive):**
+- `[.]` refers to the current line's note
+- `[.prop]` reads a property from the current line
+- `[.prop: value]` writes a property to the current line
+
+**General property access:**
+- `[obj.prop]` reads a property from any object
+
+**Note hierarchy members:**
+
+Notes have two members for hierarchy navigation: `up` and `root`. These follow standard member access syntax (not special syntax).
+
+`up` - Navigate to ancestor notes:
+- 0-arg form: `[.up]` or `[.up()]` returns the parent note (1 level up)
+- 1-arg form: `[.up(n)]` returns the ancestor n levels up
+- `[.up 0]`, `[.up(0)]` are equivalent to `[.]` (current line)
+- `[.up]`, `[.up()]`, `[.up 1]`, `[.up(1)]` all return the parent
+- `[.up.up]`, `[.up 2]`, `[.up(2)]` all return the grandparent
+- Chainable: `[.up.up.up]` goes 3 levels up
+
+`root` - Navigate to root ancestor:
+- `[.root]` returns the root ancestor (top-level note with no parent)
+- On a top-level note, `.root` returns that note (equivalent to `.`)
+
+**Examples:**
+- `[.up.path]` reads the parent note's path
+- `[.root.content]` reads the root note's content
+- `[.up(2).append("text")]` appends to the grandparent note
+- `[n: 2; .up(n).path]` uses a variable for the level
+
+**Boundary behavior:**
+- If `.up(n)` exceeds the hierarchy depth, it returns `undefined` (similar to `first` on an empty list)
+- Use `maybe(.up(n))` to safely handle cases where the ancestor may not exist
 
 ---
 
@@ -152,25 +190,30 @@ All built-in function and constant names are reserved and cannot be used as vari
 
 ## Note Properties
 
-Notes have the following read/write properties:
+Notes have the following properties:
 
-| Property | Type | Description |
-|----------|------|-------------|
-| `path` | String | Unique path identifier (globally enforced) |
-| `content` | String | Full text content of the note |
-| `created` | Date | Creation timestamp |
-| `modified` | Date | Last modification timestamp |
-| `viewed` | Date | Last viewed timestamp |
+| Property | Type | Access | Description |
+|----------|------|--------|-------------|
+| `path` | String | read/write | Unique path identifier (globally enforced) |
+| `content` | String | read/write | Full text content of the note |
+| `created` | Date | read | Creation timestamp |
+| `modified` | Date | read | Last modification timestamp |
+| `viewed` | Date | read | Last viewed timestamp |
+| `up` | Note | read | Parent note; 0-arg returns parent, 1-arg `up(n)` returns ancestor n levels up; returns `undefined` if ancestor doesn't exist |
+| `root` | Note | read | Root ancestor (top-level note with no parent) |
 
 **Path character restrictions**: Paths are URL-safe only—alphanumeric characters, `-`, `_`, and `/` (for hierarchy). No spaces, brackets, or quotes.
 
-**Current note reference**: The dot operator `[.]` always refers to the note containing the directive, even when that note's content is displayed via `view` in another note.
+**Current note reference**: The dot operator `[.]` always refers to the note containing the directive (the current line), even when that note's content is displayed via `view` in another note.
 
-Example:
+Examples:
 ```
-[.path]                    # Read current note's path
-[.path: "journal/2026"]    # Set current note's path
-[.modified]                # Read last modified date
+[.path]                    # Read current line's path
+[.path: "journal/2026"]    # Set current line's path
+[.modified]                # Read current line's last modified date
+[.up.path]                 # Read parent note's path
+[.root.content]            # Read root note's content
+[.up.append("child note")] # Append to parent note
 ```
 
 ---
@@ -647,6 +690,17 @@ A button that creates a new journal note for today when tapped.
 [if(eq(.path, "inbox"), .append("Processed"), .append("Skipped"))]
 ```
 Append "Processed" if this note's path is "inbox", otherwise append "Skipped".
+
+### Note Hierarchy Navigation
+```
+[.path]           # Current line's path
+[.up.path]        # Parent note's path
+[.up.up.path]     # Grandparent note's path
+[.root.path]      # Root note's path (top-level ancestor)
+[.up.append(string("Child: " .path))]  # Append current line's path to parent
+[n: 2; .up(n).path]  # Go up n levels using a variable
+```
+Access properties and methods on notes at different levels of the hierarchy.
 
 ### Safe Single Note Lookup
 ```

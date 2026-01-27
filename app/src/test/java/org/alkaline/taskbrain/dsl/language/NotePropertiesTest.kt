@@ -10,6 +10,7 @@ import org.alkaline.taskbrain.dsl.runtime.Executor
 import org.alkaline.taskbrain.dsl.runtime.ListVal
 import org.alkaline.taskbrain.dsl.runtime.NoteVal
 import org.alkaline.taskbrain.dsl.runtime.StringVal
+import org.alkaline.taskbrain.dsl.runtime.UndefinedVal
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -69,6 +70,41 @@ class NotePropertiesTest {
         path = "tasks/inbox",
         content = "Inbox"
     )
+
+    // Hierarchy test notes: root -> parent -> child -> grandchild
+    private val rootNote = Note(
+        id = "root-id",
+        userId = "user-123",
+        parentNoteId = null,
+        path = "root",
+        content = "Root Note"
+    )
+
+    private val parentNote = Note(
+        id = "parent-id",
+        userId = "user-123",
+        parentNoteId = "root-id",
+        path = "parent",
+        content = "Parent Note"
+    )
+
+    private val childNote = Note(
+        id = "child-id",
+        userId = "user-123",
+        parentNoteId = "parent-id",
+        path = "child",
+        content = "Child Note"
+    )
+
+    private val grandchildNote = Note(
+        id = "grandchild-id",
+        userId = "user-123",
+        parentNoteId = "child-id",
+        path = "grandchild",
+        content = "Grandchild Note"
+    )
+
+    private val hierarchyNotes = listOf(rootNote, parentNote, childNote, grandchildNote)
 
     // endregion
 
@@ -288,7 +324,7 @@ class NotePropertiesTest {
 
         // Get the note and verify we can access its properties
         val noteVal = list[0] as NoteVal
-        assertEquals("journal/2026-01-15", noteVal.getProperty("path").toDisplayString())
+        assertEquals("journal/2026-01-15", noteVal.getProperty("path", Environment.withNotes(notes)).toDisplayString())
     }
 
     // endregion
@@ -333,6 +369,128 @@ class NotePropertiesTest {
         val result = execute("[.created]", currentNote = testNote)
         // The datetime should be displayed as "yyyy-MM-dd, HH:mm:ss"
         assertTrue(result.toDisplayString().matches(Regex("\\d{4}-\\d{2}-\\d{2}, \\d{2}:\\d{2}:\\d{2}")))
+    }
+
+    // endregion
+
+    // region Hierarchy navigation - .up property
+
+    @Test
+    fun `dot up returns parent note`() {
+        val result = execute("[.up]", currentNote = childNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up returns undefined when no parent`() {
+        val result = execute("[.up]", currentNote = rootNote, notes = hierarchyNotes)
+
+        assertTrue(result is UndefinedVal)
+    }
+
+    @Test
+    fun `dot up dot path returns parent path`() {
+        val result = execute("[.up.path]", currentNote = childNote, notes = hierarchyNotes)
+
+        assertTrue(result is StringVal)
+        assertEquals("parent", (result as StringVal).value)
+    }
+
+    @Test
+    fun `dot up chained returns grandparent`() {
+        val result = execute("[.up.up]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    // endregion
+
+    // region Hierarchy navigation - .up() method
+
+    @Test
+    fun `dot up parentheses returns parent note`() {
+        val result = execute("[.up()]", currentNote = childNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up 0 returns current note`() {
+        val result = execute("[.up(0)]", currentNote = childNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("child-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up 1 returns parent note`() {
+        val result = execute("[.up(1)]", currentNote = childNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up 2 returns grandparent note`() {
+        val result = execute("[.up(2)]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up 3 returns great-grandparent note`() {
+        val result = execute("[.up(3)]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("root-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot up exceeding hierarchy returns undefined`() {
+        val result = execute("[.up(4)]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is UndefinedVal)
+    }
+
+    @Test
+    fun `dot up with variable levels`() {
+        val result = execute("[n: 2; .up(n)]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("parent-id", (result as NoteVal).note.id)
+    }
+
+    // endregion
+
+    // region Hierarchy navigation - .root property
+
+    @Test
+    fun `dot root returns root ancestor`() {
+        val result = execute("[.root]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("root-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot root on root note returns itself`() {
+        val result = execute("[.root]", currentNote = rootNote, notes = hierarchyNotes)
+
+        assertTrue(result is NoteVal)
+        assertEquals("root-id", (result as NoteVal).note.id)
+    }
+
+    @Test
+    fun `dot root dot path returns root path`() {
+        val result = execute("[.root.path]", currentNote = grandchildNote, notes = hierarchyNotes)
+
+        assertTrue(result is StringVal)
+        assertEquals("root", (result as StringVal).value)
     }
 
     // endregion

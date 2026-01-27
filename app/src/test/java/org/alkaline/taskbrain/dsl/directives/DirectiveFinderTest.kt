@@ -89,42 +89,42 @@ class DirectiveFinderTest {
 
     @Test
     fun `executes number directive successfully`() {
-        val result = DirectiveFinder.executeDirective("[42]")
+        val execResult = DirectiveFinder.executeDirective("[42]")
 
-        assertNull(result.error)
-        assertNotNull(result.result)
-        assertEquals(42.0, (result.toValue() as NumberVal).value, 0.0)
+        assertNull(execResult.result.error)
+        assertNotNull(execResult.result.result)
+        assertEquals(42.0, (execResult.result.toValue() as NumberVal).value, 0.0)
     }
 
     @Test
     fun `executes string directive successfully`() {
-        val result = DirectiveFinder.executeDirective("[\"hello\"]")
+        val execResult = DirectiveFinder.executeDirective("[\"hello\"]")
 
-        assertNull(result.error)
-        assertEquals("hello", (result.toValue() as StringVal).value)
+        assertNull(execResult.result.error)
+        assertEquals("hello", (execResult.result.toValue() as StringVal).value)
     }
 
     @Test
     fun `returns error for invalid directive`() {
-        val result = DirectiveFinder.executeDirective("[invalid@syntax]")
+        val execResult = DirectiveFinder.executeDirective("[invalid@syntax]")
 
-        assertNotNull(result.error)
-        assertTrue(result.error!!.contains("error"))
+        assertNotNull(execResult.result.error)
+        assertTrue(execResult.result.error!!.contains("error"))
     }
 
     @Test
     fun `returns error for empty directive`() {
-        val result = DirectiveFinder.executeDirective("[]")
+        val execResult = DirectiveFinder.executeDirective("[]")
 
-        assertNotNull(result.error)
+        assertNotNull(execResult.result.error)
     }
 
     @Test
     fun `returns error for unclosed string`() {
-        val result = DirectiveFinder.executeDirective("[\"unclosed]")
+        val execResult = DirectiveFinder.executeDirective("[\"unclosed]")
 
-        assertNotNull(result.error)
-        assertTrue(result.error!!.contains("Lexer error"))
+        assertNotNull(execResult.result.error)
+        assertTrue(execResult.result.error!!.contains("Lexer error"))
     }
 
     // endregion

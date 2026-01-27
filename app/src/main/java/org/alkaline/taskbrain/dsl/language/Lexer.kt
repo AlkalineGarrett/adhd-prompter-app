@@ -6,6 +6,7 @@ package org.alkaline.taskbrain.dsl.language
  *
  * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
  * Milestone 4: Adds star (*) and dot-dot (..) for pattern quantifiers.
+ * Milestone 7: Adds semicolon (;) for statement separation.
  *
  * Note: Strings have no escape sequences (mobile-friendly design).
  * Special characters like quotes and newlines are inserted using
@@ -38,6 +39,7 @@ class Lexer(private val source: String) {
             ')' -> addToken(TokenType.RPAREN)
             ',' -> addToken(TokenType.COMMA)
             ':' -> addToken(TokenType.COLON)
+            ';' -> addToken(TokenType.SEMICOLON)  // Milestone 7: statement separator
             '*' -> addToken(TokenType.STAR)
             '.' -> dotOrDotDot()
             '"' -> string()

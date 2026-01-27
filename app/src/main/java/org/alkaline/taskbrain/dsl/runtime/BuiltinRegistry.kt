@@ -5,13 +5,17 @@ import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
 import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
 import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
+import org.alkaline.taskbrain.dsl.language.Assignment
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Expression
+import org.alkaline.taskbrain.dsl.language.MethodCall
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.PatternExpr
 import org.alkaline.taskbrain.dsl.language.PropertyAccess
+import org.alkaline.taskbrain.dsl.language.StatementList
 import org.alkaline.taskbrain.dsl.language.StringLiteral
+import org.alkaline.taskbrain.dsl.language.VariableRef
 
 /**
  * Container for function arguments, supporting both positional and named arguments.
@@ -72,6 +76,7 @@ data class BuiltinFunction(
  * Milestone 3: Adds arithmetic functions.
  * Milestone 4: Adds pattern support to containsDynamicCalls.
  * Milestone 5: Adds note functions (find).
+ * Milestone 7: Adds assignment, statement list, variable, and method call support.
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -116,6 +121,8 @@ object BuiltinRegistry {
     /**
      * Check if an expression contains any dynamic function calls.
      * Used to determine if a directive needs re-execution on confirm.
+     *
+     * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
      */
     fun containsDynamicCalls(expr: Expression): Boolean {
         return when (expr) {
@@ -124,6 +131,19 @@ object BuiltinRegistry {
             is PatternExpr -> false  // Patterns are static
             is CurrentNoteRef -> false  // Current note reference is static (Milestone 6)
             is PropertyAccess -> containsDynamicCalls(expr.target)  // Check the target (Milestone 6)
+            is VariableRef -> false  // Variables themselves are static (Milestone 7)
+            is Assignment -> {
+                // Check both target and value (Milestone 7)
+                containsDynamicCalls(expr.target) || containsDynamicCalls(expr.value)
+            }
+            is StatementList -> {
+                // Check all statements (Milestone 7)
+                expr.statements.any { containsDynamicCalls(it) }
+            }
+            is MethodCall -> {
+                // Method calls on notes (like append) are considered dynamic (Milestone 7)
+                true
+            }
             is CallExpr -> {
                 isDynamic(expr.name) ||
                     expr.args.any { containsDynamicCalls(it) } ||

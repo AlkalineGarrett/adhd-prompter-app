@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import android.util.Log
 import androidx.compose.foundation.background
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
 import org.alkaline.taskbrain.ui.currentnote.util.ClipboardHtmlConverter
@@ -37,6 +38,7 @@ import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
 import org.alkaline.taskbrain.ui.currentnote.components.CommandBar
 import org.alkaline.taskbrain.ui.currentnote.components.NoteTextField
 import org.alkaline.taskbrain.ui.currentnote.components.StatusBar
+import org.alkaline.taskbrain.dsl.runtime.MutationType
 
 /**
  * Main screen for viewing and editing a note.
@@ -242,6 +244,53 @@ fun CurrentNoteScreen(
     // Load tabs on initial composition
     LaunchedEffect(Unit) {
         recentTabsViewModel.loadTabs()
+    }
+
+    // Set up callback for directive mutations that affect the current note's content
+    // When a directive like [.name: "new title"] runs, update the editor to show the change
+    DisposableEffect(currentNoteViewModel, controller) {
+        currentNoteViewModel.onEditorContentMutated = { noteId, newContent, mutationType, alreadyPersisted ->
+            if (noteId == currentNoteId) {
+                when (mutationType) {
+                    MutationType.CONTENT_CHANGED -> {
+                        // For CONTENT_CHANGED (e.g., .name assignment), only update the first line
+                        // because the editor shows combined content (parent + children) but
+                        // Firestore stores children separately in containedNotes.
+                        // The newContent here is just the note's content field (first line).
+                        val currentLines = userContent.lines()
+                        val updatedContent = if (currentLines.size > 1) {
+                            // Preserve all lines after the first
+                            (listOf(newContent) + currentLines.drop(1)).joinToString("\n")
+                        } else {
+                            newContent
+                        }
+                        editorState.updateFromText(updatedContent)
+                        userContent = updatedContent
+                        textFieldValue = TextFieldValue(updatedContent, TextRange(updatedContent.length))
+                    }
+                    MutationType.CONTENT_APPENDED -> {
+                        // For CONTENT_APPENDED (e.g., .append()), we cannot safely update the editor
+                        // because newContent is just the note's content field, not including children.
+                        // The append modified Firestore directly; user will see changes after reload.
+                        // Updating the editor here would wipe out child notes from the display.
+                        Log.d("CurrentNoteScreen", "Skipping editor update for CONTENT_APPENDED - reload to see changes")
+                    }
+                    MutationType.PATH_CHANGED -> {
+                        // Path changes don't affect editor content - shouldn't reach here
+                    }
+                }
+                // Only mark as unsaved if the mutation is NOT already persisted (e.g., live execution)
+                // Mutations during save are already persisted to Firestore
+                if (!alreadyPersisted) {
+                    isSaved = false
+                }
+                // Clear undo history since the content was externally modified
+                controller.resetUndoHistory()
+            }
+        }
+        onDispose {
+            currentNoteViewModel.onEditorContentMutated = null
+        }
     }
 
     // Update tab when note is loaded

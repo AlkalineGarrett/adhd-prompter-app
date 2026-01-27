@@ -5,6 +5,7 @@ package org.alkaline.taskbrain.dsl.language
  * Each subclass represents a different syntactic construct.
  *
  * Milestone 3: Adds support for parenthesized calls with named arguments.
+ * Milestone 7: Adds Assignment and StatementList for note mutation.
  */
 sealed class Expression {
     /** The position in source where this expression starts */
@@ -90,6 +91,60 @@ data class CurrentNoteRef(override val position: Int) : Expression()
 data class PropertyAccess(
     val target: Expression,
     val property: String,
+    override val position: Int
+) : Expression()
+
+// ============================================================================
+// Note Mutation AST Nodes (Milestone 7)
+// ============================================================================
+
+/**
+ * An assignment expression.
+ * Used for variable definitions and property assignments.
+ * Example: [x: 5], [.path: "foo"], [note.path: "bar"]
+ *
+ * Milestone 7.
+ */
+data class Assignment(
+    val target: Expression,
+    val value: Expression,
+    override val position: Int
+) : Expression()
+
+/**
+ * A list of statements separated by semicolons.
+ * Returns the value of the last statement.
+ * Example: [x: 5; y: 10; add(x, y)]
+ *
+ * Milestone 7.
+ */
+data class StatementList(
+    val statements: List<Expression>,
+    override val position: Int
+) : Expression()
+
+/**
+ * A variable reference.
+ * Example: [x] where x was previously defined as [x: 5]
+ *
+ * Milestone 7.
+ */
+data class VariableRef(
+    val name: String,
+    override val position: Int
+) : Expression()
+
+/**
+ * A method call on an expression.
+ * Example: [.append("text")], [note.append("text")]
+ *
+ * Milestone 7.
+ */
+data class MethodCall(
+    val target: Expression,
+    val methodName: String,
+    val args: List<Expression>,
+    val namedArgs: List<NamedArg>,
     override val position: Int
 ) : Expression()
 

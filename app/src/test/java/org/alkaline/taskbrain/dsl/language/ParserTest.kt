@@ -199,4 +199,146 @@ class ParserTest {
     }
 
     // endregion
+
+    // region Variable assignment (Milestone 7)
+
+    @Test
+    fun `parses variable assignment`() {
+        val directive = parse("[x: 5]")
+
+        assertTrue(directive.expression is Assignment)
+        val assignment = directive.expression as Assignment
+        assertTrue(assignment.target is VariableRef)
+        assertEquals("x", (assignment.target as VariableRef).name)
+        assertTrue(assignment.value is NumberLiteral)
+        assertEquals(5.0, (assignment.value as NumberLiteral).value, 0.0)
+    }
+
+    @Test
+    fun `parses variable assignment with string value`() {
+        val directive = parse("[name: \"hello\"]")
+
+        assertTrue(directive.expression is Assignment)
+        val assignment = directive.expression as Assignment
+        assertEquals("name", (assignment.target as VariableRef).name)
+        assertEquals("hello", (assignment.value as StringLiteral).value)
+    }
+
+    @Test
+    fun `parses variable assignment with function call value`() {
+        val directive = parse("[today: date]")
+
+        assertTrue(directive.expression is Assignment)
+        val assignment = directive.expression as Assignment
+        assertEquals("today", (assignment.target as VariableRef).name)
+        assertTrue(assignment.value is CallExpr)
+        assertEquals("date", (assignment.value as CallExpr).name)
+    }
+
+    // endregion
+
+    // region Property assignment (Milestone 7)
+
+    @Test
+    fun `parses property assignment on current note`() {
+        val directive = parse("[.path: \"new/path\"]")
+
+        assertTrue(directive.expression is Assignment)
+        val assignment = directive.expression as Assignment
+        assertTrue(assignment.target is PropertyAccess)
+        val target = assignment.target as PropertyAccess
+        assertTrue(target.target is CurrentNoteRef)
+        assertEquals("path", target.property)
+        assertEquals("new/path", (assignment.value as StringLiteral).value)
+    }
+
+    // endregion
+
+    // region Statement list (Milestone 7)
+
+    @Test
+    fun `parses statement list with semicolons`() {
+        val directive = parse("[a; b; c]")
+
+        assertTrue(directive.expression is StatementList)
+        val list = directive.expression as StatementList
+        assertEquals(3, list.statements.size)
+    }
+
+    @Test
+    fun `parses two statements`() {
+        val directive = parse("[x: 5; x]")
+
+        assertTrue(directive.expression is StatementList)
+        val list = directive.expression as StatementList
+        assertEquals(2, list.statements.size)
+        assertTrue(list.statements[0] is Assignment)
+        assertTrue(list.statements[1] is CallExpr)  // 'x' is parsed as CallExpr initially
+    }
+
+    @Test
+    fun `single expression without semicolon is not StatementList`() {
+        val directive = parse("[42]")
+
+        assertTrue(directive.expression is NumberLiteral)
+    }
+
+    @Test
+    fun `parses complex statement list`() {
+        val directive = parse("[x: 5; y: 10; add(x, y)]")
+
+        assertTrue(directive.expression is StatementList)
+        val list = directive.expression as StatementList
+        assertEquals(3, list.statements.size)
+        assertTrue(list.statements[0] is Assignment)
+        assertTrue(list.statements[1] is Assignment)
+        assertTrue(list.statements[2] is CallExpr)
+    }
+
+    // endregion
+
+    // region Method calls (Milestone 7)
+
+    @Test
+    fun `parses method call on current note`() {
+        val directive = parse("[.append(\"text\")]")
+
+        assertTrue(directive.expression is MethodCall)
+        val call = directive.expression as MethodCall
+        assertTrue(call.target is CurrentNoteRef)
+        assertEquals("append", call.methodName)
+        assertEquals(1, call.args.size)
+        assertEquals("text", (call.args[0] as StringLiteral).value)
+    }
+
+    @Test
+    fun `parses method call with no arguments`() {
+        val directive = parse("[.someMethod()]")
+
+        assertTrue(directive.expression is MethodCall)
+        val call = directive.expression as MethodCall
+        assertEquals("someMethod", call.methodName)
+        assertEquals(0, call.args.size)
+    }
+
+    @Test
+    fun `parses method call with multiple arguments`() {
+        val directive = parse("[.method(1, 2, 3)]")
+
+        assertTrue(directive.expression is MethodCall)
+        val call = directive.expression as MethodCall
+        assertEquals(3, call.args.size)
+    }
+
+    @Test
+    fun `parses chained property access and method call`() {
+        val directive = parse("[.path]")
+
+        assertTrue(directive.expression is PropertyAccess)
+        val access = directive.expression as PropertyAccess
+        assertTrue(access.target is CurrentNoteRef)
+        assertEquals("path", access.property)
+    }
+
+    // endregion
 }

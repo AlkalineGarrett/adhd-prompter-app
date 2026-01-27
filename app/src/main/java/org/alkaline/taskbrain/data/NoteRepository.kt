@@ -258,6 +258,19 @@ class NoteRepository(
     }.onFailure { Log.e(TAG, "Error loading all notes", it) }
 
     /**
+     * Loads a single note by ID.
+     * Returns null if the note doesn't exist.
+     */
+    suspend fun loadNoteById(noteId: String): Result<Note?> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+            val document = noteRef(noteId).get().await()
+            if (!document.exists()) return@withContext null
+            document.toObject(Note::class.java)?.copy(id = document.id)
+        }
+    }.onFailure { Log.e(TAG, "Error loading note by ID: $noteId", it) }
+
+    /**
      * Checks if a note is deleted.
      */
     suspend fun isNoteDeleted(noteId: String): Result<Boolean> = runCatching {

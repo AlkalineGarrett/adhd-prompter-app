@@ -13,6 +13,7 @@ package org.alkaline.taskbrain.dsl.language
  *
  * Milestone 4: Adds pattern(...) special parsing for mobile-friendly pattern matching.
  * Milestone 6: Adds dot operator for current note reference and property access.
+ * Milestone 7: Adds assignment syntax and statement separation.
  */
 class Parser(private val tokens: List<Token>, private val source: String) {
 
@@ -47,10 +48,86 @@ class Parser(private val tokens: List<Token>, private val source: String) {
 
     /**
      * Parse an expression.
-     * Handles right-to-left nesting for space-separated identifiers.
+     * Handles statement lists (semicolon-separated), assignments, and call chains.
+     *
+     * Milestone 7: Adds statement list and assignment support.
      */
     private fun parseExpression(): Expression {
-        return parseCallChain()
+        return parseStatementList()
+    }
+
+    /**
+     * Parse a list of statements separated by semicolons.
+     * Returns a StatementList if multiple statements, otherwise the single statement.
+     *
+     * Milestone 7.
+     */
+    private fun parseStatementList(): Expression {
+        val position = peek().position
+        val statements = mutableListOf<Expression>()
+
+        statements.add(parseStatement())
+
+        while (match(TokenType.SEMICOLON)) {
+            statements.add(parseStatement())
+        }
+
+        return if (statements.size == 1) {
+            statements[0]
+        } else {
+            StatementList(statements, position)
+        }
+    }
+
+    /**
+     * Parse a single statement (assignment or expression).
+     * Assignment has the form: target : value
+     * where target is an identifier (variable) or property access.
+     *
+     * Milestone 7.
+     */
+    private fun parseStatement(): Expression {
+        val position = peek().position
+
+        // Special case: [x: value] where x is a variable being defined
+        // Need to look ahead for IDENTIFIER followed by COLON (but not inside a call)
+        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+            val nameToken = advance()
+            val name = nameToken.literal as String
+            advance() // consume COLON
+            val value = parseCallChain()
+            return Assignment(VariableRef(name, nameToken.position), value, position)
+        }
+
+        // Parse the expression (could be an assignment target or a regular expression)
+        val expr = parseCallChain()
+
+        // Check if this is an assignment (expression followed by COLON)
+        if (match(TokenType.COLON)) {
+            // Validate that the target is assignable (property access or current note ref)
+            if (!isAssignableTarget(expr)) {
+                throw ParseException(
+                    "Invalid assignment target. Expected variable, property access, or current note reference.",
+                    position
+                )
+            }
+            val value = parseCallChain()
+            return Assignment(expr, value, position)
+        }
+
+        return expr
+    }
+
+    /**
+     * Check if an expression can be the target of an assignment.
+     */
+    private fun isAssignableTarget(expr: Expression): Boolean {
+        return when (expr) {
+            is PropertyAccess -> true  // .path, note.path
+            is CurrentNoteRef -> true  // . (whole note)
+            is VariableRef -> true     // x
+            else -> false
+        }
     }
 
     /**
@@ -78,34 +155,82 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     /**
-     * Parse postfix operators (property access chains).
+     * Parse postfix operators (property access chains and method calls).
      * Example: expr.path.name -> PropertyAccess(PropertyAccess(expr, "path"), "name")
+     * Example: expr.append("x") -> MethodCall(expr, "append", ["x"], [])
      *
-     * Milestone 6.
+     * Milestone 6: Property access chains.
+     * Milestone 7: Method calls on expressions.
      */
     private fun parsePostfix(expr: Expression): Expression {
         var result = expr
 
-        // Keep consuming .identifier chains
+        // Keep consuming .identifier chains and method calls
         while (match(TokenType.DOT)) {
             val dotPosition = previous().position
-            val propToken = consume(TokenType.IDENTIFIER, "Expected property name after '.'")
+            val propToken = consume(TokenType.IDENTIFIER, "Expected property or method name after '.'")
             val propName = propToken.literal as String
-            result = PropertyAccess(result, propName, dotPosition)
+
+            // Check if this is a method call (followed by parentheses)
+            if (match(TokenType.LPAREN)) {
+                val (positionalArgs, namedArgs) = parseMethodArguments()
+                result = MethodCall(result, propName, positionalArgs, namedArgs, dotPosition)
+            } else {
+                result = PropertyAccess(result, propName, dotPosition)
+            }
         }
 
         return result
     }
 
     /**
+     * Parse method arguments inside parentheses.
+     * Called after LPAREN has been consumed.
+     *
+     * Milestone 7.
+     */
+    private fun parseMethodArguments(): Pair<List<Expression>, List<NamedArg>> {
+        val positionalArgs = mutableListOf<Expression>()
+        val namedArgs = mutableListOf<NamedArg>()
+
+        // Check for empty argument list
+        if (!check(TokenType.RPAREN)) {
+            do {
+                val arg = parseArgument()
+                when (arg) {
+                    is ParsedPositionalArg -> {
+                        if (namedArgs.isNotEmpty()) {
+                            throw ParseException(
+                                "Positional argument cannot follow named argument",
+                                arg.expr.position
+                            )
+                        }
+                        positionalArgs.add(arg.expr)
+                    }
+                    is ParsedNamedArg -> {
+                        namedArgs.add(arg.namedArg)
+                    }
+                }
+            } while (match(TokenType.COMMA))
+        }
+
+        consume(TokenType.RPAREN, "Expected ')' after method arguments")
+
+        return positionalArgs to namedArgs
+    }
+
+    /**
      * Check if we're at the start of another expression.
-     * Not at: ], ), ,, :, or EOF
+     * Not at: ], ), ,, :, ;, or EOF
+     *
+     * Milestone 7: Added SEMICOLON as a boundary.
      */
     private fun isAtExpressionStart(): Boolean {
         return !check(TokenType.RBRACKET) &&
                !check(TokenType.RPAREN) &&
                !check(TokenType.COMMA) &&
                !check(TokenType.COLON) &&
+               !check(TokenType.SEMICOLON) &&
                !isAtEnd()
     }
 
@@ -123,15 +248,22 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 StringLiteral(token.literal as String, token.position)
             }
             match(TokenType.DOT) -> {
-                // Current note reference: [.] or [.path]
+                // Current note reference: [.] or [.path] or [.method(...)]
                 val position = previous().position
                 val currentNoteRef = CurrentNoteRef(position)
 
-                // Check if followed by identifier for immediate property access [.path]
+                // Check if followed by identifier for property access or method call
                 if (check(TokenType.IDENTIFIER)) {
                     val propToken = advance()
                     val propName = propToken.literal as String
-                    PropertyAccess(currentNoteRef, propName, position)
+
+                    // Check if this is a method call (followed by parentheses)
+                    if (match(TokenType.LPAREN)) {
+                        val (positionalArgs, namedArgs) = parseMethodArguments()
+                        MethodCall(currentNoteRef, propName, positionalArgs, namedArgs, position)
+                    } else {
+                        PropertyAccess(currentNoteRef, propName, position)
+                    }
                 } else {
                     // Just [.] - return current note reference
                     currentNoteRef

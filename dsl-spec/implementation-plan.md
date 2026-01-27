@@ -81,8 +81,9 @@ dsl/
 
 **Test structure** mirrors main source under `app/src/test/java/org/alkaline/taskbrain/dsl/`:
 ```
-├── language/                 # LexerTest, ParserTest, PatternTest
-├── runtime/                  # ExecutorTest
+├── language/                 # LexerTest, ParserTest, PatternTest, NotePropertiesTest
+├── runtime/                  # ExecutorTest, NoteMutationTest
+├── builtins/                 # NoteFunctionsTest
 └── directives/               # DirectiveFinderTest, DirectiveInstanceTest, DirectiveResultTest, DirectiveSegmenterTest
 ```
 
@@ -744,80 +745,134 @@ is PropertyAccess -> {
 
 ---
 
-## Milestone 7: Note Mutation
+## Milestone 7: Note Mutation & Hierarchy Navigation
 
-**Target:** `[.path: "x"]`, `[maybe_new(...)]`, `[.append(...)]`
+**Target:** `[.path: "x"]`, `[maybe_new(...)]`, `[.append(...)]`, `[.up]`, `[.root]`
 
-### Parser Additions
-- Assignment syntax: `.prop: value` or `expr.prop: value`
-- Statement separation with `;`
+### Implementation Summary
+
+**Completed:**
+1. Added `SEMICOLON` token type to Lexer for statement separation
+2. Added AST nodes: `Assignment`, `StatementList`, `VariableRef`, `MethodCall`
+3. Updated Parser to handle:
+   - Variable assignment: `[x: 5]`
+   - Property assignment: `[.path: "value"]`
+   - Statement separation: `[x: 5; y: 10; add(x, y)]`
+   - Method calls: `[.append("text")]`
+4. Updated Executor to evaluate new AST types
+5. Created `NoteOperations` interface for note mutations
+6. Added `setProperty` and `callMethod` methods to `NoteVal`
+7. Added `new` and `maybe_new` functions to `NoteFunctions`
+8. Updated `BuiltinRegistry.containsDynamicCalls()` for new AST types
+
+**TODO: Note Hierarchy Navigation**
+
+Add `up` and `root` members to `NoteVal` for navigating the note hierarchy:
+
+| Member | Form | Description |
+|--------|------|-------------|
+| `up` | 0-arg: `.up`, `.up()` | Returns parent note (1 level up) |
+| `up` | 1-arg: `.up(n)` | Returns ancestor n levels up |
+| `root` | `.root` | Returns root ancestor (top-level note) |
+
+**Equivalences:**
+- `[.up 0]`, `[.up(0)]` are equivalent to `[.]` (current line)
+- `[.up]`, `[.up()]`, `[.up 1]`, `[.up(1)]` all return the parent
+- `[.up.up]`, `[.up 2]`, `[.up(2)]` all return the grandparent
+
+**Boundary behavior:**
+- If `.up(n)` exceeds the hierarchy depth, returns `undefined` (not an error)
+- `.root` on a top-level note returns that note (equivalent to `.`)
+
+### Lexer Additions
+| Token Type | Pattern |
+|------------|---------|
+| `SEMICOLON` | `;` |
 
 ### AST Nodes
 ```kotlin
-data class Assignment(val target: Expression, val value: Expression) : Expression()
-data class StatementList(val statements: List<Expression>) : Expression()
+data class Assignment(val target: Expression, val value: Expression, override val position: Int) : Expression()
+data class StatementList(val statements: List<Expression>, override val position: Int) : Expression()
+data class VariableRef(val name: String, override val position: Int) : Expression()
+data class MethodCall(val target: Expression, val methodName: String, val args: List<Expression>, val namedArgs: List<NamedArg>, override val position: Int) : Expression()
 ```
 
-### Builtins: NoteFunctions.kt
+### NoteOperations Interface
 ```kotlin
-"new" to { args, env ->
-    val path = args.named("path")!!.asString()
-    val content = args.named("content")?.asString() ?: ""
-
-    if (noteRepository.noteExistsAtPath(path)) {
-        error("Note already exists at path: $path")
-    }
-
-    val note = noteRepository.createNote(path, content)
-    NoteVal(note)
-}
-
-"maybe_new" to { args, env ->
-    val path = args.named("path")!!.asString()
-    val maybeContent = args.named("maybe_content")?.asString() ?: ""
-
-    val existing = noteRepository.findByPath(path)
-    if (existing != null) {
-        NoteVal(existing)
-    } else {
-        val note = noteRepository.createNote(path, maybeContent)
-        NoteVal(note)
-    }
+interface NoteOperations {
+    suspend fun createNote(path: String, content: String): Note
+    suspend fun findByPath(path: String): Note?
+    suspend fun noteExistsAtPath(path: String): Boolean
+    suspend fun updatePath(noteId: String, newPath: String): Note
+    suspend fun updateContent(noteId: String, newContent: String): Note
+    suspend fun appendToNote(noteId: String, text: String): Note
 }
 ```
 
-### Method-Style Calls
+### NoteVal Hierarchy Members (TODO)
 ```kotlin
-// .append on notes
-fun NoteVal.append(text: String): NoteVal {
-    noteRepository.appendToNote(note.id, text)
-    return this  // Return note for chaining
+// In NoteVal
+fun getProperty(name: String): DslValue = when (name) {
+    "up" -> getUp(1)  // 0-arg form defaults to 1 level up
+    "root" -> getRoot()
+    // ... existing properties
+}
+
+fun callMethod(name: String, args: Arguments, env: Environment): DslValue = when (name) {
+    "up" -> {
+        val levels = args.positionalOrNull(0)?.asInt() ?: 1
+        getUp(levels)
+    }
+    "append" -> { /* existing */ }
+    // ...
+}
+
+private fun getUp(levels: Int): DslValue {
+    if (levels == 0) return this
+    val parent = env.getParentNote(note.id) ?: return UndefinedVal
+    return if (levels == 1) NoteVal(parent) else NoteVal(parent).getUp(levels - 1)
+}
+
+private fun getRoot(): NoteVal {
+    val parent = env.getParentNote(note.id) ?: return this
+    return NoteVal(parent).getRoot()
 }
 ```
 
-### Executor
+### Environment Additions
 ```kotlin
-is Assignment -> {
-    val value = evaluate(expr.value, env)
-    when (val target = expr.target) {
-        is PropertyAccess -> {
-            val targetObj = evaluate(target.target, env)
-            when (targetObj) {
-                is NoteVal -> targetObj.setProperty(target.property, value)
-                else -> error("Cannot assign to property on ${targetObj.type}")
-            }
-        }
-        else -> error("Invalid assignment target")
-    }
-    value
-}
+// Existing
+- `noteOperations: NoteOperations?` parameter added to Environment
+- `getNoteOperations(): NoteOperations?` method added
+- `Environment.withNoteOperations()` and `Environment.withAll()` factory methods
+
+// TODO: Add for hierarchy navigation
+- `getParentNote(noteId: String): Note?` method
+- Note hierarchy context passed to environment
 ```
 
 ### Tests
-- `new` creates note, errors on duplicate
-- `maybe_new` is idempotent
-- `.append` adds content
-- Property assignment works
+**Completed:**
+- Variable assignment and references ✅
+- Statement separation with semicolons ✅
+- Property assignment on notes (.path, .name) ✅
+- Method calls (.append) ✅
+- `new()` creates note, errors on duplicate path ✅
+- `maybe_new()` is idempotent (returns existing or creates new) ✅
+- Error handling for missing note operations ✅
+
+**TODO:**
+- `.up` returns parent note
+- `.up()` returns parent note (0-arg form)
+- `.up(1)` returns parent note
+- `.up(2)` returns grandparent note
+- `.up(0)` returns current note
+- `.up.up` chains correctly
+- `.up(n)` returns `undefined` when n exceeds hierarchy depth
+- `.root` returns top-level ancestor
+- `.root` on root note returns itself
+- `.up.path` accesses parent's path
+- `.root.append("text")` appends to root note
 
 ---
 
@@ -1323,6 +1378,7 @@ fun deleteNote(noteId: String) {
 ### List Operations
 - `first`, `list`, `maybe`
 - Special values: `undefined`, `empty`
+- **Design principle**: `first` on empty list returns `undefined` (not error)
 
 ### Button
 - UI rendering
@@ -1339,6 +1395,13 @@ fun deleteNote(noteId: String) {
 - Timezone parameter support
 - `run` in deferred scope
 - `lambda(params)[...]` named parameters
+
+### Design Principles to Apply Throughout
+- **Graceful undefined access**: Accessing non-existent data returns `undefined` rather than errors:
+  - Out-of-bounds list access (e.g., `first` on empty list) → `undefined`
+  - Missing properties → `undefined`
+  - Hierarchy navigation beyond available ancestors (e.g., `.up` on root) → `undefined`
+- **Minimize special characters**: Prefer built-in identifiers/functions over symbolic operators
 
 ---
 

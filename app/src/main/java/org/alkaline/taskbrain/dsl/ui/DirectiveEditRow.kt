@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -172,14 +173,15 @@ fun DirectiveEditRow(
                     .padding(start = RowStartPadding + IndicatorSize + TextFieldStartPadding, end = RowEndPadding, top = 4.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = errorMessage,
-                    color = DirectiveColors.ErrorText,
-                    fontSize = (textStyle.fontSize.value * FontSizeScale * 0.9f).sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                SelectionContainer(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = errorMessage,
+                        color = DirectiveColors.ErrorText,
+                        fontSize = (textStyle.fontSize.value * FontSizeScale * 0.9f).sp,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }

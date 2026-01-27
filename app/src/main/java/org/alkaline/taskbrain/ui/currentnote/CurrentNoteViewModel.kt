@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import com.google.firebase.Timestamp
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.Note
@@ -22,12 +24,16 @@ import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.PrompterAgent
+import org.alkaline.taskbrain.dsl.directives.DirectiveExecutionResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
 import org.alkaline.taskbrain.dsl.directives.matchDirectiveInstances
 import org.alkaline.taskbrain.dsl.directives.parseAllDirectiveLocations
+import org.alkaline.taskbrain.dsl.runtime.MutationType
+import org.alkaline.taskbrain.dsl.runtime.NoteMutation
+import org.alkaline.taskbrain.dsl.runtime.NoteRepositoryOperations
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -39,7 +45,14 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     private val sharedPreferences: SharedPreferences = application.getSharedPreferences("taskbrain_prefs", Context.MODE_PRIVATE)
     private val agent = PrompterAgent()
     private val directiveResultRepository = DirectiveResultRepository()
-    
+
+    // Note operations for DSL mutations (Milestone 7)
+    private val noteOperations: NoteRepositoryOperations?
+        get() {
+            val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return null
+            return NoteRepositoryOperations(FirebaseFirestore.getInstance(), userId)
+        }
+
     private val _saveStatus = MutableLiveData<SaveStatus>()
     val saveStatus: LiveData<SaveStatus> = _saveStatus
 
@@ -440,13 +453,34 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * Call this before executing directives that may use find().
      */
     private suspend fun ensureNotesLoaded(): List<Note> {
-        cachedNotes?.let { return it }
+        Log.d(TAG, "ensureNotesLoaded: cachedNotes=${cachedNotes?.size}, cachedCurrentNote=${cachedCurrentNote?.id}, currentNoteId=$currentNoteId")
 
-        val result = repository.loadUserNotes()
-        val notes = result.getOrNull() ?: emptyList()
-        cachedNotes = notes
-        cachedCurrentNote = notes.find { it.id == currentNoteId }
-        return notes
+        // Only skip loading if both notes AND current note are cached
+        if (cachedNotes != null && cachedCurrentNote != null) {
+            Log.d(TAG, "ensureNotesLoaded: returning cached (notes=${cachedNotes?.size}, currentNote=${cachedCurrentNote?.id})")
+            return cachedNotes!!
+        }
+
+        // Load notes if not cached
+        if (cachedNotes == null) {
+            Log.d(TAG, "ensureNotesLoaded: loading notes from repository...")
+            val result = repository.loadUserNotes()
+            val notes = result.getOrNull() ?: emptyList()
+            cachedNotes = notes
+            cachedCurrentNote = notes.find { it.id == currentNoteId }
+            Log.d(TAG, "ensureNotesLoaded: loaded ${notes.size} notes, found currentNote in list: ${cachedCurrentNote != null}")
+        }
+
+        // If current note not found in top-level notes (e.g., it's a child note), load it separately
+        if (cachedCurrentNote == null) {
+            Log.d(TAG, "ensureNotesLoaded: currentNote not in list, loading by ID: $currentNoteId")
+            val loadResult = repository.loadNoteById(currentNoteId)
+            cachedCurrentNote = loadResult.getOrNull()
+            Log.d(TAG, "ensureNotesLoaded: loadNoteById result: ${cachedCurrentNote?.id}, error: ${loadResult.exceptionOrNull()?.message}")
+        }
+
+        Log.d(TAG, "ensureNotesLoaded: final cachedCurrentNote=${cachedCurrentNote?.id}")
+        return cachedNotes ?: emptyList()
     }
 
     /**
@@ -459,7 +493,84 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         val notes = result.getOrNull() ?: emptyList()
         cachedNotes = notes
         cachedCurrentNote = notes.find { it.id == currentNoteId }
+
+        // If current note not found in top-level notes (e.g., it's a child note), load it separately
+        if (cachedCurrentNote == null) {
+            cachedCurrentNote = repository.loadNoteById(currentNoteId).getOrNull()
+        }
+
         return notes
+    }
+
+    /**
+     * Callback for when editor content should be updated due to directive mutations.
+     * Set by CurrentNoteScreen to bridge ViewModel mutations to EditorController.
+     *
+     * Parameters:
+     * - noteId: ID of the mutated note
+     * - newContent: The new content from the note (first line only for notes with children)
+     * - mutationType: The type of mutation that occurred
+     * - alreadyPersisted: If true, the mutation was part of a save operation and is already
+     *   persisted to Firestore, so isSaved should not be set to false
+     */
+    var onEditorContentMutated: ((noteId: String, newContent: String, mutationType: MutationType, alreadyPersisted: Boolean) -> Unit)? = null
+
+    /**
+     * Process mutations that occurred during directive execution.
+     * Updates the cache and notifies the UI if necessary.
+     *
+     * @param mutations List of mutations that occurred
+     * @param alreadyPersisted If true, mutations are already persisted (e.g., during save)
+     * @param skipEditorCallback If true, skip notifying the editor (e.g., during live execution
+     *        where updating the editor could cause index issues with in-progress event handlers)
+     * @return true if the current note was mutated (requiring undo history clear)
+     */
+    private fun processMutations(
+        mutations: List<NoteMutation>,
+        alreadyPersisted: Boolean = false,
+        skipEditorCallback: Boolean = false
+    ): Boolean {
+        if (mutations.isEmpty()) return false
+
+        var currentNoteMutated = false
+
+        for (mutation in mutations) {
+            Log.d(TAG, "Processing mutation: ${mutation.mutationType} on note ${mutation.noteId}, alreadyPersisted=$alreadyPersisted")
+
+            // Update cache
+            cachedNotes = cachedNotes?.map { note ->
+                if (note.id == mutation.noteId) mutation.updatedNote else note
+            }
+
+            // Update current note cache if this note was mutated
+            if (cachedCurrentNote?.id == mutation.noteId) {
+                cachedCurrentNote = mutation.updatedNote
+            }
+
+            // If this mutation affects the note currently being edited, notify the UI
+            if (mutation.noteId == currentNoteId) {
+                currentNoteMutated = true
+                // Only notify the editor if not skipping (e.g., during live execution)
+                if (!skipEditorCallback) {
+                    when (mutation.mutationType) {
+                        MutationType.CONTENT_CHANGED, MutationType.CONTENT_APPENDED -> {
+                            // Notify editor to update its content
+                            onEditorContentMutated?.invoke(
+                                mutation.noteId,
+                                mutation.updatedNote.content,
+                                mutation.mutationType,
+                                alreadyPersisted
+                            )
+                        }
+                        MutationType.PATH_CHANGED -> {
+                            // Path changes don't affect editor content
+                        }
+                    }
+                }
+            }
+        }
+
+        return currentNoteMutated
     }
 
     /**
@@ -493,11 +604,19 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
             // Load notes for find() operations
             val notes = ensureNotesLoaded()
+            Log.d(TAG, "executeDirectivesLive: after ensureNotesLoaded, cachedCurrentNote=${cachedCurrentNote?.id}")
 
             // Execute missing directives (pass current note for [.] reference - Milestone 6)
+            // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+            val allMutations = mutableListOf<NoteMutation>()
             val executedResults = missingInstances.associate { instance ->
-                instance.uuid to DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
+                Log.d(TAG, "executeDirectivesLive: executing '${instance.sourceText}' with currentNote=${cachedCurrentNote?.id}")
+                val execResult = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote, noteOperations)
+                allMutations.addAll(execResult.mutations)
+                instance.uuid to execResult.result
             }
+            // Process mutations but skip editor callback during live execution to avoid index issues
+            processMutations(allMutations, skipEditorCallback = true)
 
             // Merge new results into CURRENT state (not the captured snapshot)
             // This avoids overwriting changes made by toggleDirectiveCollapsed while
@@ -538,11 +657,16 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             val notes = refreshNotesCache()
 
             // Execute all directives with UUID-based keys (pass current note for [.] reference - Milestone 6)
+            val allMutations = mutableListOf<NoteMutation>()
             val freshResults = mutableMapOf<String, DirectiveResult>()
             for (instance in updatedInstances) {
-                val result = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
-                freshResults[instance.uuid] = result
+                val execResult = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote, noteOperations)
+                allMutations.addAll(execResult.mutations)
+                freshResults[instance.uuid] = execResult.result
             }
+
+            // Process any mutations that occurred (alreadyPersisted=true since this runs during save)
+            processMutations(allMutations, alreadyPersisted = true)
 
             // Merge fresh results with CURRENT collapsed state (read at merge time to avoid race)
             // This ensures we don't overwrite collapsed state changes made while executing
@@ -621,16 +745,21 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         val notes = ensureNotesLoaded()
 
         // Execute missing directives (pass current note for [.] reference - Milestone 6)
+        // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+        val allMutations = mutableListOf<NoteMutation>()
         for (instance in missingInstances) {
-            val result = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote)
-            uuidResults[instance.uuid] = result
+            val execResult = DirectiveFinder.executeDirective(instance.sourceText, notes, cachedCurrentNote, noteOperations)
+            allMutations.addAll(execResult.mutations)
+            uuidResults[instance.uuid] = execResult.result
             // Store in Firestore using text hash
             val textHash = DirectiveResult.hashDirective(instance.sourceText)
-            directiveResultRepository.saveResult(currentNoteId, textHash, result)
+            directiveResultRepository.saveResult(currentNoteId, textHash, execResult.result)
                 .onFailure { e ->
                     Log.e(TAG, "Failed to save directive result: $textHash", e)
                 }
         }
+        // Process mutations (skip editor callback since we're loading)
+        processMutations(allMutations, skipEditorCallback = true)
 
         _directiveResults.postValue(uuidResults)
         Log.d(TAG, "Loaded ${uuidResults.size - missingInstances.size} cached + executed ${missingInstances.size} new directives")
@@ -654,10 +783,17 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 return
             }
 
-            val newResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = false)
-            val updated = current.toMutableMap()
-            updated[directiveUuid] = newResult
-            _directiveResults.value = updated
+            // Launch coroutine to ensure notes are loaded before executing
+            viewModelScope.launch {
+                ensureNotesLoaded()
+                Log.d(TAG, "toggleDirectiveCollapsed: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
+                // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+                val execResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote, noteOperations)
+                processMutations(execResult.mutations, skipEditorCallback = true)
+                val updated = (_directiveResults.value ?: mutableMapOf()).toMutableMap()
+                updated[directiveUuid] = execResult.result.copy(collapsed = false)
+                _directiveResults.value = updated
+            }
         } else {
             // Result exists - toggle collapsed state
             val newCollapsed = !existingResult.collapsed
@@ -677,14 +813,21 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * @param sourceText The source text of the directive (e.g., "[now]")
      */
     fun confirmDirective(directiveUuid: String, sourceText: String) {
-        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+        viewModelScope.launch {
+            ensureNotesLoaded()
+            Log.d(TAG, "confirmDirective: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
 
-        // Always re-execute to get fresh value (important for dynamic directives like [now])
-        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = true)
-        current[directiveUuid] = freshResult
-        _directiveResults.value = current
+            val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
-        Log.d(TAG, "Confirmed directive $directiveUuid with fresh result")
+            // Always re-execute to get fresh value (important for dynamic directives like [now])
+            // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+            val execResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote, noteOperations)
+            processMutations(execResult.mutations, skipEditorCallback = true)
+            current[directiveUuid] = execResult.result.copy(collapsed = true)
+            _directiveResults.value = current
+
+            Log.d(TAG, "Confirmed directive $directiveUuid with fresh result")
+        }
     }
 
     /**
@@ -695,14 +838,21 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * @param sourceText The source text of the directive (e.g., "[now]")
      */
     fun refreshDirective(directiveUuid: String, sourceText: String) {
-        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+        viewModelScope.launch {
+            ensureNotesLoaded()
+            Log.d(TAG, "refreshDirective: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
 
-        // Re-execute to get fresh value but keep expanded
-        val freshResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote).copy(collapsed = false)
-        current[directiveUuid] = freshResult
-        _directiveResults.value = current
+            val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
-        Log.d(TAG, "Refreshed directive $directiveUuid with fresh result (kept expanded)")
+            // Re-execute to get fresh value but keep expanded
+            // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+            val execResult = DirectiveFinder.executeDirective(sourceText, cachedNotes, cachedCurrentNote, noteOperations)
+            processMutations(execResult.mutations, skipEditorCallback = true)
+            current[directiveUuid] = execResult.result.copy(collapsed = false)
+            _directiveResults.value = current
+
+            Log.d(TAG, "Refreshed directive $directiveUuid with fresh result (kept expanded)")
+        }
     }
 
     /**
@@ -767,6 +917,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
 
+        // Find directives that need execution
+        val needsExecution = mutableListOf<DirectiveInstance>()
+
         // Find directives at the target positions and expand them
         for (instance in updatedInstances) {
             val pos = DirectivePosition(instance.lineIndex, instance.startOffset)
@@ -775,14 +928,31 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                 if (existing != null) {
                     current[instance.uuid] = existing.copy(collapsed = false)
                 } else {
-                    // Execute the directive and set it to expanded
-                    val result = DirectiveFinder.executeDirective(instance.sourceText, cachedNotes, cachedCurrentNote)
-                    current[instance.uuid] = result.copy(collapsed = false)
+                    needsExecution.add(instance)
                 }
             }
         }
 
         _directiveResults.value = current
+
+        // Execute directives that don't have results yet (in coroutine to ensure notes are loaded)
+        if (needsExecution.isNotEmpty()) {
+            viewModelScope.launch {
+                ensureNotesLoaded()
+                Log.d(TAG, "restoreExpandedDirectivesByPosition: executing ${needsExecution.size} directives with cachedCurrentNote=${cachedCurrentNote?.id}")
+
+                // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
+                val allMutations = mutableListOf<NoteMutation>()
+                val updated = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
+                for (instance in needsExecution) {
+                    val execResult = DirectiveFinder.executeDirective(instance.sourceText, cachedNotes, cachedCurrentNote, noteOperations)
+                    allMutations.addAll(execResult.mutations)
+                    updated[instance.uuid] = execResult.result.copy(collapsed = false)
+                }
+                processMutations(allMutations, skipEditorCallback = true)
+                _directiveResults.value = updated
+            }
+        }
     }
 
     // endregion

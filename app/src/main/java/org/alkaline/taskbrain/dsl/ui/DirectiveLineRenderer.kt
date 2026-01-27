@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -132,10 +134,12 @@ private fun DirectiveResultBox(
             )
     ) {
         if (!isEmpty) {
-            BasicText(
-                text = displayText,
-                style = textStyle.copy(color = textColor)
-            )
+            SelectionContainer {
+                Text(
+                    text = displayText,
+                    style = textStyle.copy(color = textColor)
+                )
+            }
         }
     }
 }

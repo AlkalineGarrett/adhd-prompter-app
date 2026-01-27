@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.dsl.runtime
 
+import android.util.Log
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.language.CharClass
@@ -54,6 +55,7 @@ sealed class DslValue {
             val value = map["value"]
 
             return when (type) {
+                "undefined" -> UndefinedVal
                 "number" -> NumberVal((value as Number).toDouble())
                 "string" -> StringVal(value as String)
                 "boolean" -> BooleanVal(value as Boolean)
@@ -79,6 +81,21 @@ sealed class DslValue {
             }
         }
     }
+}
+
+/**
+ * Represents an undefined value.
+ * Returned when accessing non-existent data (e.g., out of bounds, missing property, hierarchy beyond depth).
+ * Following the design principle: graceful undefined access instead of errors.
+ *
+ * Milestone 7.
+ */
+object UndefinedVal : DslValue() {
+    override val typeName: String = "undefined"
+
+    override fun toDisplayString(): String = "undefined"
+
+    override fun serializeValue(): Any? = null
 }
 
 /**
@@ -253,6 +270,7 @@ data class PatternVal(
  *
  * Milestone 5: Basic NoteVal with serialization.
  * Milestone 6: Adds property access for [.path], [.created], etc.
+ * Milestone 7: Adds property setting and method calls (.append).
  */
 data class NoteVal(val note: Note) : DslValue() {
     override val typeName: String = "note"
@@ -286,10 +304,13 @@ data class NoteVal(val note: Note) : DslValue() {
      * - `created`: DateTime - Creation timestamp
      * - `modified`: DateTime - Last modification timestamp
      * - `viewed`: DateTime - Last viewed timestamp
+     * - `up`: Note - Parent note (0-arg form, returns parent; use callMethod for up(n))
+     * - `root`: Note - Root ancestor (top-level note with no parent)
      *
-     * Milestone 6.
+     * Milestone 6: Basic properties.
+     * Milestone 7: Added up and root for hierarchy navigation.
      */
-    fun getProperty(property: String): DslValue {
+    fun getProperty(property: String, env: Environment): DslValue {
         return when (property) {
             "id" -> StringVal(note.id)
             "path" -> StringVal(note.path)
@@ -303,7 +324,142 @@ data class NoteVal(val note: Note) : DslValue() {
             "viewed" -> note.lastAccessedAt?.let {
                 DateTimeVal(it.toDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime())
             } ?: throw ExecutionException("Note has no viewed date")
+            "up" -> getUp(1, env)
+            "root" -> getRoot(env)
             else -> throw ExecutionException("Unknown property '$property' on note")
+        }
+    }
+
+    /**
+     * Navigate up the note hierarchy by the specified number of levels.
+     * Returns UndefinedVal if the requested ancestor doesn't exist.
+     *
+     * Milestone 7.
+     */
+    private fun getUp(levels: Int, env: Environment): DslValue {
+        if (levels == 0) return this
+        val parent = env.getParentNote(note) ?: return UndefinedVal
+        return if (levels == 1) {
+            NoteVal(parent)
+        } else {
+            NoteVal(parent).getUp(levels - 1, env)
+        }
+    }
+
+    /**
+     * Navigate to the root ancestor (top-level note with no parent).
+     * If this note has no parent, returns itself.
+     *
+     * Milestone 7.
+     */
+    private fun getRoot(env: Environment): NoteVal {
+        val parent = env.getParentNote(note) ?: return this
+        return NoteVal(parent).getRoot(env)
+    }
+
+    /**
+     * Set a property value on the note.
+     *
+     * Writable properties:
+     * - `path`: String - Unique path identifier
+     * - `name`: String - First line of content (updates content)
+     *
+     * Note: This requires NoteOperations to be available in the environment.
+     * The operation is performed synchronously using runBlocking.
+     *
+     * Milestone 7.
+     */
+    fun setProperty(property: String, value: DslValue, env: Environment) {
+        val ops = env.getNoteOperations()
+            ?: throw ExecutionException(
+                "Cannot modify note properties: note operations not available"
+            )
+
+        when (property) {
+            "path" -> {
+                val newPath = (value as? StringVal)?.value
+                    ?: throw ExecutionException("path must be a string")
+                val updatedNote = kotlinx.coroutines.runBlocking {
+                    ops.updatePath(note.id, newPath)
+                }
+                env.registerMutation(NoteMutation(note.id, updatedNote, MutationType.PATH_CHANGED))
+            }
+            "name" -> {
+                val newName = (value as? StringVal)?.value
+                    ?: throw ExecutionException("name must be a string")
+                // Fetch fresh content from Firestore to avoid stale cache issues
+                val freshNote = kotlinx.coroutines.runBlocking {
+                    ops.getNoteById(note.id)
+                } ?: throw ExecutionException("Note not found: ${note.id}")
+                // Update the first line of content while preserving the rest
+                val lines = freshNote.content.lines()
+                val newContent = if (lines.isEmpty() || lines.size == 1) {
+                    newName
+                } else {
+                    (listOf(newName) + lines.drop(1)).joinToString("\n")
+                }
+                val updatedNote = kotlinx.coroutines.runBlocking {
+                    ops.updateContent(note.id, newContent)
+                }
+                env.registerMutation(NoteMutation(note.id, updatedNote, MutationType.CONTENT_CHANGED))
+            }
+            "id", "created", "modified", "viewed" -> {
+                throw ExecutionException("Cannot set read-only property '$property' on note")
+            }
+            else -> throw ExecutionException("Unknown property '$property' on note")
+        }
+    }
+
+    /**
+     * Call a method on the note.
+     *
+     * Supported methods:
+     * - `append(text)`: Append text to the note's content
+     * - `up()`: Returns parent note (1 level up); same as .up property
+     * - `up(n)`: Returns ancestor n levels up; returns undefined if exceeds hierarchy
+     *
+     * Milestone 7.
+     */
+    fun callMethod(
+        methodName: String,
+        args: Arguments,
+        env: Environment,
+        position: Int
+    ): DslValue {
+        return when (methodName) {
+            "up" -> {
+                // up() with no args defaults to 1 level (parent)
+                // up(n) goes up n levels
+                val levels = if (args.positional.isEmpty()) {
+                    1
+                } else {
+                    val arg = args.require(0, "levels")
+                    (arg as? NumberVal)?.value?.toInt()
+                        ?: throw ExecutionException("'up' expects a number argument", position)
+                }
+                getUp(levels, env)
+            }
+            "append" -> {
+                val text = args.require(0, "text")
+                val textStr = (text as? StringVal)?.value
+                    ?: throw ExecutionException("'append' expects a string argument", position)
+
+                val ops = env.getNoteOperations()
+                    ?: throw ExecutionException(
+                        "Cannot append to note: note operations not available",
+                        position
+                    )
+
+                val updatedNote = kotlinx.coroutines.runBlocking {
+                    ops.appendToNote(note.id, textStr)
+                }
+                env.registerMutation(NoteMutation(note.id, updatedNote, MutationType.CONTENT_APPENDED))
+                NoteVal(updatedNote)
+            }
+            else -> throw ExecutionException(
+                "Unknown method '$methodName' on note",
+                position
+            )
         }
     }
 
