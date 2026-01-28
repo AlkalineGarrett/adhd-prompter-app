@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mindl - Mobile INput Development Language</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --primary-dark: #4338ca;
+            --accent: #059669;
+            --bg: #ffffff;
+            --bg-light: #f8fafc;
+            --bg-code: #f1f5f9;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.7;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        header {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-light) 0%, var(--bg) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            font-size: 4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+        }
+
+        .tagline {
+            font-size: 1.5rem;
+            color: var(--text-muted);
+            font-weight: 300;
+        }
+
+        .author {
+            font-size: 1rem;
+            color: var(--text-muted);
+            margin-top: 1rem;
+        }
+
+        h2 {
+            font-size: 1.75rem;
+            color: var(--primary);
+            margin: 3rem 0 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+
+        h3 {
+            font-size: 1.25rem;
+            color: var(--accent);
+            margin: 2rem 0 1rem;
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text);
+        }
+
+        .intro {
+            font-size: 1.1rem;
+            padding: 2rem;
+            background: var(--bg-light);
+            border-radius: 12px;
+            margin: 2rem 0;
+            border-left: 4px solid var(--primary);
+        }
+
+        code {
+            font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+            background: var(--bg-code);
+            padding: 0.2em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+            color: #9333ea;
+        }
+
+        pre {
+            background: var(--bg-code);
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            border: 1px solid var(--border);
+        }
+
+        pre code {
+            background: none;
+            padding: 0;
+            color: var(--text);
+        }
+
+        .comment {
+            color: #6b7280;
+        }
+
+        .keyword {
+            color: #c026d3;
+        }
+
+        .string {
+            color: #059669;
+        }
+
+        .number {
+            color: #d97706;
+        }
+
+        .function {
+            color: #2563eb;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            font-size: 0.95rem;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            background: var(--bg-light);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        tr:hover {
+            background: var(--bg-light);
+        }
+
+        .example-section {
+            background: var(--bg-light);
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 2rem 0;
+        }
+
+        .example-section h4 {
+            color: var(--accent);
+            margin-bottom: 0.5rem;
+        }
+
+        .example-section p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 1rem;
+        }
+
+        ul {
+            margin: 1rem 0 1rem 1.5rem;
+            color: var(--text-muted);
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+        }
+
+        .tip {
+            background: rgba(16, 185, 129, 0.1);
+            border-left: 4px solid var(--accent);
+            padding: 1rem 1.5rem;
+            border-radius: 0 8px 8px 0;
+            margin: 1.5rem 0;
+        }
+
+        .tip strong {
+            color: var(--accent);
+        }
+
+        footer {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-muted);
+            border-top: 1px solid var(--border);
+            margin-top: 4rem;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 1rem;
+            }
+
+            header {
+                padding: 2rem 1rem;
+            }
+
+            .logo {
+                font-size: 2.5rem;
+            }
+
+            .tagline {
+                font-size: 1.1rem;
+            }
+
+            pre {
+                padding: 1rem;
+                font-size: 0.85rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">Mindl</div>
+        <p class="tagline">Mobile INput Development Language</p>
+        <p class="author">by Garrett Jones</p>
+    </header>
+
+    <div class="container">
+        <div class="intro">
+            <strong>Mindl</strong> is a programming language designed for ergonomically typing code on mobile devices.
+        </div>
+
+        <h2>Design Philosophy</h2>
+
+        <p><strong>Mobile-first typing</strong></p>
+        <ul>
+            <li>Uses built-in names that work well with autocorrect</li>
+            <li>Uses minimal special characters, which are harder to type on mobile
+                <ul>
+                    <li>Math uses function syntax (<code>add(a, b)</code>) instead of operators (<code>a + b</code>)</li>
+                    <li>Patterns use words (<code>digit*4 "-" digit*2</code>) instead of regex (<code>\d{4}-\d{2}</code>)</li>
+                    <li>Special characters use named constants (<code>qt</code>, <code>nl</code>) instead of escape sequences (<code>\"</code>, <code>\n</code>)</li>
+                    <li>Uses only common punctuation: <code>.</code> <code>(</code> <code>)</code> <code>,</code> <code>:</code> <code>"</code></li>
+                    <li>Parentheses are often optional
+                    <ul>
+                        <li>Zero-argument functions: <code>[date]</code> instead of <code>[date()]</code></li>
+                        <li>Single-argument functions: <code>[neg 5]</code> instead of <code>[neg(5)]</code></li>
+                        <li>Chained calls: <code>[neg add(2, 3)]</code> instead of <code>[neg(add(2, 3))]</code></li>
+                    </ul>
+                </ul>
+            </li>
+        </ul>
+
+        <p><strong>Graceful defaults.</strong> Missing data returns <code>undefined</code> instead of throwing errors.</p>
+
+        <h2>Quick Start</h2>
+
+        <h3>Your First Directive</h3>
+        <p>Directives are expressions wrapped in square brackets. They execute when evaluated by the host application.</p>
+
+        <pre><code>[<span class="function">date</span>]</code></pre>
+        <p>This displays today's date.</p>
+
+        <h3>Right-to-Left Nesting</h3>
+        <p>Space-separated tokens nest from right to left:</p>
+
+        <pre><code><span class="comment"># Single token - just call the function</span>
+[<span class="function">date</span>]                     <span class="comment"># Returns today's date</span>
+
+<span class="comment"># Two tokens - pass second as argument to first</span>
+[<span class="function">neg</span> <span class="number">5</span>]                    <span class="comment"># Returns -5</span>
+
+<span class="comment"># Three tokens - nest right-to-left</span>
+[<span class="function">neg</span> <span class="function">add</span>(<span class="number">2</span>, <span class="number">3</span>)]            <span class="comment"># add(2,3)=5, then neg(5)=-5</span></code></pre>
+
+        <h3>Variables and Assignment</h3>
+        <p>Use the colon operator to define variables:</p>
+
+        <pre><code>[x: <span class="number">5</span>; y: <span class="number">10</span>; <span class="function">add</span>(x, y)]   <span class="comment"># Returns 15</span></code></pre>
+
+        <h3>Context References</h3>
+        <p>The dot <code>.</code> refers to the current context object. For example, in a note-taking app:</p>
+
+        <pre><code>[.path]                    <span class="comment"># Get this item's path</span>
+[.name]                    <span class="comment"># Get this item's name</span>
+[.path: <span class="string">"journal/today"</span>]   <span class="comment"># Set this item's path</span>
+[.up.name]                 <span class="comment"># Get parent item's name</span>
+[.root.path]               <span class="comment"># Get root ancestor's path</span></code></pre>
+
+        <h2>Data Types</h2>
+
+        <table>
+            <tr>
+                <th>Type</th>
+                <th>Example</th>
+                <th>Description</th>
+            </tr>
+            <tr>
+                <td><code>Number</code></td>
+                <td><code>42</code>, <code>3.14</code></td>
+                <td>Integers and decimals</td>
+            </tr>
+            <tr>
+                <td><code>String</code></td>
+                <td><code>"hello"</code></td>
+                <td>Text in double quotes</td>
+            </tr>
+            <tr>
+                <td><code>Date</code></td>
+                <td><code>date</code></td>
+                <td>Date value (yyyy-MM-dd)</td>
+            </tr>
+            <tr>
+                <td><code>Time</code></td>
+                <td><code>time</code></td>
+                <td>Time value (HH:mm:ss)</td>
+            </tr>
+            <tr>
+                <td><code>DateTime</code></td>
+                <td><code>datetime</code></td>
+                <td>Combined date and time</td>
+            </tr>
+            <tr>
+                <td><code>List</code></td>
+                <td><code>list(1, 2, 3)</code></td>
+                <td>Ordered collection</td>
+            </tr>
+            <tr>
+                <td><code>Lambda</code></td>
+                <td><code>lambda[add(i, 1)]</code></td>
+                <td>Anonymous function</td>
+            </tr>
+        </table>
+
+        <h2>Built-in Functions</h2>
+
+        <h3>Arithmetic</h3>
+        <pre><code><span class="function">add</span>(<span class="number">5</span>, <span class="number">3</span>)      <span class="comment"># 8</span>
+<span class="function">sub</span>(<span class="number">10</span>, <span class="number">4</span>)     <span class="comment"># 6</span>
+<span class="function">mul</span>(<span class="number">3</span>, <span class="number">7</span>)      <span class="comment"># 21</span>
+<span class="function">div</span>(<span class="number">20</span>, <span class="number">4</span>)     <span class="comment"># 5</span>
+<span class="function">mod</span>(<span class="number">17</span>, <span class="number">5</span>)     <span class="comment"># 2</span>
+<span class="function">neg</span>(<span class="number">8</span>)         <span class="comment"># -8</span></code></pre>
+
+        <h3>Comparison</h3>
+        <pre><code><span class="function">eq</span>(a, b)      <span class="comment"># Equal</span>
+<span class="function">ne</span>(a, b)      <span class="comment"># Not equal</span>
+<span class="function">gt</span>(a, b)      <span class="comment"># Greater than</span>
+<span class="function">lt</span>(a, b)      <span class="comment"># Less than</span>
+<span class="function">gte</span>(a, b)     <span class="comment"># Greater or equal</span>
+<span class="function">lte</span>(a, b)     <span class="comment"># Less or equal</span></code></pre>
+
+        <h3>Logic</h3>
+        <pre><code><span class="function">and</span>(a, b)     <span class="comment"># Logical AND</span>
+<span class="function">or</span>(a, b)      <span class="comment"># Logical OR</span>
+<span class="function">not</span>(a)        <span class="comment"># Logical NOT</span></code></pre>
+
+        <h3>Date & Time</h3>
+        <pre><code><span class="function">date</span>                         <span class="comment"># Today's date</span>
+<span class="function">time</span>                         <span class="comment"># Current time</span>
+<span class="function">datetime</span>                     <span class="comment"># Current date and time</span>
+<span class="function">add_days</span>(<span class="function">date</span>, <span class="number">7</span>)            <span class="comment"># One week from today</span>
+<span class="function">diff_days</span>(d1, d2)            <span class="comment"># Days between dates</span>
+<span class="function">parse_date</span>(<span class="string">"2026-01-15"</span>)     <span class="comment"># Parse string to date</span></code></pre>
+
+        <h3>Strings</h3>
+        <pre><code><span class="function">string</span>(<span class="string">"Hello "</span> name <span class="string">"!"</span>)          <span class="comment"># Concatenation (space-separated)</span>
+<span class="function">string</span>(<span class="string">"He said "</span> qt <span class="string">"hi"</span> qt)      <span class="comment"># Produces: He said "hi"</span>
+<span class="function">string</span>(<span class="string">"Line 1"</span> nl <span class="string">"Line 2"</span>)       <span class="comment"># Produces two lines</span></code></pre>
+
+        <h3>Lists</h3>
+        <pre><code><span class="function">list</span>(<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>)                          <span class="comment"># Create a list</span>
+<span class="function">first</span>(myList)                          <span class="comment"># Get first item</span>
+<span class="function">sort</span>(myList, order: descending)        <span class="comment"># Sort descending</span></code></pre>
+
+        <h3>Conditionals</h3>
+        <pre><code><span class="function">if</span>(condition, then_value, else_value)</code></pre>
+
+        <h2>Lambdas</h2>
+        <p>Anonymous functions use the implicit parameter <code>i</code>:</p>
+
+        <pre><code><span class="comment"># Single-argument lambda with implicit 'i'</span>
+[f: <span class="keyword">lambda</span>[<span class="function">mul</span>(i, <span class="number">2</span>)]; f(<span class="number">5</span>)]              <span class="comment"># Returns 10</span>
+
+<span class="comment"># Multi-argument lambda with named parameters</span>
+[compare: <span class="keyword">lambda</span>(a, b)[<span class="function">gt</span>(a, b)]; compare(<span class="number">10</span>, <span class="number">5</span>)]   <span class="comment"># Returns true</span></code></pre>
+
+        <div class="tip">
+            <strong>Tip:</strong> Lambdas are commonly used for <code>sort</code> keys and <code>find</code> filters.
+        </div>
+
+        <h2>Querying Data</h2>
+        <p>Search for items by path, name, or custom criteria:</p>
+
+        <pre><code><span class="comment"># Find by exact path</span>
+[<span class="function">find</span>(path: <span class="string">"inbox"</span>)]
+
+<span class="comment"># Find by pattern (matches ISO date paths)</span>
+[<span class="function">find</span>(path: <span class="function">pattern</span>(digit*<span class="number">4</span> <span class="string">"-"</span> digit*<span class="number">2</span> <span class="string">"-"</span> digit*<span class="number">2</span>))]
+
+<span class="comment"># Find with custom filter (modified in the last week)</span>
+[<span class="function">find</span>(where: <span class="keyword">lambda</span>[<span class="function">after</span>(i.modified, <span class="function">add_days</span>(<span class="function">date</span>, -<span class="number">7</span>))])]</code></pre>
+
+        <h2>Scheduling</h2>
+        <p>Schedule actions to run at specific times:</p>
+
+        <div class="example-section">
+            <h4>Daily at a specific time</h4>
+            <p>Append today's date every morning at 6 AM:</p>
+            <pre><code>[<span class="function">schedule</span>(<span class="function">daily_at</span>(<span class="string">"06:00"</span>), <span class="keyword">later</span>[.append <span class="function">date</span>])]</code></pre>
+        </div>
+
+        <div class="example-section">
+            <h4>One-time reminder</h4>
+            <p>Schedule a one-time action for 9 AM tomorrow:</p>
+            <pre><code>[<span class="function">schedule</span>(<span class="function">at</span>(<span class="function">datetime</span>(<span class="function">add_days</span>(<span class="function">date</span>, <span class="number">1</span>), <span class="string">"09:00"</span>)), <span class="keyword">later</span>[.append <span class="string">"Don't forget!"</span>])]</code></pre>
+        </div>
+
+        <h2>Deferred Execution</h2>
+        <p>Use <code>later</code> to defer evaluation until execution time:</p>
+
+        <pre><code><span class="comment"># Without 'later' - date is captured NOW</span>
+[x: <span class="function">date</span>]                    <span class="comment"># x = today's date, fixed</span>
+
+<span class="comment"># With 'later' - date is captured when run</span>
+[x: <span class="keyword">later</span> <span class="function">date</span>]              <span class="comment"># x = deferred; evaluates later</span></code></pre>
+
+        <h2>Interactive Buttons</h2>
+        <p>Create tappable buttons that execute actions:</p>
+
+        <pre><code>[<span class="function">button</span>(<span class="string">"Create Today's Entry"</span>, <span class="keyword">later</span>[<span class="function">new</span>(path: <span class="function">date</span>, content: <span class="function">string</span>(<span class="string">"# "</span> <span class="function">date</span>))])]</code></pre>
+
+        <h2>Dynamic Views</h2>
+        <p>Inline content from other sources, with automatic refresh:</p>
+
+        <pre><code><span class="comment"># Show all entries with date-based paths, most recent first</span>
+[<span class="keyword">refresh</span> <span class="function">view</span>(<span class="function">sort</span>(
+    <span class="function">find</span>(path: <span class="function">pattern</span>(digit*<span class="number">4</span> <span class="string">"-"</span> digit*<span class="number">2</span> <span class="string">"-"</span> digit*<span class="number">2</span>)),
+    key: <span class="keyword">lambda</span>[<span class="function">parse_date</span>(i.path)],
+    order: descending
+))]</code></pre>
+
+        <h2>Patterns</h2>
+        <p>String matching using word-based syntax instead of regex symbols:</p>
+
+        <pre><code><span class="comment"># Match ISO dates like "2026-01-15"</span>
+<span class="function">pattern</span>(digit*<span class="number">4</span> <span class="string">"-"</span> digit*<span class="number">2</span> <span class="string">"-"</span> digit*<span class="number">2</span>)
+
+<span class="comment"># Match names starting with "Meeting"</span>
+<span class="function">pattern</span>(<span class="string">"Meeting"</span> any*(<span class="number">0</span>..))</code></pre>
+
+        <table>
+            <tr>
+                <th>Class</th>
+                <th>Matches</th>
+            </tr>
+            <tr>
+                <td><code>digit</code></td>
+                <td>0-9</td>
+            </tr>
+            <tr>
+                <td><code>letter</code></td>
+                <td>a-z, A-Z</td>
+            </tr>
+            <tr>
+                <td><code>space</code></td>
+                <td>Whitespace</td>
+            </tr>
+            <tr>
+                <td><code>any</code></td>
+                <td>Any character</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr>
+                <th>Quantifier</th>
+                <th>Meaning</th>
+            </tr>
+            <tr>
+                <td><code>*4</code></td>
+                <td>Exactly 4 times</td>
+            </tr>
+            <tr>
+                <td><code>*(0..)</code></td>
+                <td>Zero or more</td>
+            </tr>
+            <tr>
+                <td><code>*(1..)</code></td>
+                <td>One or more</td>
+            </tr>
+            <tr>
+                <td><code>*(0..5)</code></td>
+                <td>Zero to five</td>
+            </tr>
+        </table>
+
+        <h2>Complete Example</h2>
+        <div class="example-section">
+            <h4>Use Case: Daily Journal in a Notes App</h4>
+            <p>Combine scheduling, buttons, and dynamic views to build an automated journal system:</p>
+            <pre><code><span class="comment"># Automatically create today's entry at midnight</span>
+[<span class="function">schedule</span>(<span class="function">daily_at</span>(<span class="string">"00:01"</span>), <span class="keyword">later</span>[
+    <span class="function">maybe_new</span>(path: <span class="function">date</span>, maybe_content: <span class="function">string</span>(<span class="string">"# "</span> <span class="function">date</span>))
+])]
+
+<span class="comment"># Button to manually create today's entry</span>
+[<span class="function">button</span>(<span class="string">"New Entry"</span>, <span class="keyword">later</span>[<span class="function">new</span>(path: <span class="function">date</span>, content: <span class="function">string</span>(<span class="string">"# "</span> <span class="function">date</span>))])]
+
+<span class="comment"># View all entries, newest first</span>
+[<span class="keyword">refresh</span> <span class="function">view</span>(<span class="function">sort</span>(
+    <span class="function">find</span>(path: <span class="function">pattern</span>(digit*<span class="number">4</span> <span class="string">"-"</span> digit*<span class="number">2</span> <span class="string">"-"</span> digit*<span class="number">2</span>)),
+    key: <span class="keyword">lambda</span>[<span class="function">parse_date</span>(i.path)],
+    order: descending
+))]</code></pre>
+        </div>
+
+        <h2>Escaping Brackets</h2>
+        <p>Escape brackets in text by doubling them:</p>
+        <pre><code>This is not a directive: [[just text]]
+<span class="comment"># Displays: This is not a directive: [just text]</span></code></pre>
+
+    </div>
+
+    <footer>
+        <p>Copyright 2026 Garrett Jones</p>
+    </footer>
+</body>
+</html>

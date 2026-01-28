@@ -1,6 +1,6 @@
 # Mindl Specification
 
-Mindl is a domain-specific language for executable note directives in TaskBrain.
+Mindl (Mobile INput Development Language) is a domain-specific language for executable note directives in TaskBrain.
 
 ## Design Philosophy
 
