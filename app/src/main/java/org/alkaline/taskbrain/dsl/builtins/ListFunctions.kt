@@ -233,7 +233,7 @@ object ListFunctions {
      *
      * Returns: The first item, or UndefinedVal if the list is empty.
      *
-     * Following the DSL design principle: graceful undefined access.
+     * Following the Mindl design principle: graceful undefined access.
      * Use `maybe(first(...))` to convert undefined to empty if needed.
      *
      * Examples:

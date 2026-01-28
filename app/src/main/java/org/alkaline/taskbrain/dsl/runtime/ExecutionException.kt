@@ -1,7 +1,7 @@
 package org.alkaline.taskbrain.dsl.runtime
 
 /**
- * Exception thrown during DSL execution.
+ * Exception thrown during Mindl execution.
  */
 class ExecutionException(
     message: String,

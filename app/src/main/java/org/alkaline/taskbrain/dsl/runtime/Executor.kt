@@ -15,7 +15,7 @@ import org.alkaline.taskbrain.dsl.language.StringLiteral
 import org.alkaline.taskbrain.dsl.language.VariableRef
 
 /**
- * Evaluates DSL expressions and produces runtime values.
+ * Evaluates Mindl expressions and produces runtime values.
  *
  * Milestone 3: Supports parenthesized calls with named arguments.
  * Milestone 4: Supports pattern expressions.

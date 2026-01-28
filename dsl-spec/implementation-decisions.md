@@ -1,4 +1,4 @@
-# DSL Implementation Decisions
+# Mindl Implementation Decisions
 
 Clarifications made during implementation planning.
 

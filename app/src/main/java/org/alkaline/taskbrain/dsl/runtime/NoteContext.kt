@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.data.Note
 
 /**
- * Bundles the note-related context needed for DSL execution.
+ * Bundles the note-related context needed for Mindl execution.
  *
  * This encapsulates the commonly-grouped parameters:
  * - notes: List of notes for find() operations

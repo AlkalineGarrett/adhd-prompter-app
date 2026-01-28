@@ -1,6 +1,6 @@
 # Directive Undo/Redo Requirements
 
-Requirements for coherent treatment of undo/redo with respect to DSL directives.
+Requirements for coherent treatment of undo/redo with respect to Mindl directives.
 
 ---
 
@@ -284,7 +284,7 @@ Recommended: Option 1 for efficiency, since undo snapshots can track changed lin
 
 ## Out of Scope (Future Milestones)
 
-These scenarios involve later DSL features and will need additional requirements:
+These scenarios involve later Mindl features and will need additional requirements:
 
 1. **View directives** (Milestone 9): Edits to viewed content propagate to source notes
 2. **Refresh directives** (Milestone 10): Dependency tracking may affect undo

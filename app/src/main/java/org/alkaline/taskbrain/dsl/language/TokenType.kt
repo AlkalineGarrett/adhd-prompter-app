@@ -1,7 +1,7 @@
 package org.alkaline.taskbrain.dsl.language
 
 /**
- * Token types recognized by the DSL lexer.
+ * Token types recognized by the Mindl lexer.
  * Milestone 3: Adds parentheses, comma, and colon for function call syntax.
  * Milestone 4: Adds star and dot-dot for pattern quantifiers.
  * Milestone 6: Adds dot for property access.

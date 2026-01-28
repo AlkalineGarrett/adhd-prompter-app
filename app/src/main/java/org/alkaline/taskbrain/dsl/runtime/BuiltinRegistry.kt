@@ -9,7 +9,7 @@ import org.alkaline.taskbrain.dsl.builtins.PatternFunctions
 import org.alkaline.taskbrain.dsl.builtins.SortConstants
 
 /**
- * A builtin function that can be called from the DSL.
+ * A builtin function that can be called from Mindl.
  *
  * @property name The function name used to call it
  * @property isDynamic True if this function can return different results on each call
@@ -24,7 +24,7 @@ data class BuiltinFunction(
 )
 
 /**
- * Registry of all builtin functions available in the DSL.
+ * Registry of all builtin functions available in Mindl.
  *
  * Milestone 3: Adds arithmetic functions.
  * Milestone 5: Adds note functions (find).

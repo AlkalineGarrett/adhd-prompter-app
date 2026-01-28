@@ -1,10 +1,10 @@
-# TaskBrain DSL Specification
+# Mindl Specification
 
-A domain-specific language for executable note directives in TaskBrain.
+Mindl is a domain-specific language for executable note directives in TaskBrain.
 
 ## Design Philosophy
 
-- **Mobile-first**: This DSL is primarily written on a phone, so ease of typing drives many design decisions.
+- **Mobile-first**: Mindl is primarily written on a phone, so ease of typing drives many design decisions.
 
 - **Minimize special characters**: Prefer built-in identifiers and functions over symbolic operators. For example, arithmetic uses `add(a, b)` instead of `a + b`, and comparison uses `gt(a, b)` instead of `a > b`. When special characters are necessary, prefer accessible characters commonly used in sentences: `.`, `(`, `)`, `,`, `:`, `"`.
 

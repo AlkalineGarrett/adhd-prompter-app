@@ -5,7 +5,7 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
- * Runtime values in the DSL.
+ * Runtime values in Mindl.
  * Each subclass represents a different type of value that can result from evaluation.
  *
  * Milestone 2: Adds DateVal, TimeVal, DateTimeVal.

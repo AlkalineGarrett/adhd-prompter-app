@@ -8,7 +8,7 @@ import org.alkaline.taskbrain.dsl.runtime.StringVal
 /**
  * Character constant functions for mobile-friendly string building.
  *
- * Since the DSL has no escape sequences in strings (to make typing on mobile
+ * Since Mindl has no escape sequences in strings (to make typing on mobile
  * easier), special characters are inserted using these constant functions.
  *
  * Milestone 2: qt, nl, tab, ret

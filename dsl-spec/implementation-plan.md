@@ -1,6 +1,6 @@
-# DSL Implementation Plan
+# Mindl Implementation Plan
 
-Detailed implementation plan for the TaskBrain DSL, based on the spec and implementation decisions.
+Detailed implementation plan for Mindl (the TaskBrain DSL), based on the spec and implementation decisions.
 
 ---
 
@@ -8,9 +8,9 @@ Detailed implementation plan for the TaskBrain DSL, based on the spec and implem
 
 ### 0.1 Package Structure
 
-DSL files are organized into subpackages under `app/src/main/java/org/alkaline/taskbrain/dsl/`:
+Mindl files are organized into subpackages under `app/src/main/java/org/alkaline/taskbrain/dsl/`:
 
-**language/** - Core DSL parsing pipeline
+**language/** - Core Mindl parsing pipeline
 ```
 ├── TokenType.kt              # Enum of token types
 ├── Token.kt                  # Token data class with position
@@ -445,7 +445,7 @@ data class IdentifierExpr(val name: String) : Expression()  // For variables lat
 
 ### Builtins: CharacterConstants.kt
 Character constants for mobile-friendly string building (no escape sequences).
-Defines reusable constants for special characters used across the DSL:
+Defines reusable constants for special characters used across Mindl:
 ```kotlin
 object CharacterConstants {
     const val QUOTE = "\""

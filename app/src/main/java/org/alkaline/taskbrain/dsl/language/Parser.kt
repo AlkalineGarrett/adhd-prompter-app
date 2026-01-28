@@ -1,7 +1,7 @@
 package org.alkaline.taskbrain.dsl.language
 
 /**
- * Recursive descent parser for the TaskBrain DSL.
+ * Recursive descent parser for Mindl (the TaskBrain DSL).
  * Produces an AST from a sequence of tokens.
  *
  * Milestone 3: Adds parenthesized calls with named arguments.

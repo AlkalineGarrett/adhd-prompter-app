@@ -9,7 +9,7 @@ import org.alkaline.taskbrain.data.Note
 /**
  * Implementation of NoteOperations that uses Firebase Firestore directly.
  *
- * This class provides the note mutation capabilities needed by the DSL
+ * This class provides the note mutation capabilities needed by Mindl
  * (new, maybe_new, append, property setting) by directly interacting
  * with Firestore.
  *

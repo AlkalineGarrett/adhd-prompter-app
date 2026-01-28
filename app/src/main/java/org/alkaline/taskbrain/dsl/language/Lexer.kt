@@ -1,7 +1,7 @@
 package org.alkaline.taskbrain.dsl.language
 
 /**
- * Lexer for the TaskBrain DSL.
+ * Lexer for Mindl (the TaskBrain DSL).
  * Converts source text into a sequence of tokens.
  *
  * Milestone 3: Adds parentheses, comma, and colon for function call syntax.

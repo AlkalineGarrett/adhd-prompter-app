@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.dsl.runtime
 import org.alkaline.taskbrain.data.Note
 
 /**
- * Execution environment for DSL evaluation.
+ * Execution environment for Mindl evaluation.
  * Holds variable bindings, context data, and resources for directive execution.
  *
  * Milestone 1: Minimal implementation with variables and scopes.

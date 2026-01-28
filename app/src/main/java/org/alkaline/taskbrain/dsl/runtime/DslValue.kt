@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.dsl.runtime
 
 /**
  * Re-exports from the values package for backward compatibility.
- * All DSL value types have been moved to org.alkaline.taskbrain.dsl.runtime.values.
+ * All Mindl value types have been moved to org.alkaline.taskbrain.dsl.runtime.values.
  */
 
 // Re-export the sealed base class and companion

@@ -1,4 +1,4 @@
-# DSL Implementation Order
+# Mindl Implementation Order
 
 Vertical slice approach: each milestone delivers end-to-end functionality (parse → execute → display).
 
