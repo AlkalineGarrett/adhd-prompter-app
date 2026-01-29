@@ -181,6 +181,60 @@ class NoteRepositoryTest {
         assertEquals("note_1", notes[0].id)
     }
 
+    @Test
+    fun `loadNotesWithFullContent reconstructs content from children`() = runTest {
+        val mockQuery = mockk<Query>()
+        val docs = listOf(
+            mockk<QueryDocumentSnapshot> {
+                every { id } returns "parent_note"
+                every { toObject(Note::class.java) } returns Note(
+                    id = "parent_note",
+                    content = "First line",
+                    containedNotes = listOf("child_1", "child_2")
+                )
+            }
+        )
+        every { mockCollection.whereEqualTo("userId", USER_ID) } returns mockQuery
+        every { mockQuery.get() } returns Tasks.forResult(mockk {
+            every { iterator() } returns docs.toMutableList().iterator()
+        })
+
+        // Mock child notes
+        mockDocument("child_1", Note(content = "Second line"))
+        mockDocument("child_2", Note(content = "Third line"))
+
+        val notes = repository.loadNotesWithFullContent().getOrThrow()
+
+        assertEquals(1, notes.size)
+        assertEquals("parent_note", notes[0].id)
+        assertEquals("First line\nSecond line\nThird line", notes[0].content)
+    }
+
+    @Test
+    fun `loadNotesWithFullContent returns notes without children as-is`() = runTest {
+        val mockQuery = mockk<Query>()
+        val docs = listOf(
+            mockk<QueryDocumentSnapshot> {
+                every { id } returns "simple_note"
+                every { toObject(Note::class.java) } returns Note(
+                    id = "simple_note",
+                    content = "Single line content",
+                    containedNotes = emptyList()
+                )
+            }
+        )
+        every { mockCollection.whereEqualTo("userId", USER_ID) } returns mockQuery
+        every { mockQuery.get() } returns Tasks.forResult(mockk {
+            every { iterator() } returns docs.toMutableList().iterator()
+        })
+
+        val notes = repository.loadNotesWithFullContent().getOrThrow()
+
+        assertEquals(1, notes.size)
+        assertEquals("simple_note", notes[0].id)
+        assertEquals("Single line content", notes[0].content)
+    }
+
     // endregion
 
     // region Save Tests

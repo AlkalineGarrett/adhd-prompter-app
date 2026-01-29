@@ -173,7 +173,7 @@ Notes have two members for hierarchy navigation: `up` and `root`. These follow s
 - **List**: Ordered collection created with `list(a, b, c, ...)`
 - **Note**: A note object with properties
 - **Deferred Reference**: An unevaluated expression (from `later`)
-- **Lambda**: A function with implicit parameter `i` (from `lambda[...]`)
+- **Lambda**: A function with implicit parameter `i` (from `[...]` in expression context)
 - **Pattern**: A matching pattern (from `pattern(...)`)
 
 ### Special Values
@@ -251,42 +251,79 @@ Variables are captured at definition time. In a deferred expression, captured va
 [later fcn]                # Defer the function call fcn
 ```
 
-### `later[...]` - Defer a Scope
+### `[...]` as Deferred Block
 
-Square brackets after `later` create a deferred scope where nothing inside executes:
+When `[...]` appears in an argument position (to `button`, `schedule`, `find(where:)`, etc.), it creates a deferred block:
 
 ```
-[later[.append date]]    # Entire expression is deferred
+[button("Click me", [.append date])]     # Deferred - executes on click
+[schedule(daily, [.append date])]        # Deferred - executes on schedule
+[find(where: [i.modified.gt(date)])]     # Lambda - executes per item
 ```
+
+**Equivalence with `later`:** `later expr` and `[expr]` are equivalent for deferring execution, except the bracket syntax allows multiple statements separated by semicolons:
+
+```
+# These are equivalent for single expressions:
+[button("Go", later .append("done"))]
+[button("Go", [.append("done")])]
+
+# Bracket syntax allows multiple statements:
+[button("Setup", [x: "prefix"; .append(string(x " done"))])]
+```
+
+**Note**: `later[...]` is redundant since the brackets already create a deferred scope. Prefer `[...]` alone.
 
 ### `run` - Force Evaluation in Deferred Scope
 
-Use `run` to evaluate the next token immediately within a deferred scope:
+Use `run` to evaluate the next token immediately within a deferred block:
 
 ```
-[later[.append run date]]    # date evaluates NOW; .append deferred
+[button("Append today", [.append run date])]    # date evaluates NOW; .append executes on click
+[schedule(daily, [.append run date])]           # date captured at save time, not execution time
 ```
 
 **Note**: `run` evaluates only the next token. `run a b` evaluates `a`; `b` remains deferred.
 
-### `lambda[...]` - Lambda with Implicit Parameter
+### `[...]` - Lambda with Implicit Parameter
 
 Creates a single-argument function where `i` is the implicit parameter:
 
 ```
-[lambda[gt(i.modified, add_days(date, -1))]]    # Lambda checking if modified after yesterday
-[lambda[parse_date(i.path)]]                    # Lambda extracting date from path
+[[i.modified.gt(add_days(date, neg(1)))]]    # Lambda checking if modified after yesterday
+[[parse_date(i.path)]]                       # Lambda extracting date from path
 ```
 
-**Note**: The implicit parameter `i` is only available in this form.
+**Note**: The implicit parameter `i` is available when no explicit parameters are declared.
+
+**Legacy syntax**: `lambda[...]` is still supported but redundant. Prefer `[...]`.
+
+### Implicit Lambda Shorthand: `[...]` in Argument Position
+
+When `[...]` appears as a function argument, it is implicitly a lambda with parameter `i`. This provides a more concise syntax:
+
+```
+# These are equivalent:
+[find(where: lambda[i.modified.gt(add_days(date, neg(1)))])]
+[find(where: [i.modified.gt(add_days(date, neg(1)))])]
+
+# More examples:
+[sort(notes, key: [parse_date(i.path)])]           # Implicit lambda for sort key
+[find(where: [i.path.startsWith("inbox")])]        # Filter by path prefix
+```
+
+The bracket syntax also allows multiple statements separated by semicolons:
+```
+[find(where: [x: add_days(date, neg(7)); i.modified.gt(x)])]
+```
 
 ### Lambda Invocation
 
 Lambdas are invoked like builtins - a bare identifier calls the function:
 
 ```
-[f: lambda[add(i, 1)]; f(5)]     # Calls f with i=5, returns 6
-[f: lambda[mul(i, 2)]; f(10)]    # Calls f with i=10, returns 20
+[f: [add(i, 1)]; f(5)]     # Calls f with i=5, returns 6
+[f: [mul(i, 2)]; f(10)]    # Calls f with i=10, returns 20
 ```
 
 **Invocation semantics** (consistent with builtins):
@@ -296,36 +333,39 @@ Lambdas are invoked like builtins - a bare identifier calls the function:
 
 **Chained calls**:
 ```
-[f: lambda[mul(i, 2)]; g: lambda[add(i, 10)]; f(g(5))]    # g(5)=15, f(15)=30
+[f: [mul(i, 2)]; g: [add(i, 10)]; f(g(5))]    # g(5)=15, f(15)=30
 ```
 
 **Errors**:
 ```
-[f: lambda[i]; f]           # Error: lambda requires 1 argument
-[f: lambda[i]; f(1, 2)]     # Error: lambda requires 1 argument, got 2
-[x: 5; x(10)]               # Error: Cannot call number as a function
+[f: [i]; f]           # Error: lambda requires 1 argument
+[f: [i]; f(1, 2)]     # Error: lambda requires 1 argument, got 2
+[x: 5; x(10)]         # Error: Cannot call number as a function
 ```
 
-### `lambda(params)[...]` - Lambda with Named Parameters
+### Multi-Argument Lambdas
 
-Creates a multi-argument function with explicit parameter names. The implicit `i` is not available in this form:
+For lambdas with multiple or named parameters, use explicit parameter declaration:
 
 ```
-[lambda(a, b)[gt(a.modified, b.modified)]]    # Compare two notes by modified date
-[lambda(note, threshold)[gt(note.viewed, threshold)]]    # Check if viewed after threshold
+[(a, b)[a.modified.gt(b.modified)]]                    # Compare two notes by modified date
+[(note, threshold)[note.viewed.gt(threshold)]]         # Check if viewed after threshold
 ```
+
+The implicit `i` parameter is not available when explicit parameters are declared.
 
 ### `schedule` - Scheduled Execution
 
 Schedules a one-time or recurring execution:
 
 ```
-[schedule(daily_at("9:00"), later[.append date])]
-[schedule(at(datetime(date, "14:30")), later[.append "Reminder!"])]
+[schedule(daily, [.append date])]                              # Daily at midnight
+[schedule(daily_at("9:00"), [.append date])]                   # Daily at 9 AM
+[schedule(at(datetime(date, "14:30")), [.append "Reminder!"])] # One-time at specific datetime
 ```
 
-- **Parameter 1**: Date/time rule (see scheduling rules below)
-- **Parameter 2**: A deferred reference; all nested `later` expressions resolve at execution time
+- **Parameter 1**: Schedule rule - either an identifier (`daily`) or a function call (`daily_at("9:00")`, `at(datetime)`)
+- **Parameter 2**: Action to execute (a deferred block); nested `later` expressions resolve at execution time
 
 **Execution environment**: Hybrid - cloud function for reliability, device background job as offline fallback.
 
@@ -341,15 +381,44 @@ Schedules a one-time or recurring execution:
 
 **Schedule view**: A global screen shows all active schedules across notes. Individual notes with schedules also show an indicator; tapping reveals that note's schedule status.
 
-### `refresh` - Reactive Re-execution
+### `once[...]` - Snapshot Execution
 
-Re-executes when underlying data changes:
+Evaluates the expression once and caches the result forever (until the directive text changes):
 
 ```
-[refresh view(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)))]
+[once[datetime]]                          # Captures the datetime when first executed
+[once[string("Created: " datetime)]]      # Snapshot with formatting
+```
+
+Use `once` for time-dependent values that should capture a moment in time rather than update:
+- Creation timestamps
+- "As of" dates
+- Initial values that shouldn't change
+
+**Constraint**: Bare time values (`[datetime]`, `[time]`, `[date]`) without `once[...]` or `refresh[...]` are errors. This prevents ambiguity about whether the value should update.
+
+```
+[datetime]                    # ERROR: must use once[...] or refresh[...]
+[once[datetime]]              # OK: snapshot
+[refresh[...time...]]         # OK: if time is used in a comparison (see refresh)
+```
+
+### `refresh[...]` - Reactive Re-execution
+
+Re-executes when underlying data changes or at analyzed time triggers:
+
+```
+[refresh[view find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]]
 ```
 
 **Dependency tracking**: Static analysis at parse time identifies `find` patterns and note references. When any matching note changes, the directive re-executes on next view.
+
+**Time-based triggers**: When `refresh` contains time comparisons, the system analyzes the expression to find trigger points:
+
+```
+[refresh[if(time.gt("12:00"), "Afternoon", "Morning")]]    # Triggers at 12:00 daily
+[refresh[if(date.gt("2026-06-01"), "Summer", "Not yet")]]  # Triggers once on June 1
+```
 
 **Re-execution timing**: Refresh directives re-execute when the note is viewed, not immediately when dependencies change.
 
@@ -386,6 +455,27 @@ Re-executes when underlying data changes:
 | `mod(a, b)` | Modulo |
 | `neg(a)` | Negation (e.g., `neg(5)` → `-5`) |
 
+### Method-Style Alternatives
+
+For improved readability, comparison and logical functions can also be called as methods on their first argument:
+
+| Method | Equivalent Function |
+|--------|---------------------|
+| `a.eq(b)` | `eq(a, b)` |
+| `a.ne(b)` | `ne(a, b)` |
+| `a.gt(b)` | `gt(a, b)` |
+| `a.lt(b)` | `lt(a, b)` |
+| `a.gte(b)` | `gte(a, b)` |
+| `a.lte(b)` | `lte(a, b)` |
+| `a.and(b)` | `and(a, b)` |
+| `a.or(b)` | `or(a, b)` |
+
+Methods can be chained for complex expressions:
+```
+[time.gt("09:00").and(time.lt("17:00"))]    # Equivalent to: and(gt(time, "09:00"), lt(time, "17:00"))
+[date.gte("2026-01-01").and(date.lt("2026-02-01"))]
+```
+
 ### Date/Time
 
 | Function | Description |
@@ -401,6 +491,23 @@ Re-executes when underlying data changes:
 | `before(d1, d2)` | True if d1 is before d2 |
 | `after(d1, d2)` | True if d1 is after d2 |
 
+**Method-style date/time arithmetic:**
+
+| Method | Description |
+|--------|-------------|
+| `date.plus(days: n)` | Add n days to date |
+| `time.plus(hours: n)` | Add n hours to time |
+| `time.plus(minutes: n)` | Add n minutes to time |
+| `datetime.plus(days: n, hours: m, minutes: p)` | Add to datetime (any combination) |
+
+Examples:
+```
+[date.plus(days: 7)]                      # One week from today
+[date.plus(days: neg(1))]                 # Yesterday (equivalent to add_days(date, neg(1)))
+[time.plus(minutes: 30)]                  # 30 minutes from now
+[datetime.plus(days: 1, hours: 2)]        # Tomorrow + 2 hours
+```
+
 **Timezone**: All date/time functions use device local timezone by default. Use optional `tz:` parameter for different timezone:
 ```
 [date(tz: "America/New_York")]
@@ -412,14 +519,28 @@ Re-executes when underlying data changes:
 - Last week: `add_days(date, -7)`
 - Tomorrow: `add_days(date, 1)`
 
-### Date/Time Rules (for `schedule`)
+### Schedule Rules (for `schedule`)
 
 | Rule | Description |
 |------|-------------|
-| `at(datetime)` | Triggers once at the specified datetime |
+| `daily` | Triggers daily at midnight |
 | `daily_at(time)` | Triggers daily at the specified time |
+| `at(datetime)` | Triggers once at the specified datetime |
 
 ### String Operations
+
+**String methods:**
+
+| Method | Description |
+|--------|-------------|
+| `str.startsWith(prefix)` | True if string starts with prefix |
+| `str.endsWith(suffix)` | True if string ends with suffix |
+| `str.contains(substring)` | True if string contains substring |
+
+```
+[.path.startsWith("inbox")]               # Check if path starts with "inbox"
+[.name.contains("TODO")]                  # Check if name contains "TODO"
+```
 
 **`string(...)`** - Concatenation:
 
@@ -515,8 +636,8 @@ Searches for notes matching criteria.
 [find(path: pattern(digit*4 "-" digit*2 "-" digit*2))]        # All ISO date paths
 [find(name: "Shopping List")]                                 # Exact name match
 [find(name: pattern("Meeting" any*(0..)))]                    # Names starting with "Meeting"
-[find(where: lambda[after(i.modified, add_days(date, -1))])]  # Modified after yesterday
-[find(path: pattern("journal/" any*(1..)), where: lambda[before(i.created, add_days(date, -7))])]
+[find(where: [i.modified.gt(add_days(date, neg(1)))])]        # Modified after yesterday
+[find(path: pattern("journal/" any*(1..)), where: [i.created.lt(add_days(date, neg(7)))])]
 ```
 
 ---
@@ -574,11 +695,11 @@ Spaces outside quotes are token separators (not semantic).
 Creates a tappable button that executes an action:
 
 ```
-[button("Add today's date", later[.append date])]
+[button("Add today's date", [.append date])]
 ```
 
 - **Parameter 1**: Label text (string)
-- **Parameter 2**: Action to execute (typically a deferred reference)
+- **Parameter 2**: Action to execute (a deferred block)
 
 **Display**: The directive is replaced with a tappable button showing the label. A secondary button allows editing the directive.
 
@@ -591,7 +712,7 @@ Creates a tappable button that executes an action:
 Dynamically fetches and inlines content from other notes:
 
 ```
-[view(sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: descending))]
+[view sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: [parse_date(i.path)], order: descending)]
 ```
 
 - **Parameter**: List of notes to display (use `sort()` if ordering is needed)
@@ -663,11 +784,11 @@ Some values cannot be meaningfully displayed or stored as top-level directive re
 
 | Value Type | Warning Message |
 |------------|-----------------|
-| `lambda[...]` | "Uncalled lambda has no effect" |
+| Lambda (`[...]` at top level) | "Uncalled lambda has no effect" |
 | `pattern(...)` | "Unused pattern has no effect" |
 
 **Resolution**: These values are meant to be passed to functions:
-- Lambdas → `find(where: lambda[...])`, `sort(key: lambda[...])`
+- Lambdas → `find(where: [...])`, `sort(key: [...])`
 - Patterns → `find(path: pattern(...))`, `matches(str, pattern(...))`
 
 ### Parse Errors
@@ -704,13 +825,13 @@ Sets the current note's path to "2026-01-01".
 
 ### Daily Date Append
 ```
-[schedule(daily_at("06:00"), later[.append date])]
+[schedule(daily_at("06:00"), [.append date])]
 ```
 Every day at 6 AM, append the current date to the end of the note.
 
 ### Daily Note Creation
 ```
-[schedule(daily_at("00:01"), later[
+[schedule(daily_at("00:01"), [
   maybe_new(path: date, maybe_content: string("# " date))
 ])]
 ```
@@ -718,23 +839,23 @@ Every day just after midnight, ensure a note exists for that day's date.
 
 ### One-Time Reminder
 ```
-[schedule(at(datetime(add_days(date, 1), "09:00")), later[.append "Don't forget!"])]
+[schedule(at(datetime(add_days(date, 1), "09:00")), [.append "Don't forget!"])]
 ```
 Schedule a one-time reminder for 9 AM tomorrow.
 
 ### Dynamic Journal View
 ```
-[refresh view(sort(
+[refresh[view sort(
   find(path: pattern(digit*4 "-" digit*2 "-" digit*2)),
-  key: lambda[parse_date(i.path)],
+  key: [parse_date(i.path)],
   order: descending
-))]
+)]]
 ```
 Show all notes with ISO date paths, ordered most recent first. Refresh when any matching note changes.
 
 ### Quick Action Button
 ```
-[button("New Journal Entry", later[new(path: date, content: string("# " date))])]
+[button("New Journal Entry", [new(path: date, content: string("# " date))])]
 ```
 A button that creates a new journal note for today when tapped.
 

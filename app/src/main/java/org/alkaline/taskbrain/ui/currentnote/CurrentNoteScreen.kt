@@ -204,6 +204,16 @@ fun CurrentNoteScreen(
         currentNoteViewModel.loadContent(displayedNoteId, recentTabsViewModel)
     }
 
+    // Re-execute directives when notes cache is refreshed (e.g., after auto-save on tab switch)
+    // This ensures view directives show fresh content after the async save completes
+    LaunchedEffect(Unit) {
+        currentNoteViewModel.notesCacheRefreshed.collect {
+            if (userContent.isNotEmpty()) {
+                currentNoteViewModel.executeDirectivesLive(userContent)
+            }
+        }
+    }
+
     // Update content when loaded from VM
     // Skip redundant updates if we already initialized with identical cached content
     LaunchedEffect(loadStatus) {

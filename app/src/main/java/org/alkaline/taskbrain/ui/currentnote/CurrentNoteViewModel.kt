@@ -34,6 +34,7 @@ import org.alkaline.taskbrain.dsl.directives.parseAllDirectiveLocations
 import org.alkaline.taskbrain.dsl.runtime.MutationType
 import org.alkaline.taskbrain.dsl.runtime.NoteMutation
 import org.alkaline.taskbrain.dsl.runtime.NoteRepositoryOperations
+import org.alkaline.taskbrain.dsl.runtime.ViewVal
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -111,6 +112,19 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     // Cached current note for [.] reference in directives (Milestone 6)
     private var cachedCurrentNote: Note? = null
 
+    /**
+     * Invalidate the notes cache so view directives get fresh content.
+     * Call this when switching tabs after saving to ensure views show updated data.
+     */
+    fun invalidateNotesCache() {
+        cachedNotes = null
+        cachedCurrentNote = null
+    }
+
+    // Emits when notes cache is refreshed (e.g., after save) so UI can refresh view directives
+    private val _notesCacheRefreshed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val notesCacheRefreshed: SharedFlow<Unit> = _notesCacheRefreshed.asSharedFlow()
+
     // Current Note ID being edited
     private var currentNoteId = "root_note"
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
@@ -140,6 +154,10 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         // Save the current note as the last viewed note
         sharedPreferences.edit().putString(LAST_VIEWED_NOTE_KEY, currentNoteId).apply()
+
+        // Note: Don't clear cachedNotes here - it persists until a save happens
+        // This allows view directives to use cached content when switching tabs
+        // The cache is refreshed in refreshNotesCache() after saves
 
         // Recreate line tracker with new parent note ID
         lineTracker = NoteLineTracker(currentNoteId)
@@ -464,7 +482,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         // Load notes if not cached
         if (cachedNotes == null) {
             Log.d(TAG, "ensureNotesLoaded: loading notes from repository...")
-            val result = repository.loadUserNotes()
+            // Use loadNotesWithFullContent for directives that need complete note text (e.g., view())
+            val result = repository.loadNotesWithFullContent()
             val notes = result.getOrNull() ?: emptyList()
             cachedNotes = notes
             cachedCurrentNote = notes.find { it.id == currentNoteId }
@@ -489,7 +508,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * Call this when notes may have changed (e.g., after save).
      */
     private suspend fun refreshNotesCache(): List<Note> {
-        val result = repository.loadUserNotes()
+        // Use loadNotesWithFullContent for directives that need complete note text (e.g., view())
+        val result = repository.loadNotesWithFullContent()
         val notes = result.getOrNull() ?: emptyList()
         cachedNotes = notes
         cachedCurrentNote = notes.find { it.id == currentNoteId }
@@ -656,6 +676,9 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // Refresh notes cache (notes may have changed after save)
             val notes = refreshNotesCache()
 
+            // Notify observers that notes cache was refreshed (for view directive updates)
+            _notesCacheRefreshed.tryEmit(Unit)
+
             // Execute all directives with UUID-based keys (pass current note for [.] reference - Milestone 6)
             val allMutations = mutableListOf<NoteMutation>()
             val freshResults = mutableMapOf<String, DirectiveResult>()
@@ -679,13 +702,17 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             _directiveResults.value = mergedResults
 
             // Store results in Firestore using text hash as key for cross-session caching
+            // Skip view directive results - they depend on other notes and can become stale
             for (instance in updatedInstances) {
                 val result = mergedResults[instance.uuid] ?: continue
-                val textHash = DirectiveResult.hashDirective(instance.sourceText)
-                directiveResultRepository.saveResult(currentNoteId, textHash, result)
-                    .onFailure { e ->
-                        Log.e(TAG, "Failed to save directive result: $textHash", e)
-                    }
+                val isViewResult = result.toValue() is ViewVal
+                if (!isViewResult) {
+                    val textHash = DirectiveResult.hashDirective(instance.sourceText)
+                    directiveResultRepository.saveResult(currentNoteId, textHash, result)
+                        .onFailure { e ->
+                            Log.e(TAG, "Failed to save directive result: $textHash", e)
+                        }
+                }
             }
 
             Log.d(TAG, "Executed ${mergedResults.size} directives")
@@ -752,11 +779,15 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             allMutations.addAll(execResult.mutations)
             uuidResults[instance.uuid] = execResult.result
             // Store in Firestore using text hash
-            val textHash = DirectiveResult.hashDirective(instance.sourceText)
-            directiveResultRepository.saveResult(currentNoteId, textHash, execResult.result)
-                .onFailure { e ->
-                    Log.e(TAG, "Failed to save directive result: $textHash", e)
-                }
+            // Skip view directive results - they depend on other notes and can become stale
+            val isViewResult = execResult.result.toValue() is ViewVal
+            if (!isViewResult) {
+                val textHash = DirectiveResult.hashDirective(instance.sourceText)
+                directiveResultRepository.saveResult(currentNoteId, textHash, execResult.result)
+                    .onFailure { e ->
+                        Log.e(TAG, "Failed to save directive result: $textHash", e)
+                    }
+            }
         }
         // Process mutations (skip editor callback since we're loading)
         processMutations(allMutations, skipEditorCallback = true)

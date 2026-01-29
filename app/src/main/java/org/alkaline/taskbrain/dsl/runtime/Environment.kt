@@ -10,6 +10,7 @@ import org.alkaline.taskbrain.data.Note
  * Milestone 5: Adds note list for find() operations.
  * Milestone 6: Adds current note for [.] reference and property access.
  * Milestone 7: Adds note operations for mutations and hierarchy navigation.
+ * Milestone 10: Adds view stack for circular dependency detection.
  */
 class Environment private constructor(
     private val parent: Environment?,
@@ -58,6 +59,7 @@ class Environment private constructor(
      * Inherits the note context from the parent.
      *
      * Milestone 8: Propagates executor for lambda invocation.
+     * Milestone 10: Propagates view stack for circular dependency detection.
      */
     fun child(): Environment = Environment(
         parent = this,
@@ -65,7 +67,8 @@ class Environment private constructor(
             notes = getNotes(),
             currentNote = getCurrentNoteRaw(),
             noteOperations = getNoteOperations(),
-            executor = getExecutor()
+            executor = getExecutor(),
+            viewStack = getViewStack()
         )
     )
 
@@ -88,9 +91,9 @@ class Environment private constructor(
 
     /**
      * Get the raw current note (without wrapping in NoteVal).
-     * Used internally for environment propagation.
+     * Used internally for environment propagation and view rendering.
      */
-    private fun getCurrentNoteRaw(): Note? = context.currentNote ?: parent?.getCurrentNoteRaw()
+    internal fun getCurrentNoteRaw(): Note? = context.currentNote ?: parent?.getCurrentNoteRaw()
 
     /**
      * Get the note operations interface for performing mutations.
@@ -118,9 +121,55 @@ class Environment private constructor(
             notes = getNotes(),
             currentNote = getCurrentNoteRaw(),
             noteOperations = getNoteOperations(),
-            executor = executor
+            executor = executor,
+            viewStack = getViewStack()
         )
     )
+
+    // region View Stack (Milestone 10)
+
+    /**
+     * Get the current view stack.
+     * Used for circular dependency detection in view().
+     *
+     * Milestone 10.
+     */
+    fun getViewStack(): List<String> = context.viewStack.ifEmpty { parent?.getViewStack() ?: emptyList() }
+
+    /**
+     * Check if a note ID is already in the view stack.
+     * Used for circular dependency detection.
+     *
+     * Milestone 10.
+     */
+    fun isInViewStack(noteId: String): Boolean = getViewStack().contains(noteId)
+
+    /**
+     * Get a formatted string of the view stack path for error messages.
+     * Example: "note1 → note2 → note3"
+     *
+     * Milestone 10.
+     */
+    fun getViewStackPath(): String = getViewStack().joinToString(" → ")
+
+    /**
+     * Create a child environment with a note ID added to the view stack.
+     * Used when entering a view to track the dependency chain.
+     *
+     * Milestone 10.
+     */
+    fun pushViewStack(noteId: String): Environment = Environment(
+        parent = this,
+        context = NoteContext(
+            notes = getNotes(),
+            currentNote = getCurrentNoteRaw(),
+            noteOperations = getNoteOperations(),
+            executor = getExecutor(),
+            viewStack = getViewStack() + noteId
+        )
+    )
+
+    // endregion
 
     /**
      * Find a note by ID from the available notes.

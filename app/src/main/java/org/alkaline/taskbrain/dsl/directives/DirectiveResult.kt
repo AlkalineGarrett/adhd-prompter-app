@@ -74,8 +74,14 @@ data class DirectiveResult(
     companion object {
         /**
          * Create a DirectiveResult from a successful execution.
+         *
+         * @param value The computed value
+         * @param collapsed Whether the result is collapsed in UI
          */
-        fun success(value: DslValue, collapsed: Boolean = true): DirectiveResult {
+        fun success(
+            value: DslValue,
+            collapsed: Boolean = true
+        ): DirectiveResult {
             return DirectiveResult(
                 result = value.serialize(),
                 error = null,

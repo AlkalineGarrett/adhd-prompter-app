@@ -66,6 +66,11 @@ sealed class DslValue {
                     val items = (value as List<Map<String, Any?>>).map { deserialize(it) }
                     ListVal(items)
                 }
+                "view" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val viewMap = value as Map<String, Any?>
+                    ViewVal.deserialize(viewMap)
+                }
                 else -> throw IllegalArgumentException("Unknown DslValue type: $type")
             }
         }

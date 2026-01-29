@@ -123,15 +123,17 @@ object DirectiveFinder {
      * @param notes Optional list of notes for find() operations
      * @param currentNote Optional current note for [.] reference (Milestone 6)
      * @param noteOperations Optional note operations for mutations (Milestone 7)
+     * @param viewStack Optional view stack for circular dependency detection (Milestone 10)
      * @return DirectiveExecutionResult containing the result and any mutations that occurred
      */
     fun executeDirective(
         sourceText: String,
         notes: List<Note>? = null,
         currentNote: Note? = null,
-        noteOperations: NoteOperations? = null
+        noteOperations: NoteOperations? = null,
+        viewStack: List<String> = emptyList()
     ): DirectiveExecutionResult {
-        val env = createEnvironment(notes, currentNote, noteOperations)
+        val env = createEnvironment(notes, currentNote, noteOperations, viewStack)
         return try {
             val tokens = Lexer(sourceText).tokenize()
             val directive = Parser(tokens, sourceText).parseDirective()
@@ -174,9 +176,10 @@ object DirectiveFinder {
     private fun createEnvironment(
         notes: List<Note>?,
         currentNote: Note?,
-        noteOperations: NoteOperations?
+        noteOperations: NoteOperations?,
+        viewStack: List<String> = emptyList()
     ): Environment {
-        return Environment(NoteContext(notes, currentNote, noteOperations))
+        return Environment(NoteContext(notes, currentNote, noteOperations, viewStack = viewStack))
     }
 
     /**

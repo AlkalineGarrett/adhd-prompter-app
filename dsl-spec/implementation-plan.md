@@ -1221,27 +1221,69 @@ Type-specific comparison:
 
 ---
 
-## Milestone 10: View
+## Milestone 10: View ✅ COMPLETE
 
 **Target:** `[view find(...)]`, `[view sort find(...), ...]`
+
+### Implementation Summary
+
+**Changes made:**
+1. Created `ViewVal` type in `runtime/values/ViewVal.kt` with serialization support
+2. Added `view()` builtin function to `NoteFunctions.kt`
+3. Implemented circular dependency detection via view stack in `NoteContext` and `Environment`
+4. Created `ViewContentTracker` in `directives/ViewContentTracker.kt` for position mapping
+5. Updated `DirectiveLineRenderer` to render `ViewVal` content with subtle left border indicator
+6. Added `ViewIndicator` and `ViewDivider` colors to `DirectiveColors`
+7. Updated `DirectiveDisplayRange` with `isView` flag for UI differentiation
+8. Added type alias re-export for `ViewVal` in `runtime/DslValue.kt`
 
 ### Builtins: NoteFunctions.kt
 ```kotlin
 "view" to { args, env ->
-    val notes = args[0] as ListVal
-    ViewVal(notes.items.map { (it as NoteVal).note })
+    val listArg = args[0] as? ListVal
+        ?: throw ExecutionException("'view' argument must be a list")
+    val notes = listArg.items.mapIndexed { index, item ->
+        (item as? NoteVal)?.note
+            ?: throw ExecutionException("'view' list item at index $index must be a note")
+    }
+    // Check for circular dependencies
+    for (note in notes) {
+        if (env.isInViewStack(note.id)) {
+            throw ExecutionException("Circular view dependency: ${env.getViewStackPath()} → ${note.id}")
+        }
+    }
+    ViewVal(notes)
 }
 ```
 
 ### Types
 ```kotlin
-data class ViewVal(val notes: List<Note>) : DslValue()
+data class ViewVal(val notes: List<Note>) : DslValue() {
+    override val typeName = "view"
+    override fun toDisplayString(): String = when (notes.size) {
+        0 -> "[empty view]"
+        1 -> notes.first().content
+        else -> notes.joinToString("\n---\n") { it.content }
+    }
+}
 ```
 
-### UI: DirectiveRenderer.kt
-- When result is `ViewVal`, render notes inline
-- Each note's content separated by divider
-- Track source note for each text range
+### Environment Additions (for circular detection)
+```kotlin
+// In NoteContext:
+val viewStack: List<String> = emptyList()
+
+// In Environment:
+fun getViewStack(): List<String>
+fun isInViewStack(noteId: String): Boolean
+fun getViewStackPath(): String
+fun pushViewStack(noteId: String): Environment
+```
+
+### UI: DirectiveLineRenderer.kt
+- When result is `ViewVal`, render content inline with subtle left border indicator
+- Uses `viewIndicator()` modifier for styling
+- Standard directive results still render in dashed boxes
 
 ### UI: ViewContentTracker.kt
 ```kotlin
@@ -1249,56 +1291,62 @@ data class ViewRange(
     val startOffset: Int,
     val endOffset: Int,
     val sourceNoteId: String,
-    val sourceStartLine: Int
+    val sourceStartLine: Int,
+    val originalContent: String
 )
 
 class ViewContentTracker {
-    private val ranges = mutableListOf<ViewRange>()
-
     fun mapOffsetToSource(offset: Int): ViewRange?
     fun updateRangesAfterEdit(editStart: Int, editEnd: Int, newLength: Int)
-}
-```
+    fun getModifiedRanges(currentContent: String): List<ViewRange>
+    fun findRangesInSelection(selectionStart: Int, selectionEnd: Int): List<ViewRange>
 
-### Editable View Sync (on save)
-```kotlin
-fun syncViewedContentOnSave(
-    directiveResult: ViewVal,
-    currentContent: String,
-    tracker: ViewContentTracker
-) {
-    tracker.ranges.forEach { range ->
-        val editedContent = currentContent.substring(range.startOffset, range.endOffset)
-        if (editedContent != range.originalContent) {
-            noteRepository.updateNoteContent(range.sourceNoteId, editedContent, range.sourceStartLine)
-        }
+    companion object {
+        const val NOTE_DIVIDER = "\n---\n"
+        fun buildFromNotes(notes: List<Note>): ViewContentTracker
     }
 }
 ```
 
-### Circular Dependency Detection
-```kotlin
-class Executor {
-    private val viewStack = mutableListOf<String>()  // Note IDs being viewed
+### Tests (all passing)
+**NoteFunctionsTest.kt:**
+- `view with empty list returns empty view` ✅
+- `view with single note returns view with that note` ✅
+- `view with multiple notes returns view with all notes` ✅
+- `view with sorted list preserves order` ✅
+- `ViewVal displays empty view message for empty list` ✅
+- `ViewVal displays single note content` ✅
+- `ViewVal displays multiple notes with dividers` ✅
+- `ViewVal serializes and deserializes` ✅
+- `empty ViewVal serializes and deserializes` ✅
+- `view with non-list argument throws error` ✅
+- `view with no arguments throws error` ✅
+- `view with list containing non-notes throws error` ✅
+- `view is classified as static` ✅
+- `view detects circular dependency` ✅
+- `view with empty view stack does not throw error` ✅
 
-    fun evaluateView(notes: List<Note>): ViewVal {
-        notes.forEach { note ->
-            if (note.id in viewStack) {
-                error("Circular view dependency: ${viewStack.joinToString(" → ")} → ${note.id}")
-            }
-            viewStack.add(note.id)
-            // Execute directives in viewed note
-            viewStack.removeLast()
-        }
-        // ...
-    }
-}
-```
+**ViewContentTrackerTest.kt:**
+- `buildFromNotes with empty list creates empty tracker` ✅
+- `buildFromNotes with single note creates single range` ✅
+- `buildFromNotes with multiple notes creates ranges with dividers` ✅
+- `mapOffsetToSource returns null for offset outside all ranges` ✅
+- `mapOffsetToSource returns correct range for offset within range` ✅
+- `mapOffsetToSource handles offset in divider area` ✅
+- `ViewRange contains returns true for offset within range` ✅
+- `ViewRange contains returns false for offset outside range` ✅
+- `updateRangesAfterEdit shifts ranges after edit point` ✅
+- `updateRangesAfterEdit handles deletion` ✅
+- `getModifiedRanges returns empty list when content unchanged` ✅
+- `getModifiedRanges returns range when content changed within range` ✅
+- `getModifiedRanges detects content expansion after updateRangesAfterEdit` ✅
+- `findRangesInSelection returns ranges that overlap selection` ✅
+- `findRangesInSelection returns only overlapping ranges` ✅
 
-### Tests
-- View renders note content
-- Circular dependency detected
-- Edits propagate back on save
+### Future Enhancements
+- Editable view sync (propagating edits back to source notes on save)
+- Recursive directive execution in viewed notes
+- Full integration with refresh directive (Milestone 11)
 
 ---
 

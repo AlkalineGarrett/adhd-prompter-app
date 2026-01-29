@@ -5,8 +5,10 @@ import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -65,33 +67,113 @@ fun DirectiveLineContent(
         return
     }
 
-    // Render with directive boxes
-    Row(
-        modifier = modifier.height(IntrinsicSize.Min),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        var currentPos = 0
+    // Check if this line contains a view directive with multi-line content
+    val hasMultiLineView = displayResult.directiveDisplayRanges.any { range ->
+        range.isView && range.displayText.contains('\n')
+    }
 
-        for (segment in displayResult.segments) {
-            when (segment) {
-                is DirectiveSegment.Text -> {
-                    BasicText(
-                        text = segment.content,
-                        style = textStyle
-                    )
-                    currentPos += segment.content.length
-                }
-                is DirectiveSegment.Directive -> {
-                    DirectiveResultBox(
-                        displayText = segment.displayText,
-                        isComputed = segment.isComputed,
-                        hasError = segment.result?.error != null,
-                        textStyle = textStyle,
-                        onTap = { onDirectiveTap(segment.key, segment.sourceText) }
-                    )
-                    currentPos += segment.displayText.length
+    if (hasMultiLineView) {
+        // Use Column layout for multi-line view content
+        Column(modifier = modifier.fillMaxWidth()) {
+            for (segment in displayResult.segments) {
+                when (segment) {
+                    is DirectiveSegment.Text -> {
+                        if (segment.content.isNotEmpty()) {
+                            BasicText(
+                                text = segment.content,
+                                style = textStyle
+                            )
+                        }
+                    }
+                    is DirectiveSegment.Directive -> {
+                        val directiveRange = displayResult.directiveDisplayRanges.find { it.key == segment.key }
+                        val isView = directiveRange?.isView ?: false
+
+                        if (isView && segment.isComputed && segment.result?.error == null) {
+                            ViewDirectiveContent(
+                                displayText = segment.displayText,
+                                textStyle = textStyle,
+                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                            )
+                        } else {
+                            DirectiveResultBox(
+                                displayText = segment.displayText,
+                                isComputed = segment.isComputed,
+                                hasError = segment.result?.error != null,
+                                textStyle = textStyle,
+                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                            )
+                        }
+                    }
                 }
             }
+        }
+    } else {
+        // Use Row layout for single-line content (original behavior)
+        Row(
+            modifier = modifier.height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (segment in displayResult.segments) {
+                when (segment) {
+                    is DirectiveSegment.Text -> {
+                        BasicText(
+                            text = segment.content,
+                            style = textStyle
+                        )
+                    }
+                    is DirectiveSegment.Directive -> {
+                        val directiveRange = displayResult.directiveDisplayRanges.find { it.key == segment.key }
+                        val isView = directiveRange?.isView ?: false
+
+                        if (isView && segment.isComputed && segment.result?.error == null) {
+                            ViewDirectiveContent(
+                                displayText = segment.displayText,
+                                textStyle = textStyle,
+                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                            )
+                        } else {
+                            DirectiveResultBox(
+                                displayText = segment.displayText,
+                                isComputed = segment.isComputed,
+                                hasError = segment.result?.error != null,
+                                textStyle = textStyle,
+                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Content from a view directive, rendered inline without a box.
+ * Shows the viewed notes' content with a subtle left border indicator.
+ * Supports multi-line content from viewed notes.
+ *
+ * Milestone 10.
+ */
+@Composable
+private fun ViewDirectiveContent(
+    displayText: String,
+    textStyle: TextStyle,
+    onTap: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap)
+            .viewIndicator(DirectiveColors.ViewIndicator)
+            .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+    ) {
+        SelectionContainer {
+            Text(
+                text = displayText,
+                style = textStyle,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
@@ -166,6 +248,24 @@ private fun Modifier.dashedBorder(color: Color): Modifier = this.drawBehind {
             width = strokeWidth,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashLength, gapLength))
         )
+    )
+}
+
+/**
+ * Modifier for view directive content - draws a left border indicator.
+ * This provides a subtle visual distinction for viewed content.
+ *
+ * Milestone 10.
+ */
+private fun Modifier.viewIndicator(color: Color): Modifier = this.drawBehind {
+    val strokeWidth = 2.dp.toPx()
+
+    // Draw solid left border
+    drawLine(
+        color = color,
+        start = Offset(0f, 0f),
+        end = Offset(0f, size.height),
+        strokeWidth = strokeWidth
     )
 }
 

@@ -6,18 +6,21 @@ import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.runtime.DslValue
 import org.alkaline.taskbrain.dsl.runtime.Environment
+import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
 import org.alkaline.taskbrain.dsl.runtime.ListVal
 import org.alkaline.taskbrain.dsl.runtime.NoteVal
+import org.alkaline.taskbrain.dsl.runtime.ViewVal
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 import java.util.Date
 
 /**
- * Tests for NoteFunctions (find).
+ * Tests for NoteFunctions (find, view).
  *
- * Milestone 5.
+ * Milestone 5: find function.
+ * Milestone 10: view function.
  */
 class NoteFunctionsTest {
 
@@ -411,6 +414,298 @@ class NoteFunctionsTest {
     @Test
     fun `find is classified as static`() {
         assertFalse(org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry.isDynamic("find"))
+    }
+
+    // endregion
+
+    // region view - Basic functionality (Milestone 10)
+
+    @Test
+    fun `view with empty list returns empty view`() {
+        val result = execute("[view(find(path: \"nonexistent\"))]", notes = testNotes)
+
+        assertTrue(result is ViewVal)
+        assertTrue((result as ViewVal).isEmpty())
+    }
+
+    @Test
+    fun `view with single note returns view with that note`() {
+        val result = execute("[view(find(path: \"2026-01-15\"))]", notes = testNotes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals(1, view.size)
+        assertEquals("note1", view.notes.first().id)
+    }
+
+    @Test
+    fun `view with multiple notes returns view with all notes`() {
+        val result = execute(
+            "[view(find(path: pattern(digit*4 \"-\" digit*2 \"-\" digit*2)))]",
+            notes = testNotes
+        )
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals(2, view.size)
+
+        val paths = view.notes.map { it.path }.toSet()
+        assertTrue(paths.contains("2026-01-15"))
+        assertTrue(paths.contains("2026-01-16"))
+    }
+
+    @Test
+    fun `view with sorted list preserves order`() {
+        val result = execute(
+            "[view(sort(find(path: pattern(digit*4 \"-\" digit*2 \"-\" digit*2)), order: descending))]",
+            notes = testNotes
+        )
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals(2, view.size)
+
+        // Sorted descending by path
+        assertEquals("2026-01-16", view.notes[0].path)
+        assertEquals("2026-01-15", view.notes[1].path)
+    }
+
+    // endregion
+
+    // region view - Display string (Milestone 10)
+
+    @Test
+    fun `ViewVal displays empty view message for empty list`() {
+        val view = ViewVal(emptyList())
+
+        assertEquals("[empty view]", view.toDisplayString())
+    }
+
+    @Test
+    fun `ViewVal displays single note content`() {
+        val note = Note(id = "1", path = "test", content = "Note content here")
+        val view = ViewVal(listOf(note))
+
+        assertEquals("Note content here", view.toDisplayString())
+    }
+
+    @Test
+    fun `ViewVal displays multiple notes with dividers`() {
+        val note1 = Note(id = "1", path = "p1", content = "First note")
+        val note2 = Note(id = "2", path = "p2", content = "Second note")
+        val view = ViewVal(listOf(note1, note2))
+
+        assertEquals("First note\n---\nSecond note", view.toDisplayString())
+    }
+
+    // endregion
+
+    // region view - Serialization (Milestone 10)
+
+    @Test
+    fun `ViewVal serializes and deserializes`() {
+        val note1 = Note(id = "note1", userId = "user1", path = "path1", content = "Content 1")
+        val note2 = Note(id = "note2", userId = "user1", path = "path2", content = "Content 2")
+        val original = ViewVal(listOf(note1, note2))
+
+        val serialized = original.serialize()
+        val deserialized = DslValue.deserialize(serialized)
+
+        assertTrue(deserialized is ViewVal)
+        val restored = deserialized as ViewVal
+        assertEquals(2, restored.size)
+        assertEquals("path1", restored.notes[0].path)
+        assertEquals("path2", restored.notes[1].path)
+    }
+
+    @Test
+    fun `empty ViewVal serializes and deserializes`() {
+        val original = ViewVal(emptyList())
+
+        val serialized = original.serialize()
+        val deserialized = DslValue.deserialize(serialized)
+
+        assertTrue(deserialized is ViewVal)
+        assertTrue((deserialized as ViewVal).isEmpty())
+    }
+
+    // endregion
+
+    // region view - Error handling (Milestone 10)
+
+    @Test
+    fun `view with non-list argument throws error`() {
+        try {
+            execute("[view(42)]")
+            fail("Expected ExecutionException")
+        } catch (e: ExecutionException) {
+            assertTrue(e.message?.contains("must be a list") == true)
+        }
+    }
+
+    @Test
+    fun `view with no arguments throws error`() {
+        try {
+            execute("[view()]")
+            fail("Expected ExecutionException")
+        } catch (e: ExecutionException) {
+            assertTrue(e.message?.contains("requires a list") == true)
+        }
+    }
+
+    @Test
+    fun `view with list containing non-notes throws error`() {
+        try {
+            execute("[view(list(1, 2, 3))]")
+            fail("Expected ExecutionException")
+        } catch (e: ExecutionException) {
+            assertTrue(e.message?.contains("must be a note") == true)
+        }
+    }
+
+    // endregion
+
+    // region view - is classified as static (Milestone 10)
+
+    @Test
+    fun `view is classified as static`() {
+        assertFalse(org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry.isDynamic("view"))
+    }
+
+    // endregion
+
+    // region view - Circular dependency detection (Milestone 10)
+
+    @Test
+    fun `view detects circular dependency`() {
+        // Create a note that would be viewed
+        val noteToView = Note(
+            id = "note-to-view",
+            userId = "user1",
+            path = "target",
+            content = "Target note content"
+        )
+        val notes = listOf(noteToView)
+
+        // Create environment with the note already in view stack
+        val env = Environment.withNotes(notes).pushViewStack("note-to-view")
+
+        try {
+            val tokens = Lexer("[view(find(path: \"target\"))]").tokenize()
+            val directive = Parser(tokens, "[view(find(path: \"target\"))]").parseDirective()
+            executor.execute(directive, env)
+            fail("Expected ExecutionException for circular dependency")
+        } catch (e: ExecutionException) {
+            assertTrue(e.message?.contains("Circular view dependency") == true)
+        }
+    }
+
+    @Test
+    fun `view with empty view stack does not throw error`() {
+        val result = execute("[view(find(path: \"2026-01-15\"))]", notes = testNotes)
+
+        // Should succeed without circular dependency error
+        assertTrue(result is ViewVal)
+    }
+
+    // endregion
+
+    // region view - Directive rendering (Milestone 10)
+
+    @Test
+    fun `view evaluates directives in viewed note content`() {
+        // Create a note with a directive in its content
+        val noteWithDirective = Note(
+            id = "note-with-directive",
+            userId = "user1",
+            path = "test-note",
+            content = "Result is [add(1, 2)]"
+        )
+        val notes = listOf(noteWithDirective)
+
+        val result = execute("[view(find(path: \"test-note\"))]", notes = notes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals(1, view.size)
+
+        // The displayed content should have the directive evaluated
+        val displayContent = view.toDisplayString()
+        assertEquals("Result is 3", displayContent)
+    }
+
+    @Test
+    fun `view preserves content without directives`() {
+        val noteWithoutDirective = Note(
+            id = "note1",
+            userId = "user1",
+            path = "plain-note",
+            content = "Just plain text here"
+        )
+        val notes = listOf(noteWithoutDirective)
+
+        val result = execute("[view(find(path: \"plain-note\"))]", notes = notes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals("Just plain text here", view.toDisplayString())
+    }
+
+    @Test
+    fun `view evaluates multiple directives in content`() {
+        val noteWithMultipleDirectives = Note(
+            id = "note1",
+            userId = "user1",
+            path = "multi-directive",
+            content = "[add(1, 1)] and [add(2, 2)]"
+        )
+        val notes = listOf(noteWithMultipleDirectives)
+
+        val result = execute("[view(find(path: \"multi-directive\"))]", notes = notes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        assertEquals("2 and 4", view.toDisplayString())
+    }
+
+    @Test
+    fun `view keeps directive source on error`() {
+        val noteWithBadDirective = Note(
+            id = "note1",
+            userId = "user1",
+            path = "bad-directive",
+            content = "Error: [unknown_function()]"
+        )
+        val notes = listOf(noteWithBadDirective)
+
+        val result = execute("[view(find(path: \"bad-directive\"))]", notes = notes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+        // On error, keep the original source text
+        assertEquals("Error: [unknown_function()]", view.toDisplayString())
+    }
+
+    @Test
+    fun `view stores rendered content separately from raw notes`() {
+        val noteWithDirective = Note(
+            id = "note1",
+            userId = "user1",
+            path = "directive-note",
+            content = "Value: [42]"
+        )
+        val notes = listOf(noteWithDirective)
+
+        val result = execute("[view(find(path: \"directive-note\"))]", notes = notes)
+
+        assertTrue(result is ViewVal)
+        val view = result as ViewVal
+
+        // Raw note content should be unchanged
+        assertEquals("Value: [42]", view.notes.first().content)
+
+        // Rendered content should have directive evaluated
+        assertEquals("Value: 42", view.toDisplayString())
     }
 
     // endregion

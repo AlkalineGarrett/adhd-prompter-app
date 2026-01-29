@@ -1,5 +1,7 @@
 package org.alkaline.taskbrain.dsl.directives
 
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
+
 /**
  * Represents a segment of line content - either plain text or a directive.
  * Used for rendering lines with computed directive results.
@@ -158,6 +160,10 @@ object DirectiveSegmenter {
                     displayBuilder.append(displayText)
                     val displayEnd = displayBuilder.length
 
+                    // Check if the result is a ViewVal for special UI handling
+                    val resultValue = segment.result?.toValue()
+                    val isViewResult = resultValue is ViewVal
+
                     directiveRanges.add(
                         DirectiveDisplayRange(
                             key = segment.key,
@@ -167,7 +173,8 @@ object DirectiveSegmenter {
                             displayText = displayText,
                             isComputed = segment.isComputed,
                             hasError = segment.result?.error != null,
-                            hasWarning = segment.result?.hasWarning ?: false
+                            hasWarning = segment.result?.hasWarning ?: false,
+                            isView = isViewResult
                         )
                     )
                 }
@@ -195,6 +202,7 @@ data class DisplayTextResult(
  * Tracks where a directive appears in both source and display text.
  *
  * Milestone 8: Added hasWarning for no-effect warnings.
+ * Milestone 10: Added isView for view directive special rendering.
  */
 data class DirectiveDisplayRange(
     val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
@@ -204,5 +212,6 @@ data class DirectiveDisplayRange(
     val displayText: String,
     val isComputed: Boolean,
     val hasError: Boolean,
-    val hasWarning: Boolean = false
+    val hasWarning: Boolean = false,
+    val isView: Boolean = false  // True if result is a ViewVal
 )

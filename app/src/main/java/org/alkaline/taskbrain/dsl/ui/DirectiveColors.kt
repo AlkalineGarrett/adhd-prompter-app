@@ -32,4 +32,8 @@ object DirectiveColors {
 
     // Action buttons - blue palette
     val RefreshButton = Color(0xFF2196F3)       // Blue (refresh button)
+
+    // View directive - subtle indicator (Milestone 10)
+    val ViewIndicator = Color(0xFFB0BEC5)       // Blue-gray (left border for views)
+    val ViewDivider = Color(0xFFCFD8DC)         // Light blue-gray (divider between viewed notes)
 }

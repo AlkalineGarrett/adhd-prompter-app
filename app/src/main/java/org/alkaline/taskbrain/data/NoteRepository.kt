@@ -220,6 +220,55 @@ class NoteRepository(
     }
 
     /**
+     * Loads all top-level notes for the current user with their full content reconstructed.
+     * Multi-line notes (those with containedNotes) will have their child content appended
+     * to the parent content, separated by newlines.
+     *
+     * Use this method when you need the complete text of notes (e.g., for view() directives).
+     * For just metadata/first line, use loadUserNotes() instead.
+     */
+    suspend fun loadNotesWithFullContent(): Result<List<Note>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = notesCollection.whereEqualTo("userId", userId).get().await()
+
+            val topLevelNotes = result.mapNotNull { doc ->
+                try {
+                    doc.toObject(Note::class.java).copy(id = doc.id)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing note", e)
+                    null
+                }
+            }.filter { it.parentNoteId == null && it.state != "deleted" }
+
+            // Load full content for notes with children
+            topLevelNotes.map { note ->
+                async { reconstructNoteContent(note) }
+            }.awaitAll()
+        }
+    }.onFailure { Log.e(TAG, "Error loading notes with full content", it) }
+
+    /**
+     * Reconstructs the full content of a note by loading its children.
+     * Returns the note with content = parent content + newline-separated child contents.
+     */
+    private suspend fun reconstructNoteContent(note: Note): Note {
+        if (note.containedNotes.isEmpty()) {
+            return note
+        }
+
+        val childContents = loadChildNotes(note.containedNotes)
+        val fullContent = buildString {
+            append(note.content)
+            for (childLine in childContents) {
+                append('\n')
+                append(childLine.content)
+            }
+        }
+        return note.copy(content = fullContent)
+    }
+
+    /**
      * Loads all top-level notes for the current user (excludes children and deleted).
      */
     suspend fun loadUserNotes(): Result<List<Note>> = runCatching {

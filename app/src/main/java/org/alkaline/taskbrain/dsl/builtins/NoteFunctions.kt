@@ -1,11 +1,13 @@
 package org.alkaline.taskbrain.dsl.builtins
 
 import kotlinx.coroutines.runBlocking
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.runtime.Arguments
 import org.alkaline.taskbrain.dsl.runtime.BooleanVal
 import org.alkaline.taskbrain.dsl.runtime.BuiltinFunction
 import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 import org.alkaline.taskbrain.dsl.runtime.DslValue
+import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.LambdaVal
 import org.alkaline.taskbrain.dsl.runtime.ListVal
@@ -13,12 +15,14 @@ import org.alkaline.taskbrain.dsl.runtime.NoteOperationException
 import org.alkaline.taskbrain.dsl.runtime.NoteVal
 import org.alkaline.taskbrain.dsl.runtime.PatternVal
 import org.alkaline.taskbrain.dsl.runtime.StringVal
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 
 /**
  * Note-related builtin functions.
  *
  * Milestone 5: find(path: pattern, name: pattern)
  * Milestone 7: new(path:, content:), maybe_new(path:, maybe_content:)
+ * Milestone 10: view(list) for inline note content display
  */
 object NoteFunctions {
 
@@ -26,6 +30,7 @@ object NoteFunctions {
         registry.register(findFunction)
         registry.register(newFunction)
         registry.register(maybeNewFunction)
+        registry.register(viewFunction)
     }
 
     /**
@@ -221,5 +226,135 @@ object NoteFunctions {
         } catch (e: NoteOperationException) {
             throw ExecutionException("Failed to create note: ${e.message}")
         }
+    }
+
+    /**
+     * view(list) - Dynamically fetch and inline content from notes.
+     *
+     * Parameters:
+     * - First positional argument: A list of notes to display (from find() or sort())
+     *
+     * Returns: A ViewVal containing the notes to be rendered inline
+     *
+     * Display: Notes' content is inlined as raw text, separated by dividers.
+     * No path headers are shown because the first line of each note serves as its title.
+     *
+     * Recursion: Viewed notes' directives also execute, including nested view directives.
+     *
+     * Circular dependency: If a view creates a cycle (A views B views A), an error is shown.
+     *
+     * Examples:
+     *   [view find(path: "inbox")]
+     *   [view sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: descending)]
+     *
+     * Milestone 10.
+     */
+    private val viewFunction = BuiltinFunction(
+        name = "view",
+        isDynamic = false  // Results are deterministic based on current note content
+    ) { args, env ->
+        // Get the list argument
+        val listArg = args[0]
+            ?: throw ExecutionException("'view' requires a list of notes as argument")
+
+        val notesList = when (listArg) {
+            is ListVal -> listArg
+            else -> throw ExecutionException("'view' argument must be a list, got ${listArg.typeName}")
+        }
+
+        // Extract notes from the list, validating each item is a NoteVal
+        val allNotes = notesList.items.mapIndexed { index, item ->
+            when (item) {
+                is NoteVal -> item.note
+                else -> throw ExecutionException(
+                    "'view' list item at index $index must be a note, got ${item.typeName}"
+                )
+            }
+        }
+
+        // Filter out the current note to prevent self-viewing
+        val currentNoteId = env.getCurrentNoteRaw()?.id
+        val notes = if (currentNoteId != null) {
+            allNotes.filter { it.id != currentNoteId }
+        } else {
+            allNotes
+        }
+
+        // Check for circular dependencies before processing
+        for (note in notes) {
+            if (env.isInViewStack(note.id)) {
+                val currentPath = env.getViewStackPath()
+                val cycleInfo = if (currentPath.isEmpty()) {
+                    note.id
+                } else {
+                    "$currentPath → ${note.id}"
+                }
+                throw ExecutionException("Circular view dependency: $cycleInfo")
+            }
+        }
+
+        // Render each note's content with directives evaluated
+        // Pass the note itself so [.] references the viewed note, not the parent
+        val renderedContents = notes.map { note ->
+            renderNoteContent(note, env)
+        }
+
+        ViewVal(notes, renderedContents)
+    }
+
+    /**
+     * Render note content by evaluating any directives it contains.
+     * Sets the viewed note as the current note so [.] references work correctly.
+     * Pushes the note onto the view stack to detect circular dependencies.
+     */
+    private fun renderNoteContent(viewedNote: org.alkaline.taskbrain.data.Note, env: Environment): String {
+        val content = viewedNote.content
+
+        // Find all directives in the content
+        val directives = DirectiveFinder.findDirectives(content)
+        if (directives.isEmpty()) {
+            return content
+        }
+
+        // Push this note onto the view stack for circular dependency detection
+        val viewStack = env.getViewStack() + viewedNote.id
+
+        // Build rendered content by replacing directive source with results
+        val result = StringBuilder()
+        var lastEnd = 0
+
+        for (directive in directives) {
+            // Append text before this directive
+            if (directive.startOffset > lastEnd) {
+                result.append(content.substring(lastEnd, directive.startOffset))
+            }
+
+            // Execute the directive with the viewed note as the current note
+            // This ensures [.] references the viewed note, not the parent note
+            val execResult = DirectiveFinder.executeDirective(
+                directive.sourceText,
+                env.getNotes(),
+                viewedNote,  // Use viewed note as current note
+                env.getNoteOperations(),
+                viewStack
+            )
+
+            if (execResult.result.error != null) {
+                // On error, keep the source text
+                result.append(directive.sourceText)
+            } else {
+                // Append the evaluated result
+                result.append(execResult.result.toValue()?.toDisplayString() ?: directive.sourceText)
+            }
+
+            lastEnd = directive.endOffset
+        }
+
+        // Append remaining text after last directive
+        if (lastEnd < content.length) {
+            result.append(content.substring(lastEnd))
+        }
+
+        return result.toString()
     }
 }
