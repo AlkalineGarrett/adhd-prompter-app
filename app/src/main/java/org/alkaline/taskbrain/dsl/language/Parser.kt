@@ -309,6 +309,9 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 } else if (name == "refresh" && check(TokenType.LBRACKET)) {
                     // Phase 0d: refresh[...] creates a time-triggered refresh block
                     parseRefreshExpression(position)
+                } else if (name == "later") {
+                    // Phase 0e: later creates a deferred reference
+                    parseLaterExpression(position)
                 } else if (check(TokenType.LBRACKET)) {
                     // Phase 0b: func[x] → func([x])
                     advance() // consume LBRACKET
@@ -724,6 +727,27 @@ class Parser(private val tokens: List<Token>, private val source: String) {
         val body = parseExpression()
         consume(TokenType.RBRACKET, "Expected ']' to close refresh block")
         return RefreshExpr(body = body, position = position)
+    }
+
+    /**
+     * Parse a later expression: later expr or later[...]
+     * Called when 'later' identifier has been consumed.
+     *
+     * `later expr` creates a deferred reference (lambda with parameter i).
+     * `later[...]` is redundant - just parses the bracket block (later is ignored).
+     *
+     * Phase 0e.
+     */
+    private fun parseLaterExpression(position: Int): LambdaExpr {
+        // Check if followed by bracket - if so, later is redundant
+        if (check(TokenType.LBRACKET)) {
+            advance() // consume LBRACKET
+            return parseDeferredBlock(previous().position)
+        }
+
+        // Otherwise, parse the next primary expression and wrap it in a lambda
+        val body = parsePrimary()
+        return LambdaExpr(params = listOf("i"), body = body, position = position)
     }
 }
 

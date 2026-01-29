@@ -216,7 +216,8 @@ class ExecutorTest {
 
     @Test
     fun `date returns today's date`() {
-        val result = execute("[date]")
+        // Phase 0c: bare temporal values require once[...] wrapper
+        val result = execute("[once[date]]")
 
         assertTrue(result is DateVal)
         assertEquals(LocalDate.now(), (result as DateVal).value)
@@ -225,7 +226,8 @@ class ExecutorTest {
     @Test
     fun `datetime returns current datetime`() {
         val before = LocalDateTime.now()
-        val result = execute("[datetime]")
+        // Phase 0c: bare temporal values require once[...] wrapper
+        val result = execute("[once[datetime]]")
         val after = LocalDateTime.now()
 
         assertTrue(result is DateTimeVal)
@@ -236,7 +238,8 @@ class ExecutorTest {
     @Test
     fun `time returns current time`() {
         val before = LocalTime.now()
-        val result = execute("[time]")
+        // Phase 0c: bare temporal values require once[...] wrapper
+        val result = execute("[once[time]]")
         val after = LocalTime.now()
 
         assertTrue(result is TimeVal)
@@ -359,7 +362,8 @@ class ExecutorTest {
     fun `end-to-end datetime`() {
         // Parse and execute
         val before = LocalDateTime.now()
-        val result = execute("[datetime]")
+        // Phase 0c: bare temporal values require once[...] wrapper
+        val result = execute("[once[datetime]]")
         val after = LocalDateTime.now()
 
         // Serialize
@@ -633,7 +637,8 @@ class ExecutorTest {
 
     @Test
     fun `empty parentheses work for zero-arg functions`() {
-        val result = execute("[date()]")
+        // Phase 0c: bare temporal values require once[...] wrapper
+        val result = execute("[once[date()]]")
 
         assertTrue(result is DateVal)
         assertEquals(LocalDate.now(), (result as DateVal).value)

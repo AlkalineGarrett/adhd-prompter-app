@@ -1083,10 +1083,20 @@ These language changes from the spec must be implemented before or alongside the
 - Time trigger analysis (backtrace + verify algorithm)
 - Scheduled re-evaluation at flip points
 
-#### 0e: Deferred block syntax `[...]`
-- **Equivalence**: `later expr` and `[expr]` are equivalent for deferring
-- **Multi-statement**: `[...]` allows semicolon-separated statements; `later` only defers next token
-- **Remove redundancy**: `later[...]` is redundant; prefer `[...]` alone
+#### 0e: Deferred block syntax `[...]` ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Modified `Parser.parsePrimary` to recognize `later` keyword
+- Added `parseLaterExpression()` for parsing `later expr` and `later[...]`
+- `later expr` wraps the next primary expression in a `LambdaExpr` with param `i`
+- `later[...]` is redundant - just parses the bracket block (later is ignored)
+- Tests: 22 tests in `LaterExprTest.kt`, all passing
+
+**Implemented features:**
+- **`later expr`**: Defers next token, wraps in lambda with parameter `i`
+- **`later[...]`**: Redundant form, equivalent to just `[...]`
+- **Equivalence**: `later 5` and `[5]` both produce lambdas returning 5
+- **Static analysis**: `later` expressions inherit body's dynamic/idempotent status
 
 #### 0f: Button and schedule updates
 - **Button**: Accept `[...]` as action parameter: `[button("label", [action])]`
