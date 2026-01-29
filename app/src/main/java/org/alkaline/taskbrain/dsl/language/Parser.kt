@@ -155,28 +155,40 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     /**
-     * Parse postfix operators (property access chains and method calls).
+     * Parse postfix operators (property access chains, method calls, and immediate invocation).
      * Example: expr.path.name -> PropertyAccess(PropertyAccess(expr, "path"), "name")
      * Example: expr.append("x") -> MethodCall(expr, "append", ["x"], [])
+     * Example: [[i.path](.)] -> LambdaExpr invoked with current note
      *
      * Milestone 6: Property access chains.
      * Milestone 7: Method calls on expressions.
+     * Phase 0b: Immediate lambda invocation with (args).
      */
     private fun parsePostfix(expr: Expression): Expression {
         var result = expr
 
-        // Keep consuming .identifier chains and method calls
-        while (match(TokenType.DOT)) {
-            val dotPosition = previous().position
-            val propToken = consume(TokenType.IDENTIFIER, "Expected property or method name after '.'")
-            val propName = propToken.literal as String
+        // Keep consuming postfix operators
+        while (true) {
+            when {
+                match(TokenType.DOT) -> {
+                    val dotPosition = previous().position
+                    val propToken = consume(TokenType.IDENTIFIER, "Expected property or method name after '.'")
+                    val propName = propToken.literal as String
 
-            // Check if this is a method call (followed by parentheses)
-            if (match(TokenType.LPAREN)) {
-                val (positionalArgs, namedArgs) = parseMethodArguments()
-                result = MethodCall(result, propName, positionalArgs, namedArgs, dotPosition)
-            } else {
-                result = PropertyAccess(result, propName, dotPosition)
+                    // Check if this is a method call (followed by parentheses)
+                    if (match(TokenType.LPAREN)) {
+                        val (positionalArgs, namedArgs) = parseMethodArguments()
+                        result = MethodCall(result, propName, positionalArgs, namedArgs, dotPosition)
+                    } else {
+                        result = PropertyAccess(result, propName, dotPosition)
+                    }
+                }
+                // Phase 0b: Immediate invocation - expr(args) where expr is a lambda
+                result is LambdaExpr && match(TokenType.LPAREN) -> {
+                    val (positionalArgs, namedArgs) = parseMethodArguments()
+                    result = LambdaInvocation(result, positionalArgs, namedArgs, result.position)
+                }
+                else -> break
             }
         }
 
@@ -235,7 +247,12 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     /**
-     * Parse a primary expression (literal, identifier, current note ref, or parenthesized call).
+     * Parse a primary expression (literal, identifier, current note ref, deferred block, or parenthesized call).
+     *
+     * Phase 0b: Added support for:
+     * - `[...]` as implicit lambda with parameter `i`
+     * - `func[x]` as equivalent to `func([x])`
+     * - `(a, b)[expr]` for multi-arg lambdas
      */
     private fun parsePrimary(): Expression {
         return when {
@@ -269,22 +286,35 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                     currentNoteRef
                 }
             }
+            match(TokenType.LBRACKET) -> {
+                // Phase 0b: `[...]` in expression position is an implicit lambda with parameter `i`
+                parseDeferredBlock(previous().position)
+            }
+            check(TokenType.LPAREN) && isMultiArgLambdaStart() -> {
+                // Phase 0b: `(a, b)[expr]` multi-arg lambda syntax
+                parseMultiArgLambda()
+            }
             match(TokenType.IDENTIFIER) -> {
                 val token = previous()
                 val name = token.literal as String
                 val position = token.position
 
-                // Check for parenthesized argument list
-                if (match(TokenType.LPAREN)) {
+                // Legacy: lambda[...] creates a lambda expression (deprecated but supported)
+                // Must check BEFORE func[x] syntax to avoid treating lambda as a function name
+                if (name == "lambda" && check(TokenType.LBRACKET)) {
+                    parseLambdaExpression(position)
+                } else if (check(TokenType.LBRACKET)) {
+                    // Phase 0b: func[x] → func([x])
+                    advance() // consume LBRACKET
+                    val lambdaBody = parseDeferredBlock(previous().position)
+                    CallExpr(name, listOf(lambdaBody), position)
+                } else if (match(TokenType.LPAREN)) {
                     // Special case: pattern(...) has its own parsing mode
                     if (name == "pattern") {
                         parsePatternExpression(position)
                     } else {
                         parseParenthesizedCall(name, position)
                     }
-                } else if (name == "lambda" && check(TokenType.LBRACKET)) {
-                    // Special case: lambda[...] creates a lambda expression
-                    parseLambdaExpression(position)
                 } else {
                     // An identifier alone becomes a zero-arg function call
                     CallExpr(name, emptyList(), position)
@@ -295,6 +325,88 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 peek().position
             )
         }
+    }
+
+    /**
+     * Check if we're at the start of a multi-arg lambda: (a, b)[expr]
+     * Looks ahead to see if there's a pattern of identifiers, commas, RPAREN, LBRACKET.
+     *
+     * Phase 0b.
+     */
+    private fun isMultiArgLambdaStart(): Boolean {
+        if (!check(TokenType.LPAREN)) return false
+
+        // Save position and scan ahead
+        var lookahead = current + 1
+        val maxLookahead = minOf(current + 20, tokens.size) // reasonable limit
+
+        // Skip past LPAREN
+        // Check for pattern: identifier (comma identifier)* RPAREN LBRACKET
+        var seenIdentifier = false
+        while (lookahead < maxLookahead) {
+            val token = tokens[lookahead]
+            when (token.type) {
+                TokenType.IDENTIFIER -> {
+                    seenIdentifier = true
+                    lookahead++
+                }
+                TokenType.COMMA -> {
+                    if (!seenIdentifier) return false
+                    lookahead++
+                    seenIdentifier = false
+                }
+                TokenType.RPAREN -> {
+                    if (!seenIdentifier) return false
+                    // Check if followed by LBRACKET
+                    return lookahead + 1 < tokens.size &&
+                           tokens[lookahead + 1].type == TokenType.LBRACKET
+                }
+                else -> return false
+            }
+        }
+        return false
+    }
+
+    /**
+     * Parse a multi-arg lambda: (a, b)[expr]
+     * Called when LPAREN is current and we've verified it's a multi-arg lambda.
+     *
+     * Phase 0b.
+     */
+    private fun parseMultiArgLambda(): LambdaExpr {
+        val position = peek().position
+        consume(TokenType.LPAREN, "Expected '(' for multi-arg lambda")
+
+        val params = mutableListOf<String>()
+
+        // Parse parameter names
+        if (!check(TokenType.RPAREN)) {
+            do {
+                val paramToken = consume(TokenType.IDENTIFIER, "Expected parameter name")
+                params.add(paramToken.literal as String)
+            } while (match(TokenType.COMMA))
+        }
+
+        consume(TokenType.RPAREN, "Expected ')' after lambda parameters")
+        consume(TokenType.LBRACKET, "Expected '[' after lambda parameters")
+
+        val body = parseExpression()
+        consume(TokenType.RBRACKET, "Expected ']' to close lambda body")
+
+        return LambdaExpr(params = params, body = body, position = position)
+    }
+
+    /**
+     * Parse a deferred block: [expr] where expr can be multi-statement.
+     * Returns a LambdaExpr with implicit parameter `i`.
+     * Called after LBRACKET has been consumed.
+     *
+     * Phase 0b.
+     */
+    private fun parseDeferredBlock(position: Int): LambdaExpr {
+        val body = parseExpression()
+        consume(TokenType.RBRACKET, "Expected ']' to close deferred block")
+        return LambdaExpr(params = listOf("i"), body = body, position = position)
     }
 
     /**

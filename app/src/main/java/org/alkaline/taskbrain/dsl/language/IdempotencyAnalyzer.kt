@@ -47,6 +47,7 @@ object IdempotencyAnalyzer {
      * Analyze an expression for idempotency.
      *
      * Milestone 8: Added LambdaExpr support.
+     * Phase 0b: Added LambdaInvocation support.
      *
      * @param expr The expression to analyze
      * @return AnalysisResult indicating whether the expression is idempotent
@@ -72,6 +73,9 @@ object IdempotencyAnalyzer {
             // Lambda expressions - analyze the body for idempotency
             is LambdaExpr -> analyze(expr.body)
 
+            // Lambda invocations - analyze lambda body and arguments
+            is LambdaInvocation -> analyzeLambdaInvocation(expr)
+
             // Function calls - check if the function is non-idempotent
             is CallExpr -> analyzeCallExpr(expr)
 
@@ -84,6 +88,30 @@ object IdempotencyAnalyzer {
             // Statement lists - non-idempotent if any statement is
             is StatementList -> analyzeStatementList(expr)
         }
+    }
+
+    private fun analyzeLambdaInvocation(expr: LambdaInvocation): AnalysisResult {
+        // Check the lambda body
+        val lambdaResult = analyze(expr.lambda.body)
+        if (!lambdaResult.isIdempotent) {
+            return lambdaResult
+        }
+
+        // Check arguments
+        for (arg in expr.args) {
+            val argResult = analyze(arg)
+            if (!argResult.isIdempotent) {
+                return argResult
+            }
+        }
+        for (namedArg in expr.namedArgs) {
+            val argResult = analyze(namedArg.value)
+            if (!argResult.isIdempotent) {
+                return argResult
+            }
+        }
+
+        return AnalysisResult.IDEMPOTENT
     }
 
     private fun analyzeCallExpr(expr: CallExpr): AnalysisResult {

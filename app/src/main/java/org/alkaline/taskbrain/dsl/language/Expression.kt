@@ -229,11 +229,27 @@ data class PatternExpr(
 /**
  * A lambda expression with implicit parameter binding.
  * Example: [lambda[i.path]] creates a lambda with param "i" and body "i.path"
+ * Example: [[add(i, 1)]] creates a lambda with param "i" (Phase 0b implicit syntax)
  *
  * Milestone 8.
+ * Phase 0b: Extended for implicit lambda syntax.
  */
 data class LambdaExpr(
     val params: List<String>,  // Parameter names (e.g., ["i"] for implicit form)
     val body: Expression,
+    override val position: Int
+) : Expression()
+
+/**
+ * Immediate invocation of a lambda expression.
+ * Example: [[i.path](.)] invokes the lambda with the current note
+ * Example: [[add(i, 1)](5)] invokes the lambda with argument 5
+ *
+ * Phase 0b.
+ */
+data class LambdaInvocation(
+    val lambda: LambdaExpr,
+    val args: List<Expression>,
+    val namedArgs: List<NamedArg>,
     override val position: Int
 ) : Expression()

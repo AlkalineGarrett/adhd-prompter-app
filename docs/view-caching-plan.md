@@ -1019,13 +1019,26 @@ These language changes from the spec must be implemented before or alongside the
 - **String methods**: `.startsWith(prefix)`, `.endsWith(suffix)`, `.contains(substring)`
 - **String coercion**: Dates/times/datetimes can be compared with ISO strings (e.g., `d.gt("2026-01-15")`)
 
-#### 0b: Implicit lambda syntax `[...]`
-- **Parser**: Recognize `[...]` in argument position as implicit lambda with parameter `i`
+#### 0b: Implicit lambda syntax `[...]` ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Modified `Parser.parsePrimary` to recognize `[...]` as implicit lambda with parameter `i`
+- Added `parseDeferredBlock()` for parsing implicit lambdas
+- Added `isMultiArgLambdaStart()` and `parseMultiArgLambda()` for `(a, b)[expr]` syntax
+- Extended `parsePostfix()` to handle immediate invocation `[[expr](arg)]`
+- Added `LambdaInvocation` AST node in `Expression.kt`
+- Extended `Executor.evaluate()` to handle `LambdaInvocation`
+- Extended `DynamicCallAnalyzer` and `IdempotencyAnalyzer` for new AST nodes
+- Fixed parser ordering: `lambda[...]` check now comes before `func[x]` check
+- Tests: 27 tests in `ImplicitLambdaTest.kt`, all passing
+
+**Implemented features:**
+- **Implicit lambda**: `[expr]` creates lambda with parameter `i`
 - **Variable assignment**: `[f: [add(i, 1)]]` creates a lambda bound to `f`
 - **Multi-arg lambdas**: `[(a, b)[expr]]` syntax for explicit parameters
 - **Legacy support**: `lambda[...]` remains valid but deprecated
-- **Nested brackets**: Ensure parser handles `[find(where: [i.path.startsWith("x")])]`
-- **Parentheses equivalence**: `func[x]` and `func([x])` parse to same AST for single-argument blocks
+- **Nested brackets**: Parser handles `[find(where: [i.path.startsWith("x")])]`
+- **Parentheses equivalence**: `func[x]` equivalent to `func([x])`
 - **Immediate invocation**: `[[expr](arg)]` parses as lambda creation + call
 
 #### 0c: `once[...]` execution block

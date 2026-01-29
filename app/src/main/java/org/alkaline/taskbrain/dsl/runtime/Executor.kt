@@ -6,6 +6,7 @@ import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Directive
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.LambdaExpr
+import org.alkaline.taskbrain.dsl.language.LambdaInvocation
 import org.alkaline.taskbrain.dsl.language.MethodCall
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.PatternExpr
@@ -56,6 +57,7 @@ class Executor {
      *
      * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
      * Milestone 8: Added LambdaExpr.
+     * Phase 0b: Added LambdaInvocation.
      */
     fun evaluate(expr: Expression, env: Environment): DslValue {
         return when (expr) {
@@ -70,6 +72,7 @@ class Executor {
             is VariableRef -> evaluateVariableRef(expr, env)
             is MethodCall -> evaluateMethodCall(expr, env)
             is LambdaExpr -> evaluateLambda(expr, env)
+            is LambdaInvocation -> evaluateLambdaInvocation(expr, env)
         }
     }
 
@@ -81,6 +84,39 @@ class Executor {
      */
     private fun evaluateLambda(expr: LambdaExpr, env: Environment): LambdaVal {
         return LambdaVal(expr.params, expr.body, env.capture())
+    }
+
+    /**
+     * Evaluate a lambda invocation (immediate call of a lambda).
+     * Example: [[add(i, 1)](5)] evaluates to 6
+     *
+     * Phase 0b.
+     */
+    private fun evaluateLambdaInvocation(expr: LambdaInvocation, env: Environment): DslValue {
+        // Evaluate the lambda
+        val lambdaVal = evaluateLambda(expr.lambda, env)
+
+        // Evaluate arguments
+        val argValues = expr.args.map { evaluate(it, env) }
+
+        // Validate argument count
+        if (argValues.size != lambdaVal.params.size) {
+            throw ExecutionException(
+                "Lambda requires ${lambdaVal.params.size} argument(s), got ${argValues.size}",
+                expr.position
+            )
+        }
+
+        // Named args not supported for lambda invocation
+        if (expr.namedArgs.isNotEmpty()) {
+            throw ExecutionException(
+                "Named arguments not supported for lambda invocation",
+                expr.position
+            )
+        }
+
+        // Invoke the lambda
+        return invokeLambda(lambdaVal, argValues)
     }
 
     /**
