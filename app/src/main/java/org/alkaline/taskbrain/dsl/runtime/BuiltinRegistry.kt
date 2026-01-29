@@ -2,6 +2,7 @@ package org.alkaline.taskbrain.dsl.runtime
 
 import org.alkaline.taskbrain.dsl.builtins.ArithmeticFunctions
 import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
+import org.alkaline.taskbrain.dsl.builtins.ComparisonFunctions
 import org.alkaline.taskbrain.dsl.builtins.DateFunctions
 import org.alkaline.taskbrain.dsl.builtins.ListFunctions
 import org.alkaline.taskbrain.dsl.builtins.NoteFunctions
@@ -38,6 +39,7 @@ object BuiltinRegistry {
         DateFunctions.register(this)
         CharacterConstants.register(this)
         ArithmeticFunctions.register(this)
+        ComparisonFunctions.register(this)
         PatternFunctions.register(this)
         NoteFunctions.register(this)
         ListFunctions.register(this)

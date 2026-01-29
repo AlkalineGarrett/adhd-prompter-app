@@ -112,4 +112,21 @@ data class Arguments(
      * Milestone 8.
      */
     fun getLambda(name: String): LambdaVal? = named[name] as? LambdaVal
+
+    /**
+     * Get a positional argument as BooleanVal, throwing with descriptive error if not present or wrong type.
+     * @param index Argument index
+     * @param funcName Function name for error messages
+     * @param paramName Parameter name for error messages
+     * @return The BooleanVal
+     * @throws ExecutionException if argument is missing or not a boolean
+     *
+     * Phase 0a: Added for comparison/logical functions.
+     */
+    fun requireBoolean(index: Int, funcName: String, paramName: String = "argument ${index + 1}"): BooleanVal {
+        val arg = positional.getOrNull(index)
+            ?: throw ExecutionException("'$funcName' missing $paramName")
+        return arg as? BooleanVal
+            ?: throw ExecutionException("'$funcName' $paramName must be a boolean, got ${arg.typeName}")
+    }
 }

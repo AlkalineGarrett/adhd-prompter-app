@@ -995,16 +995,29 @@ fun logCacheStats() {
 
 ## Implementation Phases
 
+IMPORTANT: Make sure to check @dsl-spec/dsl-spec.md for how Mindl is supposed to work for anything
+not specifically covered in this plan.
+
 ### Phase 0: Language updates (prerequisite)
 
 These language changes from the spec must be implemented before or alongside the caching work.
 
-#### 0a: Method-style syntax
-- **Parser**: Support method calls on values: `a.method(b)` as alternative to `function(a, b)`
-- **Comparison methods**: `.eq()`, `.ne()`, `.gt()`, `.lt()`, `.gte()`, `.lte()`
+#### 0a: Method-style syntax ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `ComparisonFunctions.kt` with `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `and`, `or`, `not` builtins
+- Created `MethodHandler.kt` for dispatching method calls on all DslValue types
+- Extended `Executor.evaluateMethodCall` to delegate to MethodHandler for non-NoteVal types
+- Added `requireBoolean` to Arguments.kt
+- Registered ComparisonFunctions in BuiltinRegistry
+- Tests: 54 tests in `MethodSyntaxTest.kt`, all passing
+
+**Implemented features:**
+- **Comparison methods**: `.eq()`, `.ne()`, `.gt()`, `.lt()`, `.gte()`, `.lte()` on any comparable type
 - **Logical methods**: `.and()`, `.or()` for chaining: `a.gt(x).and(a.lt(y))`
 - **Date/time methods**: `.plus(days:)`, `.plus(hours:)`, `.plus(minutes:)` on date/time/datetime
 - **String methods**: `.startsWith(prefix)`, `.endsWith(suffix)`, `.contains(substring)`
+- **String coercion**: Dates/times/datetimes can be compared with ISO strings (e.g., `d.gt("2026-01-15")`)
 
 #### 0b: Implicit lambda syntax `[...]`
 - **Parser**: Recognize `[...]` in argument position as implicit lambda with parameter `i`

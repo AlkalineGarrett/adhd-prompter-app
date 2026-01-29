@@ -201,9 +201,10 @@ class Executor {
 
     /**
      * Evaluate a method call on an expression.
-     * Example: [.append("text")], [note.append("text")]
+     * Example: [.append("text")], [note.append("text")], [date.plus(days: 7)]
      *
-     * Milestone 7.
+     * Milestone 7: Note method calls.
+     * Phase 0a: Extended to support methods on all value types via MethodHandler.
      */
     private fun evaluateMethodCall(expr: MethodCall, env: Environment): DslValue {
         val target = evaluate(expr.target, env)
@@ -213,13 +214,11 @@ class Executor {
         val namedArgs = expr.namedArgs.associate { it.name to evaluate(it.value, env) }
         val args = Arguments(positionalArgs, namedArgs)
 
-        // Dispatch to the appropriate method based on target type
+        // NoteVal has its own method handling (with environment for mutations)
+        // Other types use the generic MethodHandler
         return when (target) {
             is NoteVal -> target.callMethod(expr.methodName, args, env, expr.position)
-            else -> throw ExecutionException(
-                "Cannot call method '${expr.methodName}' on ${target.typeName}",
-                expr.position
-            )
+            else -> MethodHandler.callMethod(target, expr.methodName, args, expr.position)
         }
     }
 
