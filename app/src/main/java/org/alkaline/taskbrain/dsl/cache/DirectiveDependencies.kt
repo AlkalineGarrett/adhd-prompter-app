@@ -31,7 +31,11 @@ data class DirectiveDependencies(
 
     // Hierarchy dependencies (for .up, .root access)
     /** Dependencies on parent/ancestor notes */
-    val hierarchyDeps: List<HierarchyDependency> = emptyList()
+    val hierarchyDeps: List<HierarchyDependency> = emptyList(),
+
+    // Self-access flag (set from static analysis)
+    /** Whether this directive references the current note (.) */
+    val usesSelfAccess: Boolean = false
 ) {
     /**
      * Merge with another DirectiveDependencies (for transitive dependencies).
@@ -45,7 +49,8 @@ data class DirectiveDependencies(
         dependsOnCreated = dependsOnCreated || other.dependsOnCreated,
         dependsOnViewed = dependsOnViewed || other.dependsOnViewed,
         dependsOnNoteExistence = dependsOnNoteExistence || other.dependsOnNoteExistence,
-        hierarchyDeps = hierarchyDeps + other.hierarchyDeps
+        hierarchyDeps = hierarchyDeps + other.hierarchyDeps,
+        usesSelfAccess = usesSelfAccess || other.usesSelfAccess
     )
 
     /**
@@ -59,13 +64,14 @@ data class DirectiveDependencies(
             !dependsOnCreated &&
             !dependsOnViewed &&
             !dependsOnNoteExistence &&
-            hierarchyDeps.isEmpty()
+            hierarchyDeps.isEmpty() &&
+            !usesSelfAccess
 
     /**
-     * Check if this directive uses self-access (.).
-     * Directives with self-access cannot be shared globally.
+     * Check if this directive can be cached globally (shared across notes).
+     * Directives that reference the current note (self-access) must use per-note cache.
      */
-    fun usesSelfAccess(): Boolean = hierarchyDeps.isNotEmpty()
+    fun canShareGlobally(): Boolean = !usesSelfAccess
 
     companion object {
         /** Empty dependencies - no external data accessed */

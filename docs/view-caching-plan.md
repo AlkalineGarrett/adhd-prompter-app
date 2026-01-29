@@ -1139,16 +1139,35 @@ These language changes from the spec must be implemented before or alongside the
 - **Staleness check**: Short-circuit algorithm checking all dependency types
 - **Hierarchy resolution**: `findParent()`, `findAncestor()`, `findRoot()` via path parsing
 
-### Phase 2: AST analysis for dependency detection
-- Analyze directive AST to detect field access (path, modified, etc.)
-- Detect self-access (`.`) to determine cache shareability
-- Detect hierarchy access (`.up`, `.up(n)`, `.root`) and record `HierarchyDependency`
-- Resolve hierarchy at analysis time to capture resolved note ID and field hash
-- Track which notes' content is accessed (for content dependencies)
-- **AST normalization for cache keys**: Normalize equivalent forms before hashing:
-  - `func[x]` and `func([x])` normalize to same form
-  - Immediately-invoked lambdas `[[expr](arg)]` analyzed with arg substituted into expr
-- Output: `DirectiveAnalysis(dependencies, usesSelfAccess)`
+### Phase 2: AST analysis for dependency detection ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `DependencyAnalyzer.kt` with AST walking algorithm to detect:
+  - Self-access (`CurrentNoteRef`) → sets `usesSelfAccess = true`
+  - Field access (path, modified, created, viewed) → sets metadata dependency flags
+  - Content access (name, content) → sets `accessesFirstLine`/`accessesNonFirstLine`
+  - Hierarchy navigation (.up, .up(n), .root) → creates `HierarchyAccessPattern` entries
+  - find() usage → sets `dependsOnNoteExistence` and analyzes predicates
+- Created `DirectiveAnalysis` data class as output:
+  - `usesSelfAccess: Boolean` - determines if cache can be shared globally
+  - Metadata dependency flags (dependsOnPath, dependsOnModified, etc.)
+  - `hierarchyAccesses: List<HierarchyAccessPattern>` - detected hierarchy patterns
+  - `canShareGlobally()` and `toPartialDependencies()` helper methods
+- Created `AstNormalizer.kt` for cache key generation:
+  - Produces canonical string representation of AST (position-independent)
+  - Named args sorted for consistency
+  - `computeCacheKey()` returns SHA-256 hash of normalized form
+- Updated `DirectiveDependencies` with explicit `usesSelfAccess` field
+- Tests: 67+ tests in `DependencyAnalyzerTest.kt` and `AstNormalizerTest.kt`, all passing
+
+**Implemented features:**
+- **Self-access detection**: Tracks any `.` reference to current note
+- **Field access detection**: path, modified, created, viewed metadata dependencies
+- **Content access detection**: First line (name) vs non-first-line content
+- **Hierarchy access detection**: `.up`, `.up(n)`, `.root` with chaining support
+- **find() analysis**: Note existence dependency + predicate analysis
+- **AST normalization**: Canonical form for cache key generation
+- **HierarchyAccessPattern**: Records path and optional field for runtime resolution
 
 ### Phase 3: Time-based refresh analysis
 - Detect `once` and `refresh` modifiers
