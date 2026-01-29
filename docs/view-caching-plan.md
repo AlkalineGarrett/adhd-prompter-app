@@ -1114,15 +1114,30 @@ These language changes from the spec must be implemented before or alongside the
 - **Schedule frequency constants**: `daily`, `hourly`, `weekly` as bare identifiers
 - **Idempotency wrappers**: `button()` and `schedule()` make non-idempotent actions (like `new()`, `.append()`) safe at top-level
 
-### Phase 1: Data structures and hashing infrastructure
-- Define `DirectiveDependencies`, `MetadataHashes`, `ContentHashes`
-- Define `HierarchyDependency`, `HierarchyPath`, `NoteField` for hierarchy tracking
-- Define `CachedDirectiveResult` with dependencies and hashes
-- Implement `MetadataHasher` for on-demand field hashing
-- Implement `hashFirstLine()` and `hashNonFirstLine()` for content
-- Implement `hashField()` for hierarchy field hashing
-- Implement `isStale()` staleness check algorithm (including hierarchy checks)
-- Implement `resolveHierarchy()` for `.up`/`.root` resolution
+### Phase 1: Data structures and hashing infrastructure ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `org.alkaline.taskbrain.dsl.cache` package
+- Created `DirectiveDependencies.kt` with:
+  - `DirectiveDependencies` data class with content/metadata/hierarchy dependencies
+  - `HierarchyDependency` for .up/.root access tracking
+  - `HierarchyPath` sealed class (Up, UpN, Root)
+  - `NoteField` enum (NAME, PATH, MODIFIED, CREATED, VIEWED)
+- Created `CachedDirectiveResult.kt` with:
+  - `CachedDirectiveResult` with result, dependencies, and hashes
+  - `ContentHashes` for per-note content hashing
+  - `MetadataHashes` for collection-level hashing
+- Created `ContentHasher.kt` with SHA-256 hashing for content and fields
+- Created `MetadataHasher.kt` for on-demand collection-level hashing
+- Created `StalenessChecker.kt` with `isStale()` algorithm and `HierarchyResolver`
+- Tests: 50+ tests across 4 test files, all passing
+
+**Implemented features:**
+- **DirectiveDependencies**: Tracks per-note content, global metadata, and hierarchy dependencies
+- **Content hashing**: `hashFirstLine()`, `hashNonFirstLine()`, `hashField()`
+- **Metadata hashing**: Path, modified, created, viewed, existence hashes
+- **Staleness check**: Short-circuit algorithm checking all dependency types
+- **Hierarchy resolution**: `findParent()`, `findAncestor()`, `findRoot()` via path parsing
 
 ### Phase 2: AST analysis for dependency detection
 - Analyze directive AST to detect field access (path, modified, etc.)

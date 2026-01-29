@@ -1,0 +1,71 @@
+package org.alkaline.taskbrain.dsl.cache
+
+import org.alkaline.taskbrain.data.Note
+import java.security.MessageDigest
+
+/**
+ * Utilities for hashing note content.
+ *
+ * Phase 1: Data structures and hashing infrastructure.
+ */
+object ContentHasher {
+
+    /**
+     * Hash the first line (name) of note content.
+     */
+    fun hashFirstLine(content: String): String {
+        val firstLine = content.lineSequence().firstOrNull() ?: ""
+        return hash(firstLine)
+    }
+
+    /**
+     * Hash everything after the first line of note content.
+     */
+    fun hashNonFirstLine(content: String): String {
+        val lines = content.lines()
+        val nonFirstLines = if (lines.size > 1) {
+            lines.drop(1).joinToString("\n")
+        } else {
+            ""
+        }
+        return hash(nonFirstLines)
+    }
+
+    /**
+     * Hash a specific field of a note.
+     * Used for hierarchy dependency checks.
+     */
+    fun hashField(note: Note, field: NoteField): String {
+        val value = when (field) {
+            NoteField.NAME -> note.content.lineSequence().firstOrNull() ?: ""
+            NoteField.PATH -> note.path
+            NoteField.MODIFIED -> note.updatedAt?.toDate()?.time?.toString() ?: ""
+            NoteField.CREATED -> note.createdAt?.toDate()?.time?.toString() ?: ""
+            NoteField.VIEWED -> note.lastAccessedAt?.toDate()?.time?.toString() ?: ""
+        }
+        return hash(value)
+    }
+
+    /**
+     * Compute content hashes for a note based on which fields are depended on.
+     */
+    fun computeContentHashes(
+        note: Note,
+        needsFirstLine: Boolean,
+        needsNonFirstLine: Boolean
+    ): ContentHashes {
+        return ContentHashes(
+            firstLineHash = if (needsFirstLine) hashFirstLine(note.content) else null,
+            nonFirstLineHash = if (needsNonFirstLine) hashNonFirstLine(note.content) else null
+        )
+    }
+
+    /**
+     * Compute a SHA-256 hash of a string, returning hex representation.
+     */
+    internal fun hash(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
+        return hashBytes.joinToString("") { "%02x".format(it) }
+    }
+}
