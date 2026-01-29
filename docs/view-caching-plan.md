@@ -1062,9 +1062,26 @@ These language changes from the spec must be implemented before or alongside the
 - **Bare time error**: Dynamic temporal expressions without `once` wrapper throw error
 - **Static analysis**: `OnceExpr` is non-dynamic and idempotent (body only runs once)
 
-#### 0d: `refresh[...]` enhancements
-- **Parser**: Support `refresh[...]` block syntax (in addition to `refresh expr`)
-- **Time trigger analysis**: Integrate with Phase 3 backtrace + verify
+#### 0d: `refresh[...]` enhancements ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Added `RefreshExpr` AST node in `Expression.kt`
+- Modified `Parser.parsePrimary` to recognize `refresh[...]` syntax
+- Implemented `Executor.evaluateRefresh()` - currently just evaluates body (trigger analysis in Phase 3)
+- Updated `isTemporalExpressionWrapped()` to accept `RefreshExpr`
+- Updated `DynamicCallAnalyzer` - `RefreshExpr` is dynamic (re-evaluates at trigger times)
+- Updated `IdempotencyAnalyzer` - `RefreshExpr` is idempotent (same time = same result)
+- Tests: 23 tests in `RefreshExprTest.kt`, all passing
+
+**Implemented features:**
+- **Parser**: `refresh[...]` syntax recognized as `RefreshExpr`
+- **Execution**: Basic evaluation (body executed, result returned)
+- **Temporal validation**: `refresh[...]` is valid wrapper for temporal values
+- **Static analysis**: Dynamic (re-evaluates), idempotent (deterministic)
+
+**Deferred to Phase 3:**
+- Time trigger analysis (backtrace + verify algorithm)
+- Scheduled re-evaluation at flip points
 
 #### 0e: Deferred block syntax `[...]`
 - **Equivalence**: `later expr` and `[expr]` are equivalent for deferring

@@ -45,6 +45,11 @@ object DynamicCallAnalyzer {
                 // Even if the body contains dynamic calls, the result is static after first evaluation
                 false
             }
+            is RefreshExpr -> {
+                // refresh[...] IS dynamic - it re-evaluates at trigger times
+                // The body's dynamic status doesn't matter; the wrapper makes it dynamic
+                true
+            }
             is Assignment -> {
                 // Check both target and value
                 containsDynamicCalls(expr.target) || containsDynamicCalls(expr.value)

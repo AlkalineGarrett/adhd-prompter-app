@@ -269,3 +269,15 @@ data class OnceExpr(
     val body: Expression,
     override val position: Int
 ) : Expression()
+
+/**
+ * A refresh execution block that re-evaluates at analyzed trigger times.
+ * The trigger times are determined by analyzing time comparisons in the body.
+ * Example: [refresh[if(time.gt("12:00"), X, Y)]] - re-evaluates at 12:00
+ *
+ * Phase 0d.
+ */
+data class RefreshExpr(
+    val body: Expression,
+    override val position: Int
+) : Expression()

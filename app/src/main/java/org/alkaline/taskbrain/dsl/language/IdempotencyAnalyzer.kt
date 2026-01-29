@@ -81,6 +81,10 @@ object IdempotencyAnalyzer {
             // Even if the body is non-idempotent, it only runs once
             is OnceExpr -> AnalysisResult.IDEMPOTENT
 
+            // Refresh expressions are idempotent (same time = same result)
+            // The time-based re-evaluation doesn't affect idempotency
+            is RefreshExpr -> AnalysisResult.IDEMPOTENT
+
             // Function calls - check if the function is non-idempotent
             is CallExpr -> analyzeCallExpr(expr)
 

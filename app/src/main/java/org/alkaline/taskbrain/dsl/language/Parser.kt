@@ -306,6 +306,9 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 } else if (name == "once" && check(TokenType.LBRACKET)) {
                     // Phase 0c: once[...] creates a cached execution block
                     parseOnceExpression(position)
+                } else if (name == "refresh" && check(TokenType.LBRACKET)) {
+                    // Phase 0d: refresh[...] creates a time-triggered refresh block
+                    parseRefreshExpression(position)
                 } else if (check(TokenType.LBRACKET)) {
                     // Phase 0b: func[x] → func([x])
                     advance() // consume LBRACKET
@@ -705,6 +708,22 @@ class Parser(private val tokens: List<Token>, private val source: String) {
         val body = parseExpression()
         consume(TokenType.RBRACKET, "Expected ']' to close once block")
         return OnceExpr(body = body, position = position)
+    }
+
+    /**
+     * Parse a refresh expression: refresh[body]
+     * Called when 'refresh' identifier has been consumed and '[' is next.
+     *
+     * The body is re-evaluated at analyzed trigger times based on time comparisons.
+     * Example: refresh[if(time.gt("12:00"), X, Y)] creates RefreshExpr
+     *
+     * Phase 0d.
+     */
+    private fun parseRefreshExpression(position: Int): RefreshExpr {
+        consume(TokenType.LBRACKET, "Expected '[' after 'refresh'")
+        val body = parseExpression()
+        consume(TokenType.RBRACKET, "Expected ']' to close refresh block")
+        return RefreshExpr(body = body, position = position)
     }
 }
 

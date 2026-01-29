@@ -12,6 +12,7 @@ import org.alkaline.taskbrain.dsl.language.MethodCall
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
 import org.alkaline.taskbrain.dsl.language.OnceExpr
 import org.alkaline.taskbrain.dsl.language.PatternExpr
+import org.alkaline.taskbrain.dsl.language.RefreshExpr
 import org.alkaline.taskbrain.dsl.language.PropertyAccess
 import org.alkaline.taskbrain.dsl.language.StatementList
 import org.alkaline.taskbrain.dsl.language.StringLiteral
@@ -80,10 +81,10 @@ class Executor {
      * Check if an expression is wrapped in a temporal execution block (once, refresh).
      *
      * Phase 0c.
+     * Phase 0d: Added RefreshExpr.
      */
     private fun isTemporalExpressionWrapped(expr: Expression): Boolean {
-        return expr is OnceExpr
-        // TODO Phase 0d: Add RefreshExpr check when implemented
+        return expr is OnceExpr || expr is RefreshExpr
     }
 
     /**
@@ -107,6 +108,7 @@ class Executor {
      * Milestone 8: Added LambdaExpr.
      * Phase 0b: Added LambdaInvocation.
      * Phase 0c: Added OnceExpr.
+     * Phase 0d: Added RefreshExpr.
      */
     fun evaluate(expr: Expression, env: Environment): DslValue {
         return when (expr) {
@@ -123,6 +125,7 @@ class Executor {
             is LambdaExpr -> evaluateLambda(expr, env)
             is LambdaInvocation -> evaluateLambdaInvocation(expr, env)
             is OnceExpr -> evaluateOnce(expr, env)
+            is RefreshExpr -> evaluateRefresh(expr, env)
         }
     }
 
@@ -207,6 +210,21 @@ class Executor {
         // Use the expression's toString() as a basis for the key
         // This captures the structure of the expression
         return "once:${expr.hashCode()}"
+    }
+
+    /**
+     * Evaluate a refresh expression.
+     * For now, simply evaluates the body. Time trigger analysis will be added in Phase 3.
+     *
+     * The refresh block indicates that the expression may be re-evaluated at specific
+     * trigger times based on time comparisons in the body.
+     *
+     * Phase 0d.
+     */
+    private fun evaluateRefresh(expr: RefreshExpr, env: Environment): DslValue {
+        // For Phase 0d, simply evaluate the body
+        // Phase 3 will add trigger time analysis and scheduling
+        return evaluate(expr.body, env)
     }
 
     /**
