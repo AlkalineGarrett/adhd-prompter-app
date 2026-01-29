@@ -71,6 +71,29 @@ Lambdas passed dynamically (not determinable until runtime) are out of scope for
 
 The inner `[...]` is implicitly a deferred block that receives `i` as its parameter.
 
+### `[...]` as Regular AST Node
+
+The deferred block `[...]` is a regular AST node, not special syntax. This has implications:
+
+**Parentheses equivalence:** Functions accepting a single deferred block can use either syntax:
+```
+[once[date]]        # Block syntax
+[once([date])]      # Parentheses syntax - equivalent
+```
+
+Both produce the same AST and should hash to the same cache key.
+
+**Immediate invocation:** Since `[...]` creates a callable lambda, it can be invoked immediately:
+```
+[[i.path](.)]       # Create lambda with parameter i, call with current note
+[.path]             # Equivalent - direct property access
+```
+
+**Implications for caching:**
+- AST analysis normalizes equivalent forms before hashing
+- `once[date]` and `once([date])` share the same cache entry
+- Immediately-invoked lambdas are analyzed as if inlined (their dependencies are the lambda body's dependencies evaluated in the call context)
+
 ### Trigger Analysis: Backtrace + Verify
 
 For `refresh` directives, the system finds flip points using backtrace analysis:
@@ -989,6 +1012,8 @@ These language changes from the spec must be implemented before or alongside the
 - **Multi-arg lambdas**: `[(a, b)[expr]]` syntax for explicit parameters
 - **Legacy support**: `lambda[...]` remains valid but deprecated
 - **Nested brackets**: Ensure parser handles `[find(where: [i.path.startsWith("x")])]`
+- **Parentheses equivalence**: `func[x]` and `func([x])` parse to same AST for single-argument blocks
+- **Immediate invocation**: `[[expr](arg)]` parses as lambda creation + call
 
 #### 0c: `once[...]` execution block
 - **Parser**: Support `once[...]` as execution wrapper
@@ -1027,6 +1052,9 @@ These language changes from the spec must be implemented before or alongside the
 - Detect hierarchy access (`.up`, `.up(n)`, `.root`) and record `HierarchyDependency`
 - Resolve hierarchy at analysis time to capture resolved note ID and field hash
 - Track which notes' content is accessed (for content dependencies)
+- **AST normalization for cache keys**: Normalize equivalent forms before hashing:
+  - `func[x]` and `func([x])` normalize to same form
+  - Immediately-invoked lambdas `[[expr](arg)]` analyzed with arg substituted into expr
 - Output: `DirectiveAnalysis(dependencies, usesSelfAccess)`
 
 ### Phase 3: Time-based refresh analysis

@@ -274,6 +274,31 @@ When `[...]` appears in an argument position (to `button`, `schedule`, `find(whe
 
 **Note**: `later[...]` is redundant since the brackets already create a deferred scope. Prefer `[...]` alone.
 
+### `[...]` as AST Node
+
+The `[...]` deferred block is a regular AST node, just like any other expression. This means:
+
+**Parentheses are interchangeable** for functions taking a single deferred block:
+```
+[once[date]]        # Block syntax
+[once([date])]      # Parentheses syntax - equivalent
+[refresh[expr]]     # Block syntax
+[refresh([expr])]   # Parentheses syntax - equivalent
+```
+
+**Immediate invocation** is possible since `[...]` creates a callable lambda:
+```
+[[i.path](.)]       # Create lambda, immediately call with current note
+[.path]             # Equivalent - direct property access
+
+[[add(i, 1)](5)]    # Create lambda, call with 5 → returns 6
+[add(5, 1)]         # Equivalent
+
+[[x: i.path; string("Path: " x)](.)]    # Multi-statement lambda, immediately invoked
+```
+
+This is rarely needed but follows naturally from `[...]` being a first-class value.
+
 ### `run` - Force Evaluation in Deferred Scope
 
 Use `run` to evaluate the next token immediately within a deferred block:
