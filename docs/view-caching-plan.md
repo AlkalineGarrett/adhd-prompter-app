@@ -1041,12 +1041,26 @@ These language changes from the spec must be implemented before or alongside the
 - **Parentheses equivalence**: `func[x]` equivalent to `func([x])`
 - **Immediate invocation**: `[[expr](arg)]` parses as lambda creation + call
 
-#### 0c: `once[...]` execution block
-- **Parser**: Support `once[...]` as execution wrapper
-- **Execution**: Evaluate expression once on first execution, cache result permanently
-- **Cache key**: Directive text hash (result persists until directive text changes)
-- **Bare time error**: `[datetime]`, `[time]`, `[date]` without `once` or `refresh` → error
-- **Return type check**: Error if top-level expression returns date/time/datetime without wrapper
+#### 0c: `once[...]` execution block ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Added `OnceExpr` AST node in `Expression.kt`
+- Modified `Parser.parsePrimary` to recognize `once[...]` syntax
+- Added `OnceCache` interface and `InMemoryOnceCache` implementation
+- Added `onceCache` to `NoteContext` and propagated through `Environment`
+- Implemented `Executor.evaluateOnce()` with cache lookup and storage
+- Added bare temporal validation in `Executor.validateTemporalResult()`:
+  - Uses `DynamicCallAnalyzer.containsDynamicCalls()` to check if expression is dynamic
+  - Only errors if result is temporal AND expression contains dynamic calls
+- Fixed `DynamicCallAnalyzer` to properly analyze method calls (check target/args, not always return true)
+- Tests: 27 tests in `OnceExprTest.kt`, all passing
+
+**Implemented features:**
+- **Parser**: `once[...]` syntax recognized as `OnceExpr`
+- **Execution**: Body evaluated once, result cached by expression hash
+- **Cache**: `InMemoryOnceCache` implementation (persistent cache in later phase)
+- **Bare time error**: Dynamic temporal expressions without `once` wrapper throw error
+- **Static analysis**: `OnceExpr` is non-dynamic and idempotent (body only runs once)
 
 #### 0d: `refresh[...]` enhancements
 - **Parser**: Support `refresh[...]` block syntax (in addition to `refresh expr`)

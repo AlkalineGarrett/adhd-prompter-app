@@ -60,6 +60,7 @@ class Environment private constructor(
      *
      * Milestone 8: Propagates executor for lambda invocation.
      * Milestone 10: Propagates view stack for circular dependency detection.
+     * Phase 0c: Propagates onceCache for once[...] expression caching.
      */
     fun child(): Environment = Environment(
         parent = this,
@@ -68,7 +69,8 @@ class Environment private constructor(
             currentNote = getCurrentNoteRaw(),
             noteOperations = getNoteOperations(),
             executor = getExecutor(),
-            viewStack = getViewStack()
+            viewStack = getViewStack(),
+            onceCache = getOnceCache()
         )
     )
 
@@ -122,9 +124,30 @@ class Environment private constructor(
             currentNote = getCurrentNoteRaw(),
             noteOperations = getNoteOperations(),
             executor = executor,
-            viewStack = getViewStack()
+            viewStack = getViewStack(),
+            onceCache = getOnceCache()
         )
     )
+
+    // region OnceCache (Phase 0c)
+
+    /**
+     * Get the once cache for caching once[...] expression results.
+     * Searches up the parent chain if not set locally.
+     *
+     * Phase 0c.
+     */
+    fun getOnceCache(): OnceCache? = context.onceCache ?: parent?.getOnceCache()
+
+    /**
+     * Get the once cache, creating a default in-memory cache if none exists.
+     * This ensures once[...] expressions always have a cache available.
+     *
+     * Phase 0c.
+     */
+    fun getOrCreateOnceCache(): OnceCache = getOnceCache() ?: InMemoryOnceCache()
+
+    // endregion
 
     // region View Stack (Milestone 10)
 
@@ -165,7 +188,8 @@ class Environment private constructor(
             currentNote = getCurrentNoteRaw(),
             noteOperations = getNoteOperations(),
             executor = getExecutor(),
-            viewStack = getViewStack() + noteId
+            viewStack = getViewStack() + noteId,
+            onceCache = getOnceCache()
         )
     )
 

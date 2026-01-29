@@ -48,6 +48,7 @@ object IdempotencyAnalyzer {
      *
      * Milestone 8: Added LambdaExpr support.
      * Phase 0b: Added LambdaInvocation support.
+     * Phase 0c: Added OnceExpr support.
      *
      * @param expr The expression to analyze
      * @return AnalysisResult indicating whether the expression is idempotent
@@ -75,6 +76,10 @@ object IdempotencyAnalyzer {
 
             // Lambda invocations - analyze lambda body and arguments
             is LambdaInvocation -> analyzeLambdaInvocation(expr)
+
+            // Once expressions are always idempotent (result is cached)
+            // Even if the body is non-idempotent, it only runs once
+            is OnceExpr -> AnalysisResult.IDEMPOTENT
 
             // Function calls - check if the function is non-idempotent
             is CallExpr -> analyzeCallExpr(expr)

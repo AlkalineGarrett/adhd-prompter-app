@@ -303,6 +303,9 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 // Must check BEFORE func[x] syntax to avoid treating lambda as a function name
                 if (name == "lambda" && check(TokenType.LBRACKET)) {
                     parseLambdaExpression(position)
+                } else if (name == "once" && check(TokenType.LBRACKET)) {
+                    // Phase 0c: once[...] creates a cached execution block
+                    parseOnceExpression(position)
                 } else if (check(TokenType.LBRACKET)) {
                     // Phase 0b: func[x] → func([x])
                     advance() // consume LBRACKET
@@ -682,6 +685,26 @@ class Parser(private val tokens: List<Token>, private val source: String) {
         val body = parseExpression()
         consume(TokenType.RBRACKET, "Expected ']' to close lambda body")
         return LambdaExpr(params = listOf("i"), body = body, position = position)
+    }
+
+    // ========================================================================
+    // Execution Block Parsing (Phase 0c)
+    // ========================================================================
+
+    /**
+     * Parse a once expression: once[body]
+     * Called when 'once' identifier has been consumed and '[' is next.
+     *
+     * The body is evaluated once and the result is cached permanently.
+     * Example: once[datetime] creates OnceExpr(CallExpr("datetime", []))
+     *
+     * Phase 0c.
+     */
+    private fun parseOnceExpression(position: Int): OnceExpr {
+        consume(TokenType.LBRACKET, "Expected '[' after 'once'")
+        val body = parseExpression()
+        consume(TokenType.RBRACKET, "Expected ']' to close once block")
+        return OnceExpr(body = body, position = position)
     }
 }
 

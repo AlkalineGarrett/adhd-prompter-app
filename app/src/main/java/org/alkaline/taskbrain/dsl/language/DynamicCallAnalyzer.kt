@@ -20,6 +20,7 @@ object DynamicCallAnalyzer {
      * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall support.
      * Milestone 8: Added LambdaExpr support.
      * Phase 0b: Added LambdaInvocation support.
+     * Phase 0c: Added OnceExpr support.
      *
      * @param expr The expression to analyze
      * @return true if the expression contains any dynamic calls
@@ -39,6 +40,11 @@ object DynamicCallAnalyzer {
                     expr.args.any { containsDynamicCalls(it) } ||
                     expr.namedArgs.any { containsDynamicCalls(it.value) }
             }
+            is OnceExpr -> {
+                // once[...] is NOT dynamic - it caches the result permanently
+                // Even if the body contains dynamic calls, the result is static after first evaluation
+                false
+            }
             is Assignment -> {
                 // Check both target and value
                 containsDynamicCalls(expr.target) || containsDynamicCalls(expr.value)
@@ -48,8 +54,14 @@ object DynamicCallAnalyzer {
                 expr.statements.any { containsDynamicCalls(it) }
             }
             is MethodCall -> {
-                // Method calls on notes (like append) are considered dynamic
-                true
+                // Method calls are dynamic if:
+                // 1. The target is dynamic
+                // 2. OR any argument is dynamic
+                // Note: Note mutation methods (like append) don't return temporal values,
+                // so we don't need special handling for them here
+                containsDynamicCalls(expr.target) ||
+                    expr.args.any { containsDynamicCalls(it) } ||
+                    expr.namedArgs.any { containsDynamicCalls(it.value) }
             }
             is CallExpr -> {
                 BuiltinRegistry.isDynamic(expr.name) ||

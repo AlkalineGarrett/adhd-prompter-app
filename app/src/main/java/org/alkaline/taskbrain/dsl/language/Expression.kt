@@ -253,3 +253,19 @@ data class LambdaInvocation(
     val namedArgs: List<NamedArg>,
     override val position: Int
 ) : Expression()
+
+// ============================================================================
+// Execution Block AST Nodes (Phase 0c)
+// ============================================================================
+
+/**
+ * A once execution block that evaluates its body once and caches the result.
+ * The cached result persists until the directive text changes.
+ * Example: [once[datetime]] - captures the datetime at first evaluation
+ *
+ * Phase 0c.
+ */
+data class OnceExpr(
+    val body: Expression,
+    override val position: Int
+) : Expression()

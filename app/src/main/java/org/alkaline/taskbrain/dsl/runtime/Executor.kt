@@ -4,11 +4,13 @@ import org.alkaline.taskbrain.dsl.language.Assignment
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
 import org.alkaline.taskbrain.dsl.language.Directive
+import org.alkaline.taskbrain.dsl.language.DynamicCallAnalyzer
 import org.alkaline.taskbrain.dsl.language.Expression
 import org.alkaline.taskbrain.dsl.language.LambdaExpr
 import org.alkaline.taskbrain.dsl.language.LambdaInvocation
 import org.alkaline.taskbrain.dsl.language.MethodCall
 import org.alkaline.taskbrain.dsl.language.NumberLiteral
+import org.alkaline.taskbrain.dsl.language.OnceExpr
 import org.alkaline.taskbrain.dsl.language.PatternExpr
 import org.alkaline.taskbrain.dsl.language.PropertyAccess
 import org.alkaline.taskbrain.dsl.language.StatementList
@@ -31,11 +33,57 @@ class Executor {
      * Injects this executor into the environment for lambda invocation.
      *
      * Milestone 8: Added executor injection.
+     * Phase 0c: Added bare temporal value validation.
      */
     fun execute(directive: Directive, env: Environment = Environment()): DslValue {
         // Create an environment with this executor available for lambda invocation
         val execEnv = createExecutionEnvironment(env)
-        return evaluate(directive.expression, execEnv)
+        val result = evaluate(directive.expression, execEnv)
+
+        // Phase 0c: Validate that temporal values are wrapped in once[...] or refresh[...]
+        validateTemporalResult(result, directive.expression, directive.startPosition)
+
+        return result
+    }
+
+    /**
+     * Validate that dynamic temporal expressions are properly wrapped.
+     * Expressions containing dynamic calls (date, time, datetime) should be wrapped
+     * in once[...] to capture a snapshot or refresh[...] to specify update triggers.
+     *
+     * Only applies to expressions that contain dynamic calls - computed temporal values
+     * from static inputs (like parse_date("2026-01-15").plus(days: 1)) are allowed.
+     *
+     * Phase 0c.
+     */
+    private fun validateTemporalResult(result: DslValue, expr: Expression, position: Int) {
+        // Only validate if the expression contains dynamic calls
+        if (!DynamicCallAnalyzer.containsDynamicCalls(expr)) {
+            return
+        }
+
+        // If the result is a temporal value from a dynamic expression, it needs wrapping
+        if (result is DateVal || result is TimeVal || result is DateTimeVal) {
+            // Check if the expression is wrapped in once[...] (or refresh[...] in Phase 0d)
+            if (!isTemporalExpressionWrapped(expr)) {
+                throw ExecutionException(
+                    "Bare ${result.typeName} value is not allowed. " +
+                    "Use once[${result.typeName}] to capture a snapshot, " +
+                    "or refresh[...] to specify when to update.",
+                    position
+                )
+            }
+        }
+    }
+
+    /**
+     * Check if an expression is wrapped in a temporal execution block (once, refresh).
+     *
+     * Phase 0c.
+     */
+    private fun isTemporalExpressionWrapped(expr: Expression): Boolean {
+        return expr is OnceExpr
+        // TODO Phase 0d: Add RefreshExpr check when implemented
     }
 
     /**
@@ -58,6 +106,7 @@ class Executor {
      * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
      * Milestone 8: Added LambdaExpr.
      * Phase 0b: Added LambdaInvocation.
+     * Phase 0c: Added OnceExpr.
      */
     fun evaluate(expr: Expression, env: Environment): DslValue {
         return when (expr) {
@@ -73,6 +122,7 @@ class Executor {
             is MethodCall -> evaluateMethodCall(expr, env)
             is LambdaExpr -> evaluateLambda(expr, env)
             is LambdaInvocation -> evaluateLambdaInvocation(expr, env)
+            is OnceExpr -> evaluateOnce(expr, env)
         }
     }
 
@@ -117,6 +167,46 @@ class Executor {
 
         // Invoke the lambda
         return invokeLambda(lambdaVal, argValues)
+    }
+
+    /**
+     * Evaluate a once expression with caching.
+     * The body is evaluated once and the result is cached permanently.
+     * Example: [once[datetime]] captures the datetime at first evaluation
+     *
+     * Phase 0c.
+     */
+    private fun evaluateOnce(expr: OnceExpr, env: Environment): DslValue {
+        // Compute cache key from the expression body
+        val cacheKey = computeOnceCacheKey(expr.body)
+
+        // Get or create the once cache
+        val cache = env.getOrCreateOnceCache()
+
+        // Check if already cached
+        val cached = cache.get(cacheKey)
+        if (cached != null) {
+            return cached
+        }
+
+        // Evaluate the body
+        val result = evaluate(expr.body, env)
+
+        // Cache and return the result
+        cache.put(cacheKey, result)
+        return result
+    }
+
+    /**
+     * Compute a cache key for a once[...] expression.
+     * Uses a simple hash of the expression's string representation.
+     *
+     * Phase 0c.
+     */
+    private fun computeOnceCacheKey(expr: Expression): String {
+        // Use the expression's toString() as a basis for the key
+        // This captures the structure of the expression
+        return "once:${expr.hashCode()}"
     }
 
     /**
