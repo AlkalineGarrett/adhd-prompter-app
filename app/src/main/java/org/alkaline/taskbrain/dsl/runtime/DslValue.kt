@@ -34,3 +34,8 @@ typealias LambdaVal = org.alkaline.taskbrain.dsl.runtime.values.LambdaVal
 
 // Re-export view value (Milestone 10)
 typealias ViewVal = org.alkaline.taskbrain.dsl.runtime.values.ViewVal
+
+// Re-export action values (Phase 0f)
+typealias ButtonVal = org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
+typealias ScheduleVal = org.alkaline.taskbrain.dsl.runtime.values.ScheduleVal
+typealias ScheduleFrequency = org.alkaline.taskbrain.dsl.runtime.values.ScheduleFrequency

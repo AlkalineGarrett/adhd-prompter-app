@@ -129,4 +129,21 @@ data class Arguments(
         return arg as? BooleanVal
             ?: throw ExecutionException("'$funcName' $paramName must be a boolean, got ${arg.typeName}")
     }
+
+    /**
+     * Get a positional argument as LambdaVal, throwing with descriptive error if not present or wrong type.
+     * @param index Argument index
+     * @param funcName Function name for error messages
+     * @param paramName Parameter name for error messages
+     * @return The LambdaVal
+     * @throws ExecutionException if argument is missing or not a lambda
+     *
+     * Phase 0f: Added for button/schedule functions.
+     */
+    fun requireLambda(index: Int, funcName: String, paramName: String = "argument ${index + 1}"): LambdaVal {
+        val arg = positional.getOrNull(index)
+            ?: throw ExecutionException("'$funcName' missing $paramName")
+        return arg as? LambdaVal
+            ?: throw ExecutionException("'$funcName' $paramName must be a lambda/deferred block, got ${arg.typeName}")
+    }
 }

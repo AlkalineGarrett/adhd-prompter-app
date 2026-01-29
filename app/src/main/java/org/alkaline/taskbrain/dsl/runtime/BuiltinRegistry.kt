@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.dsl.runtime
 
+import org.alkaline.taskbrain.dsl.builtins.ActionFunctions
 import org.alkaline.taskbrain.dsl.builtins.ArithmeticFunctions
 import org.alkaline.taskbrain.dsl.builtins.CharacterConstants
 import org.alkaline.taskbrain.dsl.builtins.ComparisonFunctions
@@ -44,6 +45,7 @@ object BuiltinRegistry {
         NoteFunctions.register(this)
         ListFunctions.register(this)
         SortConstants.register(this)
+        ActionFunctions.register(this)  // Phase 0f
     }
 
     /**

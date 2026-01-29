@@ -1098,10 +1098,21 @@ These language changes from the spec must be implemented before or alongside the
 - **Equivalence**: `later 5` and `[5]` both produce lambdas returning 5
 - **Static analysis**: `later` expressions inherit body's dynamic/idempotent status
 
-#### 0f: Button and schedule updates
-- **Button**: Accept `[...]` as action parameter: `[button("label", [action])]`
-- **Schedule identifiers**: Support bare identifiers like `daily` (not just `daily_at("time")`)
-- **Schedule action**: Accept `[...]` as action parameter: `[schedule(daily, [action])]`
+#### 0f: Button and schedule updates ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `ActionValues.kt` with `ButtonVal`, `ScheduleVal`, and `ScheduleFrequency` enum
+- Created `ActionFunctions.kt` with `button()`, `schedule()`, and frequency constants
+- Added `requireLambda()` helper to `Arguments.kt`
+- Updated `IdempotencyAnalyzer` to recognize `button` and `schedule` as wrappers that make non-idempotent actions safe
+- Added re-exports in `DslValue.kt`
+- Tests: 32 tests in `ActionFunctionsTest.kt`, all passing
+
+**Implemented features:**
+- **`button(label, action)`**: Creates `ButtonVal` with label and lambda action
+- **`schedule(frequency, action)`**: Creates `ScheduleVal` with frequency and lambda action
+- **Schedule frequency constants**: `daily`, `hourly`, `weekly` as bare identifiers
+- **Idempotency wrappers**: `button()` and `schedule()` make non-idempotent actions (like `new()`, `.append()`) safe at top-level
 
 ### Phase 1: Data structures and hashing infrastructure
 - Define `DirectiveDependencies`, `MetadataHashes`, `ContentHashes`

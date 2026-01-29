@@ -38,6 +38,15 @@ object IdempotencyAnalyzer {
     private val NON_IDEMPOTENT_FUNCTIONS = setOf("new")
 
     /**
+     * Functions that wrap non-idempotent actions and make them safe.
+     * These are idempotent themselves (creating a button/schedule value is idempotent)
+     * and they don't recurse into their action argument for idempotency analysis.
+     *
+     * Phase 0f.
+     */
+    private val ACTION_WRAPPER_FUNCTIONS = setOf("button", "schedule")
+
+    /**
      * Idempotent property names that can be assigned at top-level.
      * These set a value, so repeated execution produces the same result.
      */
@@ -130,6 +139,24 @@ object IdempotencyAnalyzer {
                 "${expr.name}() creates new data and requires an explicit trigger. " +
                 "Wrap in button() or schedule() to execute."
             )
+        }
+
+        // button() and schedule() are wrapper functions that make non-idempotent
+        // actions safe. They are idempotent themselves (creating the UI element)
+        // and we don't analyze their action argument (the second positional arg).
+        // Phase 0f.
+        if (expr.name in ACTION_WRAPPER_FUNCTIONS) {
+            // Only analyze the first argument (label for button, frequency for schedule)
+            // Skip the second argument (the action lambda) since it's deferred
+            val firstArg = expr.args.getOrNull(0)
+            if (firstArg != null) {
+                val firstResult = analyze(firstArg)
+                if (!firstResult.isIdempotent) {
+                    return firstResult
+                }
+            }
+            // Don't analyze the action argument - it's intentionally deferred
+            return AnalysisResult.IDEMPOTENT
         }
 
         // Check arguments for non-idempotency
