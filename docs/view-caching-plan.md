@@ -1341,9 +1341,16 @@ These language changes from the spec must be implemented before or alongside the
 - **Listener support**: Notify when edit session ends for UI refresh
 - **Edit-aware cache**: Combined manager for edit-aware cache operations
 
-### Phase 9: Mutation handling
+### Phase 9: Mutation handling ✅ COMPLETED
 - Enforce `button` or `schedule` requirement for top-level mutations
 - Allow caching of nested idempotent mutation results
+
+**Implemented:**
+- **MutationValidator**: Validates directive expressions against mutation and temporal rules
+- **Bare mutation detection**: Rejects `new()`, `maybe_new()`, `.append()` without `button`/`schedule`
+- **Bare time value detection**: Rejects `date`, `time`, `datetime` without `once[...]`/`refresh[...]`
+- **Context-aware validation**: Properly allows mutations/time values inside wrappers
+- **Helper methods**: `containsMutations()` and `containsUnwrappedTimeValues()` for caching decisions
 
 ### Phase 10: Integration and testing
 - Hook staleness checks into note open and save flows
