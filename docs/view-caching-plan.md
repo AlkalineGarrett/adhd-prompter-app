@@ -1314,11 +1314,32 @@ These language changes from the spec must be implemented before or alongside the
 - **Result building**: `CachedResultBuilder` computes all hashes from dependencies
 - **Integration scenarios**: Tested view→find, lambda references, nested views
 
-### Phase 8: Inline editing support
-- Track `EditContext` (edited note, originating note)
-- Queue invalidations during active edit session
-- Detect edit session end (blur, save, navigation)
-- Apply queued invalidations on session end
+### Phase 8: Inline editing support ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `EditSessionManager.kt`:
+  - `EditContext` data class tracking editedNoteId, originatingNoteId, and editStartTime
+  - Session expiration support (default 5 minutes) as safety fallback
+  - `InvalidationReason` enum for categorizing invalidation causes
+  - `PendingInvalidation` data class for queued invalidations
+  - `EditSessionManager` class coordinating:
+    - `startEditSession()` / `endEditSession()` / `abortEditSession()`
+    - `shouldSuppressInvalidation()` for checking if note is originating
+    - `requestInvalidation()` that queues or applies based on session state
+    - Session end listeners for notification
+    - `checkAndHandleExpiredSession()` for timeout handling
+  - `EditAwareCacheManager` wrapper combining cache + edit session logic:
+    - `getIfValidOrSuppressed()` returns cached result when staleness suppressed
+    - `invalidateForChangedNotes()` respects edit session
+- Tests: 35+ tests in `EditSessionManagerTest.kt`, all passing
+
+**Implemented features:**
+- **Edit context tracking**: Track which note is being edited and from where
+- **Invalidation suppression**: Originating note's cache not invalidated during edit
+- **Pending queue**: Invalidations queued and applied when session ends
+- **Session expiration**: Safety timeout prevents indefinite suppression
+- **Listener support**: Notify when edit session ends for UI refresh
+- **Edit-aware cache**: Combined manager for edit-aware cache operations
 
 ### Phase 9: Mutation handling
 - Enforce `button` or `schedule` requirement for top-level mutations
