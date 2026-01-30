@@ -1169,12 +1169,42 @@ These language changes from the spec must be implemented before or alongside the
 - **AST normalization**: Canonical form for cache key generation
 - **HierarchyAccessPattern**: Records path and optional field for runtime resolution
 
-### Phase 3: Time-based refresh analysis
-- Detect `once` and `refresh` modifiers
-- Implement backtrace + verify algorithm for finding flip points
-- Variable resolution through constant propagation
-- Register time triggers for `refresh` directives
-- Enforce bare time value errors
+### Phase 3: Time-based refresh analysis ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `TimeTrigger.kt` with:
+  - `TimeTrigger` sealed class with `shouldTriggerAt()`, `nextTriggerAfter()`, `isRecurring`
+  - `DailyTimeTrigger` for recurring daily triggers (from `time` comparisons)
+  - `DateTrigger` for one-time date triggers (from `date` comparisons)
+  - `DateTimeTrigger` for one-time datetime triggers (from `datetime` comparisons)
+  - `RefreshAnalysis` data class with triggers list and success/error status
+  - `TimeComparison` for intermediate analysis results
+- Created `RefreshTriggerAnalyzer.kt` with backtrace + verify algorithm:
+  - `findTimeComparisons()` walks AST to find comparison method calls (gt, lt, eq, etc.)
+  - `backtraceToTemporal()` traces from comparison to time/date/datetime source
+  - `extractPlusOffset()` extracts offset from `.plus(hours:, minutes:, days:)` chains
+  - `createCandidateTrigger()` reverses math to compute trigger time
+  - `verifyTrigger()` evaluates expression at trigger time and ±1 minute to confirm flip
+  - `collectVariables()` performs constant propagation for variable resolution
+  - Handles zero-arg CallExpr as potential variable references (Mindl idiom)
+- Added `mockedTime` support to `NoteContext` and `Environment`:
+  - `getMockedTime()` and `withMockedTime()` methods
+  - Propagated through `child()`, `withExecutor()`, `pushViewStack()`
+- Updated `DateFunctions.kt` to use mocked time when available:
+  - `date`, `time`, `datetime` functions check `env.getMockedTime()`
+- Added `if(condition, thenValue, elseValue)` builtin to `ComparisonFunctions.kt`:
+  - Eager evaluation (both branches evaluated before selecting)
+  - Required for verification step to work with conditional expressions
+- Tests: 20 tests in `RefreshTriggerAnalyzerTest.kt`, all passing
+
+**Implemented features:**
+- **Backtrace algorithm**: Traces from time literals through method chains to find temporal source
+- **Math reversal**: `.plus(minutes:10).gt("12:00")` → trigger at 11:50
+- **Verification**: Evaluates at trigger ±1 minute to confirm value changes
+- **Variable resolution**: Constant propagation resolves inline variables like `start: "09:00"`
+- **Multiple triggers**: Handles expressions with multiple comparisons (e.g., working hours check)
+- **Equality handling**: Special verification for `eq` comparisons (instantaneous triggers)
+- **Trigger types**: Daily recurring (time), one-time date, one-time datetime
 
 ### Phase 4: Error classification
 - Define `DirectiveError` hierarchy with `isDeterministic` flag

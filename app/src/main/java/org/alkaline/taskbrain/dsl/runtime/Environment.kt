@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.dsl.runtime
 
 import org.alkaline.taskbrain.data.Note
+import java.time.LocalDateTime
 
 /**
  * Execution environment for Mindl evaluation.
@@ -61,6 +62,7 @@ class Environment private constructor(
      * Milestone 8: Propagates executor for lambda invocation.
      * Milestone 10: Propagates view stack for circular dependency detection.
      * Phase 0c: Propagates onceCache for once[...] expression caching.
+     * Phase 3: Propagates mockedTime for trigger verification.
      */
     fun child(): Environment = Environment(
         parent = this,
@@ -70,7 +72,8 @@ class Environment private constructor(
             noteOperations = getNoteOperations(),
             executor = getExecutor(),
             viewStack = getViewStack(),
-            onceCache = getOnceCache()
+            onceCache = getOnceCache(),
+            mockedTime = getMockedTime()
         )
     )
 
@@ -125,7 +128,8 @@ class Environment private constructor(
             noteOperations = getNoteOperations(),
             executor = executor,
             viewStack = getViewStack(),
-            onceCache = getOnceCache()
+            onceCache = getOnceCache(),
+            mockedTime = getMockedTime()
         )
     )
 
@@ -189,7 +193,39 @@ class Environment private constructor(
             noteOperations = getNoteOperations(),
             executor = getExecutor(),
             viewStack = getViewStack() + noteId,
-            onceCache = getOnceCache()
+            onceCache = getOnceCache(),
+            mockedTime = getMockedTime()
+        )
+    )
+
+    // endregion
+
+    // region Mocked Time (Phase 3)
+
+    /**
+     * Get the mocked time for trigger verification.
+     * Returns null if not mocking time (use real time).
+     *
+     * Phase 3.
+     */
+    fun getMockedTime(): LocalDateTime? = context.mockedTime ?: parent?.getMockedTime()
+
+    /**
+     * Create a child environment with mocked time for trigger verification.
+     * When mocked time is set, date/time/datetime functions return values based on it.
+     *
+     * Phase 3.
+     */
+    fun withMockedTime(time: LocalDateTime): Environment = Environment(
+        parent = this,
+        context = NoteContext(
+            notes = getNotes(),
+            currentNote = getCurrentNoteRaw(),
+            noteOperations = getNoteOperations(),
+            executor = getExecutor(),
+            viewStack = getViewStack(),
+            onceCache = getOnceCache(),
+            mockedTime = time
         )
     )
 

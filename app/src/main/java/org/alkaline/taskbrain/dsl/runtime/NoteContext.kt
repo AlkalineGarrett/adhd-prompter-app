@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.dsl.runtime
 
 import org.alkaline.taskbrain.data.Note
+import java.time.LocalDateTime
 
 /**
  * Bundles the note-related context needed for Mindl execution.
@@ -12,6 +13,7 @@ import org.alkaline.taskbrain.data.Note
  * - executor: The executor instance for lambda invocation
  * - viewStack: Stack of note IDs being viewed (for circular dependency detection)
  * - onceCache: Cache for once[...] expression results
+ * - mockedTime: Override for current time (used for trigger verification in Phase 3)
  *
  * All fields are optional since different execution contexts may have
  * different subsets available.
@@ -19,6 +21,7 @@ import org.alkaline.taskbrain.data.Note
  * Milestone 8: Added executor for lambda invocation.
  * Milestone 10: Added viewStack for circular dependency detection in view().
  * Phase 0c: Added onceCache for once[...] expression caching.
+ * Phase 3: Added mockedTime for trigger verification.
  */
 data class NoteContext(
     val notes: List<Note>? = null,
@@ -26,7 +29,8 @@ data class NoteContext(
     val noteOperations: NoteOperations? = null,
     val executor: Executor? = null,
     val viewStack: List<String> = emptyList(),
-    val onceCache: OnceCache? = null
+    val onceCache: OnceCache? = null,
+    val mockedTime: LocalDateTime? = null
 ) {
     companion object {
         val EMPTY = NoteContext()

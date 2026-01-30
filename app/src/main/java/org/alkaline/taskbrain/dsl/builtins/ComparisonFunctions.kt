@@ -25,6 +25,7 @@ import java.time.LocalTime
 object ComparisonFunctions {
 
     fun register(registry: BuiltinRegistry) {
+        registry.register(ifFunction)
         registry.register(eqFunction)
         registry.register(neFunction)
         registry.register(gtFunction)
@@ -34,6 +35,22 @@ object ComparisonFunctions {
         registry.register(andFunction)
         registry.register(orFunction)
         registry.register(notFunction)
+    }
+
+    /**
+     * if(condition, thenValue, elseValue) - Returns thenValue if condition is true, else elseValue.
+     *
+     * Note: This is an eager `if` - both branches are evaluated before selecting one.
+     * This is suitable for pure expressions but not for side-effectful code.
+     *
+     * Phase 3: Added for time-based refresh analysis.
+     */
+    private val ifFunction = BuiltinFunction(name = "if") { args, _ ->
+        args.requireExactCount(3, "if")
+        val condition = args.requireBoolean(0, "if", "condition")
+        val thenValue = args.require(1, "then value")
+        val elseValue = args.require(2, "else value")
+        if (condition.value) thenValue else elseValue
     }
 
     /**

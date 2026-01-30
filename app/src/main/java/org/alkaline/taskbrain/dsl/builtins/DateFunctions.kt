@@ -30,39 +30,48 @@ object DateFunctions {
      * date - Returns the current date (no time component).
      * Dynamic: returns a different value each day.
      * Example: [date] -> 2026-01-25
+     *
+     * Phase 3: Uses mocked time if available for trigger verification.
      */
     private val dateFunction = BuiltinFunction(
         name = "date",
         isDynamic = true
-    ) { args, _ ->
+    ) { args, env ->
         args.requireNoArgs("date")
-        DateVal(LocalDate.now())
+        val mockedTime = env.getMockedTime()
+        DateVal(mockedTime?.toLocalDate() ?: LocalDate.now())
     }
 
     /**
      * datetime - Returns the current date and time.
      * Dynamic: returns a different value each call.
      * Example: [datetime] -> 2026-01-25, 14:30:00
+     *
+     * Phase 3: Uses mocked time if available for trigger verification.
      */
     private val datetimeFunction = BuiltinFunction(
         name = "datetime",
         isDynamic = true
-    ) { args, _ ->
+    ) { args, env ->
         args.requireNoArgs("datetime")
-        DateTimeVal(LocalDateTime.now())
+        val mockedTime = env.getMockedTime()
+        DateTimeVal(mockedTime ?: LocalDateTime.now())
     }
 
     /**
      * time - Returns the current time (no date component).
      * Dynamic: returns a different value each call.
      * Example: [time] -> 14:30:00
+     *
+     * Phase 3: Uses mocked time if available for trigger verification.
      */
     private val timeFunction = BuiltinFunction(
         name = "time",
         isDynamic = true
-    ) { args, _ ->
+    ) { args, env ->
         args.requireNoArgs("time")
-        TimeVal(LocalTime.now())
+        val mockedTime = env.getMockedTime()
+        TimeVal(mockedTime?.toLocalTime() ?: LocalTime.now())
     }
 
     /**
