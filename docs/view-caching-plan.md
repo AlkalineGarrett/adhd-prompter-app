@@ -1233,12 +1233,34 @@ These language changes from the spec must be implemented before or alongside the
 - **Cache behavior**: Deterministic errors cached, non-deterministic always retry
 - **Staleness integration**: `shouldReExecute()` considers both error type and dependency staleness
 
-### Phase 5: Cache architecture
-- **Global shared cache** for self-less directives (keyed by directive hash)
-- **Per-note cache** for self-referencing directives (keyed by note ID + position)
-- Separate find() result caching from view() rendered content
-- Implement LRU eviction with size limits
-- Add cache usage logging (every 10 minutes)
+### Phase 5: Cache architecture ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `LruCache.kt`:
+  - Generic LRU cache using LinkedHashMap with access-order iteration
+  - Thread-safe with synchronized blocks
+  - `evictTo(targetSize)` for memory pressure handling
+  - `stats()` for utilization monitoring
+- Created `DirectiveCache.kt` with:
+  - `DirectiveCache` interface for cache abstraction
+  - `GlobalDirectiveCache` for self-less directives (default 1000 entries)
+  - `PerNoteDirectiveCache` for self-referencing directives (default 100 per note, 500 notes)
+  - `DirectiveCacheManager` coordinating both caches with staleness integration
+  - `CombinedCacheStats` for aggregate reporting
+- Created `CacheLogger.kt`:
+  - Periodic logging (default every 10 minutes)
+  - `logStats()` with rate limiting
+  - Detailed and summary log formats
+- Tests: 50+ tests in `LruCacheTest.kt` and `DirectiveCacheTest.kt`, all passing
+
+**Implemented features:**
+- **LRU eviction**: Automatic eviction when exceeding max size
+- **Global cache**: Shared across notes for self-less directives (keyed by directive hash)
+- **Per-note cache**: Isolated per note for self-referencing directives (keyed by noteId + hash)
+- **Staleness integration**: `getIfValid()` checks staleness before returning cached results
+- **Memory management**: `evictForMemoryPressure()` reduces cache size under memory pressure
+- **Statistics**: Utilization tracking for both cache types
+- **Invalidation**: `invalidateForNotes()` clears per-note caches when notes change
 
 ### Phase 6: Firestore persistence layer
 - Define Firestore schema for `PersistedDirectiveResult`
