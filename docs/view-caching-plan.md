@@ -1380,3 +1380,17 @@ These language changes from the spec must be implemented before or alongside the
   - Edit session suppression
   - Error caching
   - RefreshScheduler functionality
+
+**Production Integration (2026-01-29):**
+- **CurrentNoteViewModel integration**: Replaced all 7 `DirectiveFinder.executeDirective()` calls with `cachedDirectiveExecutor.execute()`
+  - `executeDirectivesLive()` - live execution when typing
+  - `executeAndStoreDirectives()` - after save
+  - `loadDirectiveResults()` - on note load
+  - `toggleDirectiveCollapsed()` - when toggling collapse
+  - `confirmDirective()` - when confirming edits
+  - `refreshDirective()` - when refreshing
+  - `restoreExpandedDirectivesByPosition()` - after undo/redo
+- **RefreshScheduler lifecycle**: Started in ViewModel init, stopped in onCleared()
+- **Refresh trigger registration**: `registerRefreshTriggersIfNeeded()` analyzes and registers triggers for `refresh[...]` directives
+- **Edit session API**: `startInlineEditSession()`, `endInlineEditSession()`, `isInlineEditSessionActive()` exposed for UI
+- **Session end listener**: Automatically re-executes directives when edit session ends
