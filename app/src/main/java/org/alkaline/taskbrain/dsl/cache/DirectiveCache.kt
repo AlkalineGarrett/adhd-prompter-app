@@ -148,18 +148,32 @@ data class PerNoteCacheStats(
  *
  * Coordinates between global and per-note caches based on directive analysis.
  * Handles staleness checking and cache invalidation.
+ *
+ * Phase 5: In-memory L1 cache
+ * Phase 6: Added L2 (Firestore) cache support
+ *
+ * Cache lookup flow:
+ * 1. Check L1 (in-memory) cache
+ * 2. If L1 miss, check L2 (Firestore) cache
+ * 3. If L2 hit, populate L1 and return
+ * 4. If both miss, return null (caller should execute directive)
+ *
+ * Cache storage flow:
+ * 1. Store in L1 (immediate, synchronous)
+ * 2. Store in L2 (background, asynchronous)
  */
 class DirectiveCacheManager(
     private val globalCache: GlobalDirectiveCache = GlobalDirectiveCache(),
-    private val perNoteCache: PerNoteDirectiveCache = PerNoteDirectiveCache()
+    private val perNoteCache: PerNoteDirectiveCache = PerNoteDirectiveCache(),
+    private val l2Cache: L2DirectiveCache? = null  // Optional L2 cache
 ) {
     /**
-     * Get a cached result for a directive.
+     * Get a cached result for a directive (L1 only, synchronous).
      *
      * @param directiveKey The cache key (hash of normalized AST)
      * @param noteId The note containing the directive (for per-note cache lookup)
      * @param usesSelfAccess Whether the directive uses `.` self-reference
-     * @return Cached result if present and not requiring refresh, null otherwise
+     * @return Cached result if present in L1, null otherwise
      */
     fun get(
         directiveKey: String,
@@ -174,7 +188,44 @@ class DirectiveCacheManager(
     }
 
     /**
-     * Get a cached result if it's still valid (not stale).
+     * Get a cached result for a directive with L2 fallback (async).
+     *
+     * Checks L1 first, then falls back to L2 if available.
+     * If L2 hit, populates L1 before returning.
+     *
+     * @param directiveKey The cache key
+     * @param noteId The note containing the directive
+     * @param usesSelfAccess Whether the directive uses `.` self-reference
+     * @return Cached result if present in L1 or L2, null otherwise
+     */
+    suspend fun getWithL2Fallback(
+        directiveKey: String,
+        noteId: String,
+        usesSelfAccess: Boolean
+    ): CachedDirectiveResult? {
+        // Check L1 first
+        val l1Result = get(directiveKey, noteId, usesSelfAccess)
+        if (l1Result != null) return l1Result
+
+        // Check L2 if available
+        val l2 = l2Cache ?: return null
+
+        val l2Result = if (usesSelfAccess) {
+            l2.getPerNote(noteId, directiveKey)
+        } else {
+            l2.getGlobal(directiveKey)
+        }
+
+        // If L2 hit, populate L1
+        if (l2Result != null) {
+            put(directiveKey, noteId, usesSelfAccess, l2Result)
+        }
+
+        return l2Result
+    }
+
+    /**
+     * Get a cached result if it's still valid (not stale). L1 only.
      *
      * @param directiveKey The cache key
      * @param noteId The note containing the directive
@@ -201,7 +252,36 @@ class DirectiveCacheManager(
     }
 
     /**
-     * Store a result in the appropriate cache.
+     * Get a cached result if valid, with L2 fallback (async).
+     *
+     * Checks L1 first, then L2 if available. Performs staleness check on results.
+     *
+     * @param directiveKey The cache key
+     * @param noteId The note containing the directive
+     * @param usesSelfAccess Whether the directive uses `.` self-reference
+     * @param currentNotes All current notes for staleness check
+     * @param currentNote The note containing this directive
+     * @return Cached result if valid, null if stale or not present
+     */
+    suspend fun getIfValidWithL2Fallback(
+        directiveKey: String,
+        noteId: String,
+        usesSelfAccess: Boolean,
+        currentNotes: List<Note>,
+        currentNote: Note?
+    ): CachedDirectiveResult? {
+        val cached = getWithL2Fallback(directiveKey, noteId, usesSelfAccess) ?: return null
+
+        // Check if we should re-execute
+        if (StalenessChecker.shouldReExecute(cached, currentNotes, currentNote)) {
+            return null
+        }
+
+        return cached
+    }
+
+    /**
+     * Store a result in the appropriate L1 cache.
      *
      * @param directiveKey The cache key
      * @param noteId The note containing the directive
@@ -222,7 +302,36 @@ class DirectiveCacheManager(
     }
 
     /**
-     * Invalidate cached results that depend on specific notes.
+     * Store a result in both L1 and L2 caches.
+     *
+     * L1 storage is synchronous, L2 storage is asynchronous.
+     *
+     * @param directiveKey The cache key
+     * @param noteId The note containing the directive
+     * @param usesSelfAccess Whether the directive uses `.` self-reference
+     * @param result The result to cache
+     */
+    suspend fun putWithL2(
+        directiveKey: String,
+        noteId: String,
+        usesSelfAccess: Boolean,
+        result: CachedDirectiveResult
+    ) {
+        // Store in L1 immediately
+        put(directiveKey, noteId, usesSelfAccess, result)
+
+        // Store in L2 if available
+        val l2 = l2Cache ?: return
+
+        if (usesSelfAccess) {
+            l2.putPerNote(noteId, directiveKey, result)
+        } else {
+            l2.putGlobal(directiveKey, result)
+        }
+    }
+
+    /**
+     * Invalidate cached results that depend on specific notes (L1 only).
      *
      * Called when notes are modified to trigger re-evaluation of dependent directives.
      *
@@ -239,10 +348,34 @@ class DirectiveCacheManager(
     }
 
     /**
-     * Clear a specific note's cache.
+     * Invalidate cached results with L2 clearing (async).
+     *
+     * @param changedNoteIds IDs of notes that changed
+     */
+    suspend fun invalidateForNotesWithL2(changedNoteIds: Set<String>) {
+        // Clear L1
+        invalidateForNotes(changedNoteIds)
+
+        // Clear L2 if available
+        val l2 = l2Cache ?: return
+        for (noteId in changedNoteIds) {
+            l2.clearNote(noteId)
+        }
+    }
+
+    /**
+     * Clear a specific note's cache (L1 only).
      */
     fun clearNote(noteId: String) {
         perNoteCache.clearNote(noteId)
+    }
+
+    /**
+     * Clear a specific note's cache from both L1 and L2.
+     */
+    suspend fun clearNoteWithL2(noteId: String) {
+        clearNote(noteId)
+        l2Cache?.clearNote(noteId)
     }
 
     /**

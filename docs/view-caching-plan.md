@@ -1262,11 +1262,34 @@ These language changes from the spec must be implemented before or alongside the
 - **Statistics**: Utilization tracking for both cache types
 - **Invalidation**: `invalidateForNotes()` clears per-note caches when notes change
 
-### Phase 6: Firestore persistence layer
-- Define Firestore schema for `PersistedDirectiveResult`
-- Implement L1 (in-memory) → L2 (Firestore) cache flow
-- Global cache storage at `directiveCache/{hash}`
-- Per-note cache storage at `notes/{noteId}/directiveResults/{hash}`
+### Phase 6: Firestore persistence layer ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `PersistedDirectiveResult.kt`:
+  - Firestore-serializable data class with all cache fields
+  - `fromCachedResult()` and `toCachedResult()` conversion methods
+  - Full serialization for dependencies, hashes, and hierarchy info
+  - `DirectiveErrorSerializer` for error type serialization
+- Created `FirestoreDirectiveCache.kt`:
+  - `FirestoreDirectiveCache` for actual Firestore operations
+  - `L2DirectiveCache` interface for abstraction
+  - `FirestoreL2Cache` adapter implementing the interface
+  - `NoOpL2Cache` for testing and when persistence is disabled
+  - Storage paths: `users/{uid}/directiveCache/{hash}` (global), `users/{uid}/notes/{noteId}/directiveResults/{hash}` (per-note)
+- Updated `DirectiveCache.kt` (DirectiveCacheManager):
+  - Added optional `l2Cache` parameter
+  - `getWithL2Fallback()` - L1 lookup with L2 fallback, populates L1 on L2 hit
+  - `getIfValidWithL2Fallback()` - combines L2 fallback with staleness check
+  - `putWithL2()` - stores in both L1 and L2
+  - `invalidateForNotesWithL2()` and `clearNoteWithL2()` - clears both layers
+- Tests: 35+ tests in `PersistedDirectiveResultTest.kt` and `L2CacheFlowTest.kt`, all passing
+
+**Implemented features:**
+- **Serialization**: Full round-trip for DslValue, DirectiveError, dependencies, and hashes
+- **L2 interface**: Abstraction allowing mock implementations for testing
+- **L1/L2 flow**: Check L1 → miss → check L2 → hit → populate L1 → return
+- **Async operations**: All L2 operations are suspend functions
+- **Per-user storage**: Cache stored under user's document for data isolation
 
 ### Phase 7: Transitive dependency merging
 - When directive A references directive B, inherit B's dependencies
