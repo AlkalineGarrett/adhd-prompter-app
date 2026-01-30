@@ -73,8 +73,16 @@ object NoteFunctions {
             return@BuiltinFunction ListVal(emptyList())
         }
 
+        // Get current note ID to exclude from results (Phase 10)
+        val currentNoteId = env.getCurrentNoteRaw()?.id
+
         // Filter notes based on path, name, and where arguments (AND logic)
+        // Also exclude the current note to prevent self-reference
         val filtered = notes.filter { note ->
+            // Exclude current note from results
+            if (currentNoteId != null && note.id == currentNoteId) {
+                return@filter false
+            }
             val pathMatches = matchesFilter(pathArg, note.path, "path")
             val nameMatches = matchesFilter(nameArg, getNoteName(note.content), "name")
             val whereMatches = evaluateWhereLambda(whereArg, note, env)

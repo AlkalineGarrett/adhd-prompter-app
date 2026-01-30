@@ -1352,7 +1352,7 @@ These language changes from the spec must be implemented before or alongside the
 - **Context-aware validation**: Properly allows mutations/time values inside wrappers
 - **Helper methods**: `containsMutations()` and `containsUnwrappedTimeValues()` for caching decisions
 
-### Phase 10: Integration and testing
+### Phase 10: Integration and testing ✅ COMPLETED
 - Hook staleness checks into note open and save flows
 - Connect dependency tracking to directive execution
 - Ensure current note exclusion from find() results
@@ -1360,3 +1360,23 @@ These language changes from the spec must be implemented before or alongside the
 - Test with nested views, transitive dependencies, time-based refresh
 - Test inline editing scenarios
 - Test error caching behavior
+
+**Implemented:**
+- **CachedDirectiveExecutor**: Main integration point connecting caching to execution
+  - Cache hit/miss detection with L1 lookup
+  - Staleness checking before returning cached results
+  - Automatic caching of successful results and deterministic errors
+  - Edit session integration for suppressed invalidation
+- **RefreshScheduler**: Time-based cache invalidation scheduler
+  - Periodic trigger checking
+  - Daily recurring triggers and one-time date/datetime triggers
+  - Background daemon thread execution
+- **Current note exclusion**: Updated `find()` to exclude the current note from results
+- **CachedDirectiveExecutorFactory**: Factory methods for common configurations
+- **Comprehensive integration tests**: 17 tests covering:
+  - Cache hit/miss behavior
+  - Staleness detection
+  - Per-note vs global cache invalidation
+  - Edit session suppression
+  - Error caching
+  - RefreshScheduler functionality
