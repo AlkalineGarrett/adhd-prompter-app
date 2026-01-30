@@ -1206,10 +1206,32 @@ These language changes from the spec must be implemented before or alongside the
 - **Equality handling**: Special verification for `eq` comparisons (instantaneous triggers)
 - **Trigger types**: Daily recurring (time), one-time date, one-time datetime
 
-### Phase 4: Error classification
-- Define `DirectiveError` hierarchy with `isDeterministic` flag
-- Tag all error types appropriately
-- Implement conditional caching (cache deterministic, skip non-deterministic)
+### Phase 4: Error classification ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `DirectiveError.kt` with sealed class hierarchy:
+  - Base `DirectiveError` with `message`, `position`, and `isDeterministic` properties
+  - Deterministic errors (cached): `SyntaxError`, `TypeError`, `ArgumentError`, `FieldAccessError`, `ValidationError`, `UnknownIdentifierError`, `CircularDependencyError`, `ArithmeticError`
+  - Non-deterministic errors (always retry): `NetworkError`, `TimeoutError`, `ResourceUnavailableError`, `PermissionError`, `ExternalServiceError`
+  - `DirectiveErrorFactory` for converting exceptions to appropriate error types
+- Updated `CachedDirectiveResult.kt`:
+  - Added `error: DirectiveError?` field
+  - Added `isSuccess`, `isError`, `shouldRetryError` computed properties
+  - Added `success()` and `error()` factory methods with validation
+  - Init block enforces XOR: must have either result OR error, not both/neither
+- Updated `StalenessChecker.kt`:
+  - Added `shouldReExecute()` as main entry point for cache decisions
+  - Non-deterministic errors always trigger re-execution
+  - Deterministic errors use normal staleness check (cache invalidation based on dependencies)
+- Tests: 60 tests across `DirectiveErrorTest.kt` and `ErrorCachingTest.kt`, all passing
+
+**Implemented features:**
+- **Error hierarchy**: Sealed class with deterministic flag for each error type
+- **Exception conversion**: `fromException()` analyzes exception type and message
+- **Execution errors**: `fromExecutionException()` classifies runtime errors
+- **Parse errors**: `fromParseException()` creates syntax errors with position
+- **Cache behavior**: Deterministic errors cached, non-deterministic always retry
+- **Staleness integration**: `shouldReExecute()` considers both error type and dependency staleness
 
 ### Phase 5: Cache architecture
 - **Global shared cache** for self-less directives (keyed by directive hash)

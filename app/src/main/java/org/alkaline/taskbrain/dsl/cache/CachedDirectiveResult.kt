@@ -6,12 +6,18 @@ import org.alkaline.taskbrain.dsl.runtime.DslValue
  * A cached directive execution result with its dependencies and hashes.
  *
  * Phase 1: Data structures and hashing infrastructure.
+ * Phase 4: Added error support for error caching.
  *
  * This is stored in cache and used to check if the cached result is still valid.
+ * A cached result may be either a success (result != null) or an error (error != null),
+ * but not both.
  */
 data class CachedDirectiveResult(
-    /** The computed value from directive execution */
-    val result: DslValue,
+    /** The computed value from directive execution (null if error) */
+    val result: DslValue? = null,
+
+    /** Error that occurred during execution (null if success) */
+    val error: DirectiveError? = null,
 
     /** Dependencies detected during execution */
     val dependencies: DirectiveDependencies,
@@ -24,7 +30,56 @@ data class CachedDirectiveResult(
 
     /** Timestamp when this result was cached */
     val cachedAt: Long = System.currentTimeMillis()
-)
+) {
+    init {
+        require((result != null) xor (error != null)) {
+            "CachedDirectiveResult must have either result or error, not both or neither"
+        }
+    }
+
+    /** True if this cached result represents a successful execution */
+    val isSuccess: Boolean get() = result != null
+
+    /** True if this cached result represents an error */
+    val isError: Boolean get() = error != null
+
+    /** True if this error should be retried (non-deterministic error) */
+    val shouldRetryError: Boolean get() = error != null && !error.isDeterministic
+
+    companion object {
+        /**
+         * Create a successful cached result.
+         */
+        fun success(
+            result: DslValue,
+            dependencies: DirectiveDependencies,
+            noteContentHashes: Map<String, ContentHashes> = emptyMap(),
+            metadataHashes: MetadataHashes = MetadataHashes.EMPTY
+        ) = CachedDirectiveResult(
+            result = result,
+            error = null,
+            dependencies = dependencies,
+            noteContentHashes = noteContentHashes,
+            metadataHashes = metadataHashes
+        )
+
+        /**
+         * Create an error cached result.
+         */
+        fun error(
+            error: DirectiveError,
+            dependencies: DirectiveDependencies = DirectiveDependencies.EMPTY,
+            noteContentHashes: Map<String, ContentHashes> = emptyMap(),
+            metadataHashes: MetadataHashes = MetadataHashes.EMPTY
+        ) = CachedDirectiveResult(
+            result = null,
+            error = error,
+            dependencies = dependencies,
+            noteContentHashes = noteContentHashes,
+            metadataHashes = metadataHashes
+        )
+    }
+}
 
 /**
  * Content hashes for a single note.

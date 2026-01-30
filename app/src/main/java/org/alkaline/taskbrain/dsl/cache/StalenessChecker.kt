@@ -6,14 +6,48 @@ import org.alkaline.taskbrain.data.Note
  * Checks if a cached directive result is stale and needs re-execution.
  *
  * Phase 1: Data structures and hashing infrastructure.
+ * Phase 4: Added error-based cache decisions.
  *
  * Staleness is determined by comparing cached hashes with current data.
  * The algorithm short-circuits at the first stale dependency for efficiency.
+ *
+ * For error results:
+ * - Deterministic errors (syntax, type, etc.) are cached normally
+ * - Non-deterministic errors (network, timeout, etc.) always trigger re-execution
  */
 object StalenessChecker {
 
     /**
-     * Check if a cached result is stale.
+     * Determine if a cached result should be re-executed.
+     *
+     * This is the main entry point for cache decisions. It considers:
+     * 1. Whether the cached result is a non-deterministic error (always retry)
+     * 2. Whether the cached result is stale based on dependency hashes
+     *
+     * @param cached The cached directive result
+     * @param currentNotes All current notes in the system
+     * @param currentNote The note containing this directive (required for hierarchy checks)
+     * @return true if the directive should be re-executed
+     */
+    fun shouldReExecute(
+        cached: CachedDirectiveResult,
+        currentNotes: List<Note>,
+        currentNote: Note? = null
+    ): Boolean {
+        // Non-deterministic errors should always be retried
+        if (cached.shouldRetryError) {
+            return true
+        }
+
+        // Otherwise, check if the cache is stale
+        return isStale(cached, currentNotes, currentNote)
+    }
+
+    /**
+     * Check if a cached result is stale based on dependency hashes.
+     *
+     * Note: For error-aware caching, use shouldReExecute() instead, which
+     * also considers non-deterministic error retry logic.
      *
      * @param cached The cached directive result
      * @param currentNotes All current notes in the system
