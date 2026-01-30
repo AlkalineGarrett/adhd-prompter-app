@@ -1291,11 +1291,28 @@ These language changes from the spec must be implemented before or alongside the
 - **Async operations**: All L2 operations are suspend functions
 - **Per-user storage**: Cache stored under user's document for data isolation
 
-### Phase 7: Transitive dependency merging
-- When directive A references directive B, inherit B's dependencies
-- When view renders nested views, merge their dependencies
-- Propagate dependencies up to parent
-- Propagate time dependencies through lambda references
+### Phase 7: Transitive dependency merging ✅ COMPLETED
+
+**Implementation notes (2026-01-29):**
+- Created `TransitiveDependencyCollector.kt`:
+  - `TransitiveDependencyCollector` class for runtime dependency collection
+  - Stack-based context for nested directive execution
+  - `addReferencedDependencies()` / `addNestedViewDependencies()` for merging
+  - `recordFirstLineAccess()` / `recordNonFirstLineAccess()` for content tracking
+  - `recordHierarchyDependency()` for resolved hierarchy deps
+  - Automatic propagation from nested to parent contexts
+  - `DirectiveDependencyRegistry` for caching directive dependencies by key
+  - `HierarchyDependencyResolver` for resolving patterns to actual dependencies
+  - `CachedResultBuilder` for constructing complete cached results with hashes
+- Tests: 40+ tests in `TransitiveDependencyTest.kt`, all passing
+
+**Implemented features:**
+- **Nested collection**: Stack-based context management for nested directive execution
+- **Automatic propagation**: Child directive dependencies automatically propagate to parent
+- **Dependency registry**: Cache directive dependencies for later reference lookup
+- **Hierarchy resolution**: Convert static `HierarchyAccessPattern` to runtime `HierarchyDependency`
+- **Result building**: `CachedResultBuilder` computes all hashes from dependencies
+- **Integration scenarios**: Tested view→find, lambda references, nested views
 
 ### Phase 8: Inline editing support
 - Track `EditContext` (edited note, originating note)
