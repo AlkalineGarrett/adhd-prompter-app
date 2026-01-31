@@ -111,6 +111,36 @@ class EditSessionManagerTest {
     }
 
     @Test
+    fun `startEditSession flushes pending invalidations from old session`() {
+        // Phase 4: Verify pending invalidations are flushed when switching sessions
+
+        // Put something in cache for note A
+        val result = CachedDirectiveResult.success(
+            result = NumberVal(42.0),
+            dependencies = DirectiveDependencies.EMPTY
+        )
+        cacheManager.put("hash1", "A", usesSelfAccess = true, result)
+
+        // Start first session and queue an invalidation
+        editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
+        editManager.requestInvalidation("A", InvalidationReason.CONTENT_CHANGED)
+        assertEquals(1, editManager.pendingInvalidationCount())
+
+        // Cache should still exist (invalidation is queued, not applied)
+        assertNotNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+
+        // Start new session - should flush old session's pending invalidations
+        editManager.startEditSession(editedNoteId = "F", originatingNoteId = "E")
+
+        // Old session's pending invalidations should have been applied
+        assertEquals(0, editManager.pendingInvalidationCount())
+        assertNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+
+        // New session should be active
+        assertEquals("E", editManager.getEditContext()?.originatingNoteId)
+    }
+
+    @Test
     fun `abortEditSession clears session without applying invalidations`() {
         editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
         editManager.requestInvalidation("A", InvalidationReason.CONTENT_CHANGED)

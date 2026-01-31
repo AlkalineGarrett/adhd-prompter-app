@@ -1,5 +1,7 @@
 package org.alkaline.taskbrain.dsl.cache
 
+import android.util.Log
+
 /**
  * Tracks the context of an active inline edit session.
  *
@@ -112,6 +114,10 @@ data class PendingInvalidation(
 class EditSessionManager(
     private val cacheManager: DirectiveCacheManager? = null
 ) {
+    companion object {
+        private const val TAG = "EditSessionManager"
+    }
+
     /** Current active edit context, or null if no edit in progress */
     private var activeEditContext: EditContext? = null
 
@@ -128,8 +134,12 @@ class EditSessionManager(
      * @param originatingNoteId The note where the edit was initiated
      */
     fun startEditSession(editedNoteId: String, originatingNoteId: String) {
-        // End any existing session first
-        if (activeEditContext != null) {
+        // End any existing session first (Phase 4: with logging for observability)
+        val existingContext = activeEditContext
+        if (existingContext != null) {
+            val pendingCount = pendingInvalidations.size
+            Log.d(TAG, "Switching edit session: ending session for note '${existingContext.editedNoteId}' " +
+                "(originated from '${existingContext.originatingNoteId}') with $pendingCount pending invalidations")
             endEditSession()
         }
 
@@ -137,6 +147,7 @@ class EditSessionManager(
             editedNoteId = editedNoteId,
             originatingNoteId = originatingNoteId
         )
+        Log.d(TAG, "Started edit session: editing note '$editedNoteId' from '$originatingNoteId'")
     }
 
     /**
@@ -208,9 +219,12 @@ class EditSessionManager(
      * This applies all queued invalidations and clears the edit context.
      */
     fun endEditSession() {
-        if (activeEditContext == null) return
+        val context = activeEditContext ?: return
 
         // Apply all pending invalidations
+        val pendingCount = pendingInvalidations.size
+        Log.d(TAG, "Ending edit session for note '${context.editedNoteId}' " +
+            "(originated from '${context.originatingNoteId}'): applying $pendingCount pending invalidations")
         for (invalidation in pendingInvalidations) {
             applyInvalidation(invalidation.noteId, invalidation.directiveKeys)
         }
@@ -230,6 +244,12 @@ class EditSessionManager(
      * Use this when the edit is cancelled (e.g., user presses Escape).
      */
     fun abortEditSession() {
+        val context = activeEditContext
+        if (context != null) {
+            val discardedCount = pendingInvalidations.size
+            Log.d(TAG, "Aborting edit session for note '${context.editedNoteId}' " +
+                "(originated from '${context.originatingNoteId}'): discarding $discardedCount pending invalidations")
+        }
         pendingInvalidations.clear()
         activeEditContext = null
     }

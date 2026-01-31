@@ -463,17 +463,22 @@ When `cachedNotes = null` is set, also call `MetadataHasher.invalidateCache()`.
 
 ### Phase 4: Edit Session Cleanup
 
+**Status**: ✅ COMPLETED
+
 **Goal**: Ensure proper cleanup when switching edit sessions.
+
+**What was verified and implemented**:
+1. Verified that `startEditSession()` correctly calls `endEditSession()` which applies all pending invalidations from the old session
+2. Added comprehensive logging to `startEditSession()`, `endEditSession()`, and `abortEditSession()` for observability
+3. Added test `startEditSession flushes pending invalidations from old session` in `EditSessionManagerTest.kt`
 
 #### 4.1 Verify pending invalidations are flushed
 
 **Files**: `dsl/cache/EditSessionManager.kt`
 
-When `startEditSession()` ends an existing session, ensure:
-1. Pending invalidations from the old session are applied
-2. Any unsaved changes are handled (or at least logged)
-
-Current code at line 130-139 calls `endEditSession()` which should handle this, but verify the flow.
+When `startEditSession()` ends an existing session:
+1. ✅ Pending invalidations from the old session are applied (via `endEditSession()` call)
+2. ✅ Session transitions are now logged for debugging and observability
 
 ---
 
@@ -532,7 +537,7 @@ fun `refresh uses post-save data not pre-save cache`() {
 | 1. Transitive Dependencies | Critical | High | Medium | ✅ DONE |
 | 2. Atomic Save + Refresh | High | Medium | Low | ✅ DONE |
 | 3. Metadata Hash Caching | Medium | Low | Low | ✅ DONE |
-| 4. Edit Session Cleanup | Low | Low | Low | Pending |
+| 4. Edit Session Cleanup | Low | Low | Low | ✅ DONE |
 | 5. Integration Tests | High | Medium | Low | Partial (Phase 1 tests added) |
 
 **Recommended approach**:
