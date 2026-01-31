@@ -125,6 +125,8 @@ fun HangingIndentEditor(
     onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
     onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
     onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -197,6 +199,8 @@ fun HangingIndentEditor(
         onDirectiveEditConfirm = onDirectiveEditConfirm,
         onDirectiveEditCancel = onDirectiveEditCancel,
         onDirectiveRefresh = onDirectiveRefresh,
+        onViewNoteTap = onViewNoteTap,
+        onViewEditDirective = onViewEditDirective,
         modifier = modifier
     )
 }
@@ -228,6 +232,8 @@ private fun EditorLayout(
     onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
     onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
     onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -249,7 +255,9 @@ private fun EditorLayout(
             onDirectiveTap = onDirectiveTap,
             onDirectiveEditConfirm = onDirectiveEditConfirm,
             onDirectiveEditCancel = onDirectiveEditCancel,
-            onDirectiveRefresh = onDirectiveRefresh
+            onDirectiveRefresh = onDirectiveRefresh,
+            onViewNoteTap = onViewNoteTap,
+            onViewEditDirective = onViewEditDirective
         )
 
         // Selection overlay (handles + context menu)
@@ -285,7 +293,9 @@ private fun EditorRow(
     onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
     onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
     onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?
+    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?
 ) {
     // Track measured heights of directive edit rows (keyed by directive position key)
     val directiveEditHeights = remember { mutableStateMapOf<String, Int>() }
@@ -328,6 +338,8 @@ private fun EditorRow(
             onDirectiveEditCancel = onDirectiveEditCancel,
             onDirectiveRefresh = onDirectiveRefresh,
             onDirectiveEditHeightMeasured = { key, height -> directiveEditHeights[key] = height },
+            onViewNoteTap = onViewNoteTap,
+            onViewEditDirective = onViewEditDirective,
             modifier = Modifier.weight(1f)
         )
     }
@@ -432,6 +444,8 @@ private fun EditorContent(
     onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
     onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
     onDirectiveEditHeightMeasured: ((directiveKey: String, heightPx: Int) -> Unit)?,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -467,7 +481,9 @@ private fun EditorContent(
                     lineLayouts = lineLayouts,
                     onEditorFocusChanged = onEditorFocusChanged,
                     directiveResults = directiveResults,
-                    onDirectiveTap = { key, sourceText -> onDirectiveTap?.invoke(key, sourceText) }
+                    onDirectiveTap = { key, sourceText -> onDirectiveTap?.invoke(key, sourceText) },
+                    onViewNoteTap = onViewNoteTap,
+                    onViewEditDirective = onViewEditDirective
                 )
 
                 // Render edit rows for expanded directives on this line
@@ -519,7 +535,9 @@ private fun ControlledLineViewWrapper(
     lineLayouts: MutableList<LineLayoutInfo>,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null
 ) {
     val lineSelection = state.getLineSelection(index)
     val lineEndOffset = state.getLineStartOffset(index) + lineState.text.length
@@ -554,6 +572,8 @@ private fun ControlledLineViewWrapper(
         },
         directiveResults = directiveResults,
         onDirectiveTap = onDirectiveTap,
+        onViewNoteTap = onViewNoteTap,
+        onViewEditDirective = onViewEditDirective,
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->

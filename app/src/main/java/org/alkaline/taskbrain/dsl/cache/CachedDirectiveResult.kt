@@ -112,7 +112,9 @@ data class MetadataHashes(
     /** Hash of all viewed timestamps */
     val viewedHash: String? = null,
     /** Hash of sorted note IDs (for existence check) */
-    val existenceHash: String? = null
+    val existenceHash: String? = null,
+    /** Hash of all note names/first lines (for find(name: ...) queries) */
+    val allNamesHash: String? = null
 ) {
     companion object {
         val EMPTY = MetadataHashes()

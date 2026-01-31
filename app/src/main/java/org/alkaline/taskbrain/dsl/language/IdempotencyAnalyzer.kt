@@ -1,13 +1,17 @@
 package org.alkaline.taskbrain.dsl.language
 
 /**
- * Analyzes AST expressions for idempotency.
+ * Analyzes AST expressions for idempotency and mutation safety.
  *
  * Idempotency rules:
  * - Idempotent mutations (allowed at top-level): property assignments (.path, .name)
  * - Non-idempotent mutations (require button/schedule): .append(), new()
  * - Idempotent operations: maybe_new(), find(), calculations, property access
  * - Propagation: A StatementList is non-idempotent if any statement is non-idempotent
+ *
+ * Mutation safety rules:
+ * - Property assignments (.path, .name) must be wrapped in once[...] to prevent
+ *   unintended re-execution when cache becomes stale due to user edits
  *
  * Non-idempotent directives at top-level will show an error suggesting
  * to use `button` or `schedule` constructs.
@@ -234,5 +238,106 @@ object IdempotencyAnalyzer {
             }
         }
         return AnalysisResult.IDEMPOTENT
+    }
+
+    /**
+     * Check if an expression contains unwrapped mutations.
+     *
+     * Mutations (property assignments like .name: "x" or .path: "y") must be
+     * wrapped in once[...] to prevent unintended re-execution when cache becomes
+     * stale due to user edits. Without once[], a mutation like [.root.name: "foo"]
+     * would overwrite user edits to the note's first line.
+     *
+     * @param expr The top-level expression to check
+     * @return AnalysisResult - non-idempotent with error message if unwrapped mutation found
+     */
+    fun checkUnwrappedMutations(expr: Expression): AnalysisResult {
+        return when (expr) {
+            // OnceExpr wraps mutations safely - don't check inside
+            is OnceExpr -> AnalysisResult.IDEMPOTENT
+
+            // Assignment to a note property requires once[] wrapper
+            is Assignment -> {
+                if (expr.target is PropertyAccess) {
+                    val propAccess = expr.target
+                    if (propAccess.property in IDEMPOTENT_PROPERTIES) {
+                        val targetPath = formatPropertyPath(propAccess)
+                        return AnalysisResult.nonIdempotent(
+                            "Property assignment $targetPath: requires once[] wrapper. " +
+                            "Use: once[${formatAssignment(expr)}] to prevent unintended re-execution."
+                        )
+                    }
+                }
+                // Check value for nested mutations
+                checkUnwrappedMutations(expr.value)
+            }
+
+            // StatementList - check each statement
+            is StatementList -> {
+                for (statement in expr.statements) {
+                    val result = checkUnwrappedMutations(statement)
+                    if (!result.isIdempotent) {
+                        return result
+                    }
+                }
+                AnalysisResult.IDEMPOTENT
+            }
+
+            // RefreshExpr - check inside
+            is RefreshExpr -> checkUnwrappedMutations(expr.body)
+
+            // Other expressions - no unwrapped mutations
+            else -> AnalysisResult.IDEMPOTENT
+        }
+    }
+
+    /**
+     * Format a property access path for error message (e.g., ".root.name" or ".up.path").
+     */
+    private fun formatPropertyPath(expr: PropertyAccess): String {
+        val prefix = when (val t = expr.target) {
+            is CurrentNoteRef -> "."
+            is PropertyAccess -> formatPropertyPath(t) + "."
+            is MethodCall -> formatMethodCall(t) + "."
+            else -> "..."
+        }
+        return prefix + expr.property
+    }
+
+    /**
+     * Format a method call for path building (e.g., ".up(2)").
+     */
+    private fun formatMethodCall(expr: MethodCall): String {
+        val prefix = when (val t = expr.target) {
+            is CurrentNoteRef -> "."
+            is PropertyAccess -> formatPropertyPath(t) + "."
+            is MethodCall -> formatMethodCall(t) + "."
+            else -> "..."
+        }
+        val args = if (expr.args.isEmpty()) "" else expr.args.joinToString(", ") { formatValue(it) }
+        return "$prefix${expr.methodName}($args)"
+    }
+
+    /**
+     * Format a value expression for error message.
+     */
+    private fun formatValue(expr: Expression): String {
+        return when (expr) {
+            is StringLiteral -> "\"${expr.value}\""
+            is NumberLiteral -> expr.value.toString()
+            else -> "..."
+        }
+    }
+
+    /**
+     * Format an assignment expression for error message.
+     */
+    private fun formatAssignment(expr: Assignment): String {
+        val target = when (val t = expr.target) {
+            is PropertyAccess -> formatPropertyPath(t)
+            else -> "..."
+        }
+        val value = formatValue(expr.value)
+        return "$target: $value"
     }
 }

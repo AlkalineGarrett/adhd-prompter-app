@@ -67,27 +67,44 @@ object StalenessChecker {
 
         if (deps.dependsOnNoteExistence) {
             val currentHash = MetadataHasher.computeExistenceHash(currentNotes)
-            if (cachedHashes.existenceHash != currentHash) return true
+            if (cachedHashes.existenceHash != currentHash) {
+                return true
+            }
         }
 
         if (deps.dependsOnPath) {
             val currentHash = MetadataHasher.computePathHash(currentNotes)
-            if (cachedHashes.pathHash != currentHash) return true
+            if (cachedHashes.pathHash != currentHash) {
+                return true
+            }
         }
 
         if (deps.dependsOnModified) {
             val currentHash = MetadataHasher.computeModifiedHash(currentNotes)
-            if (cachedHashes.modifiedHash != currentHash) return true
+            if (cachedHashes.modifiedHash != currentHash) {
+                return true
+            }
         }
 
         if (deps.dependsOnCreated) {
             val currentHash = MetadataHasher.computeCreatedHash(currentNotes)
-            if (cachedHashes.createdHash != currentHash) return true
+            if (cachedHashes.createdHash != currentHash) {
+                return true
+            }
         }
 
         if (deps.dependsOnViewed) {
             val currentHash = MetadataHasher.computeViewedHash(currentNotes)
-            if (cachedHashes.viewedHash != currentHash) return true
+            if (cachedHashes.viewedHash != currentHash) {
+                return true
+            }
+        }
+
+        if (deps.dependsOnAllNames) {
+            val currentHash = MetadataHasher.computeAllNamesHash(currentNotes)
+            if (cachedHashes.allNamesHash != currentHash) {
+                return true
+            }
         }
 
         // Check per-note content dependencies
@@ -113,7 +130,9 @@ object StalenessChecker {
         // Requires currentNote to be passed in
         if (deps.hierarchyDeps.isNotEmpty() && currentNote != null) {
             for (dep in deps.hierarchyDeps) {
-                if (isHierarchyStale(dep, currentNote, currentNotes)) return true
+                if (isHierarchyStale(dep, currentNote, currentNotes)) {
+                    return true
+                }
             }
         }
 

@@ -52,8 +52,10 @@ object DependencyAnalyzer {
         var dependsOnCreated: Boolean = false
         var dependsOnViewed: Boolean = false
         var dependsOnNoteExistence: Boolean = false
+        var dependsOnAllNames: Boolean = false
         var accessesFirstLine: Boolean = false
         var accessesNonFirstLine: Boolean = false
+        var isMutating: Boolean = false
         val hierarchyAccesses = mutableListOf<HierarchyAccessPattern>()
 
         fun toResult(): DirectiveAnalysis {
@@ -64,8 +66,10 @@ object DependencyAnalyzer {
                 dependsOnCreated = dependsOnCreated,
                 dependsOnViewed = dependsOnViewed,
                 dependsOnNoteExistence = dependsOnNoteExistence,
+                dependsOnAllNames = dependsOnAllNames,
                 accessesFirstLine = accessesFirstLine,
                 accessesNonFirstLine = accessesNonFirstLine,
+                isMutating = isMutating,
                 hierarchyAccesses = hierarchyAccesses.toList()
             )
         }
@@ -94,6 +98,8 @@ object DependencyAnalyzer {
             is CallExpr -> analyzeCallExpr(expr, ctx)
 
             is Assignment -> {
+                // Assignments are mutating - they modify note properties
+                ctx.isMutating = true
                 analyzeExpression(expr.target, ctx)
                 analyzeExpression(expr.value, ctx)
             }
@@ -247,9 +253,12 @@ object DependencyAnalyzer {
                 }
 
                 // Check for name: argument
+                // This creates a dependency on ALL note names because find() iterates
+                // through all notes to check which ones match the name criterion
                 val nameArg = expr.namedArgs.find { it.name == "name" }
                 if (nameArg != null) {
                     ctx.accessesFirstLine = true
+                    ctx.dependsOnAllNames = true  // Global dependency on all note names
                     analyzeExpression(nameArg.value, ctx)
                 }
 
@@ -430,11 +439,17 @@ data class DirectiveAnalysis(
     /** Whether find() is used (implies note existence dependency) */
     val dependsOnNoteExistence: Boolean,
 
+    /** Whether find(name: ...) is used (depends on ALL note names) */
+    val dependsOnAllNames: Boolean,
+
     /** Whether first line (name) content is accessed */
     val accessesFirstLine: Boolean,
 
     /** Whether non-first-line content is accessed */
     val accessesNonFirstLine: Boolean,
+
+    /** Whether this directive contains mutations (assignments like .name: "x") */
+    val isMutating: Boolean,
 
     /** Hierarchy access patterns detected (.up, .root with field access) */
     val hierarchyAccesses: List<HierarchyAccessPattern>
@@ -457,6 +472,7 @@ data class DirectiveAnalysis(
         dependsOnCreated = dependsOnCreated,
         dependsOnViewed = dependsOnViewed,
         dependsOnNoteExistence = dependsOnNoteExistence,
+        dependsOnAllNames = dependsOnAllNames,
         hierarchyDeps = emptyList(),      // Filled at runtime with resolved IDs
         usesSelfAccess = usesSelfAccess
     )
@@ -470,8 +486,10 @@ data class DirectiveAnalysis(
             dependsOnCreated = false,
             dependsOnViewed = false,
             dependsOnNoteExistence = false,
+            dependsOnAllNames = false,
             accessesFirstLine = false,
             accessesNonFirstLine = false,
+            isMutating = false,
             hierarchyAccesses = emptyList()
         )
     }

@@ -67,6 +67,18 @@ object MetadataHasher {
     }
 
     /**
+     * Compute hash of all note names (first lines).
+     * Used for find(name: ...) which checks all note names.
+     */
+    fun computeAllNamesHash(notes: List<Note>): String {
+        val values = notes.sortedBy { it.id }.map { note ->
+            val firstLine = note.content.lines().firstOrNull() ?: ""
+            "${note.id}:$firstLine"
+        }
+        return ContentHasher.hash(values.joinToString("\n"))
+    }
+
+    /**
      * Compute all metadata hashes based on which fields are depended on.
      * Only computes hashes for fields that are needed.
      */
@@ -76,7 +88,8 @@ object MetadataHasher {
             modifiedHash = if (deps.dependsOnModified) computeModifiedHash(notes) else null,
             createdHash = if (deps.dependsOnCreated) computeCreatedHash(notes) else null,
             viewedHash = if (deps.dependsOnViewed) computeViewedHash(notes) else null,
-            existenceHash = if (deps.dependsOnNoteExistence) computeExistenceHash(notes) else null
+            existenceHash = if (deps.dependsOnNoteExistence) computeExistenceHash(notes) else null,
+            allNamesHash = if (deps.dependsOnAllNames) computeAllNamesHash(notes) else null
         )
     }
 }

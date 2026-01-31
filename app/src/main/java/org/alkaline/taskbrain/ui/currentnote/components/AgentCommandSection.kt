@@ -70,7 +70,12 @@ fun AgentCommandSection(
         isExpanded = isExpanded,
         onExpand = { onExpandedChange(true) },
         onCollapse = {
-            mainContentFocusRequester.requestFocus()
+            // Safely request focus - the target component might not be in the composition tree
+            try {
+                mainContentFocusRequester.requestFocus()
+            } catch (e: IllegalStateException) {
+                // FocusRequester not attached to a focusable component, ignore
+            }
             onExpandedChange(false)
         }
     )

@@ -324,6 +324,10 @@ class CachedResultBuilder(
      * Build metadata hashes for the dependencies.
      */
     fun buildMetadataHashes(): MetadataHashes {
+        val allNamesHash = if (dependencies.dependsOnAllNames) {
+            MetadataHasher.computeAllNamesHash(allNotes)
+        } else null
+
         return MetadataHashes(
             pathHash = if (dependencies.dependsOnPath)
                 MetadataHasher.computePathHash(allNotes) else null,
@@ -334,7 +338,8 @@ class CachedResultBuilder(
             viewedHash = if (dependencies.dependsOnViewed)
                 MetadataHasher.computeViewedHash(allNotes) else null,
             existenceHash = if (dependencies.dependsOnNoteExistence)
-                MetadataHasher.computeExistenceHash(allNotes) else null
+                MetadataHasher.computeExistenceHash(allNotes) else null,
+            allNamesHash = allNamesHash
         )
     }
 

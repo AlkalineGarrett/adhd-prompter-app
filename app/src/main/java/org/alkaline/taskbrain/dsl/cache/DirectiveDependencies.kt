@@ -28,6 +28,8 @@ data class DirectiveDependencies(
     val dependsOnViewed: Boolean = false,
     /** Depends on note existence (any find() was used) */
     val dependsOnNoteExistence: Boolean = false,
+    /** Depends on all note names/first lines (find(name: ...) was used) */
+    val dependsOnAllNames: Boolean = false,
 
     // Hierarchy dependencies (for .up, .root access)
     /** Dependencies on parent/ancestor notes */
@@ -49,6 +51,7 @@ data class DirectiveDependencies(
         dependsOnCreated = dependsOnCreated || other.dependsOnCreated,
         dependsOnViewed = dependsOnViewed || other.dependsOnViewed,
         dependsOnNoteExistence = dependsOnNoteExistence || other.dependsOnNoteExistence,
+        dependsOnAllNames = dependsOnAllNames || other.dependsOnAllNames,
         hierarchyDeps = hierarchyDeps + other.hierarchyDeps,
         usesSelfAccess = usesSelfAccess || other.usesSelfAccess
     )
@@ -64,6 +67,7 @@ data class DirectiveDependencies(
             !dependsOnCreated &&
             !dependsOnViewed &&
             !dependsOnNoteExistence &&
+            !dependsOnAllNames &&
             hierarchyDeps.isEmpty() &&
             !usesSelfAccess
 

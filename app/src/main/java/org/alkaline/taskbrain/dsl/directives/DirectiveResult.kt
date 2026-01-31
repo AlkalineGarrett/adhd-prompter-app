@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.dsl.directives
 
+import android.util.Log
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.dsl.runtime.DslValue
 import java.security.MessageDigest
@@ -44,6 +45,7 @@ data class DirectiveResult(
             try {
                 DslValue.deserialize(it)
             } catch (e: Exception) {
+                Log.e("DirectiveResult", "Failed to deserialize result: type=${it["type"]}, error=${e.message}", e)
                 null
             }
         }

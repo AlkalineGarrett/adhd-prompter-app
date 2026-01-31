@@ -11,17 +11,29 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -39,16 +51,29 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import android.util.Log
+import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
 import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
+import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
+import org.alkaline.taskbrain.dsl.ui.DirectiveTextInput
 import org.alkaline.taskbrain.ui.currentnote.EditorController
+import org.alkaline.taskbrain.ui.currentnote.LocalInlineEditState
+import org.alkaline.taskbrain.ui.currentnote.InlineEditSession
+
+private const val TAG = "ViewDirectiveEdit"
 
 // Directive box colors
 private val DirectiveErrorColor = Color(0xFFF44336)    // Red
 private val DirectiveWarningColor = Color(0xFFFF9800)  // Orange
 private val DirectiveSuccessColor = Color(0xFF4CAF50)  // Green
+
+// View directive colors
+private val ViewIndicatorColor = Color(0xFFB0BEC5)   // Blue-gray (left border for views)
+private val ViewDividerColor = Color(0xFFCFD8DC)     // Light blue-gray (divider between viewed notes)
 
 // Dashed box drawing parameters
 private object DirectiveBoxStyle {
@@ -66,6 +91,10 @@ private val CursorWidth = 2.dp
 // Empty directive placeholder
 private val EmptyDirectiveTapWidth = 16.dp
 
+// View directive layout
+private val ViewEditButtonSize = 24.dp
+private val ViewEditIconSize = 16.dp
+
 /**
  * A directive-aware text input that allows editing around directives.
  *
@@ -74,6 +103,7 @@ private val EmptyDirectiveTapWidth = 16.dp
  * - Directive results are displayed in dashed boxes and are tappable
  * - Non-directive text is fully editable
  * - Cursor position maps correctly between source and display
+ * - View directives show note content with inline editing support
  */
 @Composable
 internal fun DirectiveAwareLineInput(
@@ -89,6 +119,8 @@ internal fun DirectiveAwareLineInput(
     onFocusChanged: (Boolean) -> Unit,
     onTextLayoutResult: (TextLayoutResult) -> Unit,
     onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val hostView = LocalView.current
@@ -133,6 +165,25 @@ internal fun DirectiveAwareLineInput(
         }
     }
 
+    // Check if this line has a view directive
+    val viewDirectiveRange = remember(displayResult, directiveResults) {
+        val range = displayResult.directiveDisplayRanges.find { range ->
+            range.isView
+        }
+        Log.d(TAG, "Line $lineIndex: viewDirectiveRange=${range?.key}, isView=${range?.isView}, hasError=${range?.hasError}")
+        range
+    }
+
+    // Get ViewVal if this is a view directive
+    val viewVal = remember(viewDirectiveRange, directiveResults) {
+        if (viewDirectiveRange != null) {
+            val result = directiveResults[viewDirectiveRange.key]
+            val viewVal = result?.toValue() as? ViewVal
+            Log.d(TAG, "Line $lineIndex: viewVal=${viewVal != null}, notes=${viewVal?.notes?.size ?: 0}, collapsed=${result?.collapsed}")
+            viewVal
+        } else null
+    }
+
     Box(
         modifier = modifier
             .focusRequester(focusRequester)
@@ -160,8 +211,25 @@ internal fun DirectiveAwareLineInput(
                         cursorAlpha = cursorAlpha
                     )
             )
+        } else if (viewDirectiveRange != null && viewVal != null && viewDirectiveRange.hasError.not()) {
+            // View directive with successful result - render with inline editing support
+            Log.d(TAG, "Rendering ViewDirectiveInlineContent for line $lineIndex, key=${viewDirectiveRange.key}")
+            ViewDirectiveInlineContent(
+                viewVal = viewVal,
+                displayText = viewDirectiveRange.displayText,
+                directiveKey = viewDirectiveRange.key,
+                sourceText = viewDirectiveRange.sourceText,
+                textStyle = textStyle,
+                onNoteTap = { noteId, noteContent ->
+                    onViewNoteTap?.invoke(viewDirectiveRange.key, noteId, noteContent)
+                },
+                onEditDirective = {
+                    onViewEditDirective?.invoke(viewDirectiveRange.key, viewDirectiveRange.sourceText)
+                        ?: onDirectiveTap(viewDirectiveRange.key, viewDirectiveRange.sourceText)
+                }
+            )
         } else {
-            // Has directives - render with overlay boxes
+            // Has directives (non-view) - render with overlay boxes
             DirectiveOverlayText(
                 displayResult = displayResult,
                 textStyle = textStyle,
@@ -441,5 +509,762 @@ private fun mapDisplayToSourceCursor(displayCursor: Int, displayResult: DisplayT
     }
 
     return sourceCursor.coerceAtLeast(0)
+}
+
+// =============================================================================
+// View Directive Inline Content
+// =============================================================================
+
+/**
+ * Content from a view directive, rendered inline with inline editing support.
+ * Shows the viewed notes' content with a subtle left border indicator.
+ *
+ * Features:
+ * - Edit button at top-right to open directive editor overlay
+ * - Each note section is independently editable inline
+ * - Notes are separated by "---" dividers (non-editable)
+ * - Saves on blur (when focus leaves the editable section)
+ */
+@Composable
+private fun ViewDirectiveInlineContent(
+    viewVal: ViewVal,
+    displayText: String,
+    directiveKey: String,
+    sourceText: String,
+    textStyle: TextStyle,
+    onNoteTap: (noteId: String, noteContent: String) -> Unit,
+    onEditDirective: () -> Unit
+) {
+    val notes = viewVal.notes
+    val renderedContents = viewVal.renderedContents
+
+    // Track which note is currently being edited (by index)
+    var editingNoteIndex by remember { mutableStateOf<Int?>(null) }
+
+    Log.d(TAG, "ViewDirectiveInlineContent: notes=${notes.size}, editingNoteIndex=$editingNoteIndex")
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .viewIndicator(ViewIndicatorColor)
+            .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
+    ) {
+        // Edit directive button at top-right
+        IconButton(
+            onClick = onEditDirective,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(ViewEditButtonSize)
+                .padding(end = 4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Edit view directive",
+                tint = ViewIndicatorColor,
+                modifier = Modifier.size(ViewEditIconSize)
+            )
+        }
+
+        // Note content - either split by sections or as a single block
+        if (notes.isEmpty()) {
+            // Empty view - show placeholder
+            Text(
+                text = displayText,
+                style = textStyle.copy(color = ViewIndicatorColor),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = ViewEditButtonSize)
+            )
+        } else if (notes.size == 1) {
+            // Single note - simple case
+            val note = notes.first()
+            // Display rendered content, but edit raw content (preserves directives like [now])
+            val displayContent = renderedContents?.firstOrNull() ?: note.content
+            val editContent = note.content
+            Log.d(TAG, "Rendering single note: id=${note.id}, editingNoteIndex=$editingNoteIndex")
+            EditableViewNoteSection(
+                note = note,
+                displayContent = displayContent,
+                editContent = editContent,
+                textStyle = textStyle,
+                isEditing = editingNoteIndex == 0,
+                onStartEditing = {
+                    Log.d(TAG, "onStartEditing called for single note, setting editingNoteIndex=0")
+                    editingNoteIndex = 0
+                },
+                onSave = { newContent ->
+                    Log.d(TAG, "onSave called for note ${note.id}")
+                    editingNoteIndex = null
+                    onNoteTap(note.id, newContent)
+                },
+                onCancel = {
+                    Log.d(TAG, "onCancel called for note ${note.id}")
+                    editingNoteIndex = null
+                },
+                modifier = Modifier.padding(end = ViewEditButtonSize)
+            )
+        } else {
+            // Multiple notes with separators
+            Log.d(TAG, "Rendering ${notes.size} notes, editingNoteIndex=$editingNoteIndex")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = ViewEditButtonSize)
+            ) {
+                notes.forEachIndexed { index, note ->
+                    // Separator before each note except first
+                    if (index > 0) {
+                        NoteSeparator()
+                    }
+
+                    // Note section - display rendered content, but edit raw content
+                    val displayContent = renderedContents?.getOrNull(index) ?: note.content
+                    val editContent = note.content
+                    EditableViewNoteSection(
+                        note = note,
+                        displayContent = displayContent,
+                        editContent = editContent,
+                        textStyle = textStyle,
+                        isEditing = editingNoteIndex == index,
+                        onStartEditing = {
+                            Log.d(TAG, "onStartEditing called for note $index, setting editingNoteIndex=$index")
+                            editingNoteIndex = index
+                        },
+                        onSave = { newContent ->
+                            Log.d(TAG, "onSave called for note $index")
+                            editingNoteIndex = null
+                            onNoteTap(note.id, newContent)
+                        },
+                        onCancel = {
+                            Log.d(TAG, "onCancel called for note $index")
+                            editingNoteIndex = null
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A single note section within a view directive.
+ * Supports inline editing - shows text normally, becomes editable when tapped.
+ * Uses InlineEditState for full editor support (bullet, checkbox, indent commands work).
+ *
+ * @param displayContent The content to show when not editing (may be rendered with directives)
+ * @param editContent The raw content to edit (preserves directives like [now])
+ */
+@Composable
+private fun EditableViewNoteSection(
+    note: Note,
+    displayContent: String,
+    editContent: String,
+    textStyle: TextStyle,
+    isEditing: Boolean,
+    onStartEditing: () -> Unit,
+    onSave: (newContent: String) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val hostView = LocalView.current
+    val inlineEditState = LocalInlineEditState.current
+    val focusRequester = remember { FocusRequester() }
+    // Track if the text field has ever been focused - prevents canceling on initial render
+    var hasBeenFocused by remember { mutableStateOf(false) }
+
+    Log.d(TAG, "EditableViewNoteSection: noteId=${note.id}, isEditing=$isEditing, hasSession=${inlineEditState?.isEditingNote(note.id)}")
+
+    // Reset hasBeenFocused when exiting edit mode
+    LaunchedEffect(isEditing) {
+        Log.d(TAG, "EditableViewNoteSection LaunchedEffect: isEditing=$isEditing")
+        if (!isEditing) {
+            hasBeenFocused = false
+        }
+    }
+
+    // Start/end inline edit session based on editing state
+    // Use editContent (raw) for editing, not displayContent (rendered)
+    LaunchedEffect(isEditing, note.id, editContent) {
+        if (isEditing && inlineEditState != null && !inlineEditState.isEditingNote(note.id)) {
+            Log.d(TAG, "Starting inline edit session for note ${note.id} with raw content")
+            inlineEditState.startSession(note.id, editContent)
+        }
+    }
+
+    // Get the active session if this note is being edited
+    val session = if (isEditing) inlineEditState?.activeSession?.takeIf { it.noteId == note.id } else null
+
+    Box(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        if (isEditing && session != null) {
+            Log.d(TAG, "Rendering InlineNoteEditor for note ${note.id}")
+            // Editable mode - use InlineNoteEditor with proper EditorController support
+            InlineNoteEditor(
+                session = session,
+                textStyle = textStyle,
+                focusRequester = focusRequester,
+                hostView = hostView,
+                onFocusChanged = { isFocused ->
+                    Log.d(TAG, "Focus changed: isFocused=$isFocused, isEditing=$isEditing, hasBeenFocused=$hasBeenFocused")
+                    if (isFocused) {
+                        hasBeenFocused = true
+                        // Clear collapsing flag when focus is regained
+                        session.clearCollapsingFlag()
+                        Log.d(TAG, "Focus gained, setting hasBeenFocused=true")
+                    } else if (hasBeenFocused && isEditing) {
+                        // Check if focus moved to an expanded directive editor (part of inline editing)
+                        // or if we're in the process of collapsing a directive (focus will return)
+                        val hasExpandedDirective = session.expandedDirectiveKey != null
+                        val isCollapsing = session.isCollapsingDirective
+                        if (hasExpandedDirective || isCollapsing) {
+                            Log.d(TAG, "Focus lost but directive is expanded or collapsing, staying in edit mode")
+                            // Don't exit - focus moved to DirectiveEditRow or will return after collapse
+                        } else {
+                            // Only handle focus loss if we previously had focus and no directive interaction
+                            val endedSession = inlineEditState?.endSession()
+                            if (endedSession != null && endedSession.isDirty) {
+                                Log.d(TAG, "Focus lost after having focus, saving changes")
+                                onSave(endedSession.currentContent)
+                            } else {
+                                Log.d(TAG, "Focus lost after having focus, no changes, canceling")
+                                onCancel()
+                            }
+                        }
+                    } else {
+                        Log.d(TAG, "Focus changed to false but hasBeenFocused=$hasBeenFocused, ignoring")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // Request focus after the editor is composed
+            LaunchedEffect(Unit) {
+                Log.d(TAG, "Requesting focus for inline note ${note.id}")
+                try {
+                    focusRequester.requestFocus()
+                    Log.d(TAG, "Focus requested successfully")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to request focus", e)
+                }
+            }
+        } else {
+            Log.d(TAG, "Rendering display mode for note ${note.id}")
+            // Display mode - tappable text showing rendered content
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = {
+                        Log.d(TAG, "Note section tapped, calling onStartEditing for note ${note.id}")
+                        onStartEditing()
+                    })
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = displayContent,
+                        style = textStyle,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Inline editor for a note within a view directive.
+ * Uses the InlineEditSession's EditorState and EditorController for full editing support.
+ * Commands from CommandBar will route to this controller when active.
+ *
+ * Renders directives properly - collapsed by default, tappable to expand directive editor.
+ * Shows DirectiveEditRow below lines with expanded directives.
+ */
+@Composable
+private fun InlineNoteEditor(
+    session: InlineEditSession,
+    textStyle: TextStyle,
+    focusRequester: FocusRequester,
+    hostView: View,
+    onFocusChanged: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val editorState = session.editorState
+    val controller = session.controller
+    val directiveResults = session.directiveResults
+    val inlineEditState = LocalInlineEditState.current
+
+    // Track expanded directive
+    val expandedDirectiveKey = session.expandedDirectiveKey
+    val expandedDirectiveSourceText = session.expandedDirectiveSourceText
+
+    // Create IME state for the first line (or the focused line)
+    val lineIndex = editorState.focusedLineIndex
+    val imeState = remember(lineIndex, controller) {
+        LineImeState(lineIndex, controller)
+    }
+
+    // Sync IME state when content changes
+    val currentLine = editorState.lines.getOrNull(lineIndex)
+    LaunchedEffect(currentLine?.content, currentLine?.contentCursorPosition) {
+        if (!imeState.isInBatchEdit) {
+            imeState.syncFromController()
+        }
+    }
+
+    // Observe state version to trigger recomposition
+    @Suppress("UNUSED_VARIABLE")
+    val stateTrigger = editorState.stateVersion
+
+    var isFocused by remember { mutableStateOf(false) }
+
+    // Request focus back when directive editor is closed
+    LaunchedEffect(expandedDirectiveKey) {
+        if (expandedDirectiveKey == null && session.isCollapsingDirective) {
+            // Directive was collapsed, request focus back to the editor
+            try {
+                focusRequester.requestFocus()
+                // Note: clearCollapsingFlag() will be called when focus is gained
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to request focus after directive collapsed", e)
+                // Clear flag anyway to prevent getting stuck
+                session.clearCollapsingFlag()
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .focusRequester(focusRequester)
+            .onFocusChanged { focusState ->
+                isFocused = focusState.isFocused
+                onFocusChanged(focusState.isFocused)
+            }
+            .lineImeConnection(imeState, currentLine?.contentCursorPosition ?: 0, hostView)
+            .focusable()
+    ) {
+        // Render each line from the EditorState
+        editorState.lines.forEachIndexed { index, lineState ->
+            // Render the line
+            InlineEditorLine(
+                lineIndex = index,
+                lineState = lineState,
+                controller = controller,
+                textStyle = textStyle,
+                isFocused = isFocused && index == editorState.focusedLineIndex,
+                directiveResults = directiveResults,
+                onDirectiveTap = { directiveKey, sourceText ->
+                    // Toggle expanded state for the directive
+                    inlineEditState?.toggleDirectiveExpanded(directiveKey, sourceText)
+                },
+                onContentTap = {
+                    // Request focus back to maintain edit mode
+                    try {
+                        focusRequester.requestFocus()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to request focus after tap", e)
+                    }
+                }
+            )
+
+            // Check if there's an expanded directive on this line
+            val expandedOnThisLine = expandedDirectiveKey?.startsWith("$index:") == true
+            if (expandedOnThisLine && expandedDirectiveSourceText != null) {
+                // Get the result for error/warning messages
+                val result = directiveResults[expandedDirectiveKey]
+                val errorMessage = result?.error
+                val warningMessage = result?.warning?.displayMessage
+
+                DirectiveEditRow(
+                    initialText = expandedDirectiveSourceText,
+                    textStyle = textStyle,
+                    errorMessage = errorMessage,
+                    warningMessage = warningMessage,
+                    onRefresh = { currentText ->
+                        // Re-execute and update result
+                        inlineEditState?.refreshDirective(expandedDirectiveKey, currentText)
+                    },
+                    onConfirm = { newText ->
+                        // Confirm the edit
+                        inlineEditState?.confirmDirective(
+                            index,
+                            expandedDirectiveKey,
+                            expandedDirectiveSourceText,
+                            newText
+                        )
+                    },
+                    onCancel = {
+                        // Just collapse without saving changes
+                        inlineEditState?.collapseDirective()
+                    }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A single line in the inline editor.
+ * Supports directive rendering - shows computed results in dashed boxes.
+ */
+@Composable
+private fun InlineEditorLine(
+    lineIndex: Int,
+    lineState: org.alkaline.taskbrain.ui.currentnote.LineState,
+    controller: EditorController,
+    textStyle: TextStyle,
+    isFocused: Boolean,
+    directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
+    onContentTap: (() -> Unit)? = null
+) {
+    val prefix = lineState.prefix
+    val content = lineState.content
+    val cursorPosition = lineState.contentCursorPosition
+    val interactionSource = remember { MutableInteractionSource() }
+
+    // Check if prefix contains a checkbox (for tap handling)
+    val hasCheckbox = remember(prefix) {
+        org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes.hasCheckbox(prefix)
+    }
+
+    // Build display text with directive results for this line.
+    // Key adjustment: parseAllDirectiveLocations uses full text (with prefix), so offsets
+    // are relative to full text. We need to adjust keys when looking up results.
+    val prefixLength = prefix.length
+    val adjustedResults = remember(directiveResults, lineIndex, prefixLength) {
+        if (prefixLength == 0) {
+            directiveResults
+        } else {
+            // Adjust keys: if result is at "lineIndex:fullOffset", we need to look it up
+            // when buildDisplayText creates key "lineIndex:contentOffset"
+            // contentOffset = fullOffset - prefixLength
+            directiveResults.mapKeys { (key, _) ->
+                val parts = key.split(":")
+                if (parts.size == 2 && parts[0] == lineIndex.toString()) {
+                    val fullOffset = parts[1].toIntOrNull() ?: return@mapKeys key
+                    val contentOffset = fullOffset - prefixLength
+                    if (contentOffset >= 0) "$lineIndex:$contentOffset" else key
+                } else {
+                    key
+                }
+            }
+        }
+    }
+
+    val displayResult = remember(content, lineIndex, adjustedResults) {
+        Log.d(TAG, "InlineEditorLine: line $lineIndex, content='${content.take(30)}', prefix='$prefix', prefixLen=$prefixLength")
+        Log.d(TAG, "InlineEditorLine: original keys=${directiveResults.keys.filter { it.startsWith("$lineIndex:") }}")
+        Log.d(TAG, "InlineEditorLine: adjusted keys=${adjustedResults.keys.filter { it.startsWith("$lineIndex:") }}")
+        DirectiveSegmenter.buildDisplayText(content, lineIndex, adjustedResults)
+    }
+
+    // Map source cursor to display cursor
+    val displayCursor = remember(cursorPosition, displayResult) {
+        mapSourceToDisplayCursor(cursorPosition, displayResult)
+    }
+
+    // Check if cursor is inside a directive
+    val cursorInDirective = remember(cursorPosition, displayResult) {
+        displayResult.directiveDisplayRanges.any { range ->
+            cursorPosition > range.sourceRange.first && cursorPosition < range.sourceRange.last + 1
+        }
+    }
+
+    // Cursor blinking animation
+    val infiniteTransition = rememberInfiniteTransition(label = "inlineCursorBlink")
+    val cursorAlpha by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "inlineCursorAlpha"
+    )
+
+    var textLayoutResult: TextLayoutResult? by remember { mutableStateOf(null) }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        // Prefix area - tappable if contains checkbox
+        if (prefix.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .then(
+                        if (hasCheckbox) {
+                            Modifier.clickable(
+                                interactionSource = interactionSource,
+                                indication = null
+                            ) {
+                                controller.toggleCheckboxOnLine(lineIndex)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                BasicText(
+                    text = prefix,
+                    style = textStyle
+                )
+            }
+        }
+
+        // Content area - with directive rendering support
+        Box(modifier = Modifier.weight(1f)) {
+            if (displayResult.directiveDisplayRanges.isEmpty()) {
+                // No directives - simple text rendering
+                BasicText(
+                    text = content.ifEmpty { " " },
+                    style = textStyle,
+                    onTextLayout = { textLayoutResult = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                textLayoutResult?.let { layout ->
+                                    val charPos = layout.getOffsetForPosition(offset)
+                                    controller.setCursor(lineIndex, charPos)
+                                }
+                                onContentTap?.invoke()
+                            }
+                        }
+                        .drawWithContent {
+                            drawContent()
+                            if (isFocused && textLayoutResult != null) {
+                                val cursorPos = cursorPosition.coerceIn(0, content.length)
+                                val cursorRect = try {
+                                    textLayoutResult!!.getCursorRect(cursorPos)
+                                } catch (e: Exception) {
+                                    Rect(0f, 0f, CursorWidth.toPx(), size.height)
+                                }
+                                drawLine(
+                                    color = CursorColor.copy(alpha = cursorAlpha),
+                                    start = Offset(cursorRect.left, cursorRect.top),
+                                    end = Offset(cursorRect.left, cursorRect.bottom),
+                                    strokeWidth = CursorWidth.toPx()
+                                )
+                            }
+                        }
+                )
+            } else {
+                // Has directives - render with overlay boxes
+                InlineDirectiveOverlayText(
+                    displayResult = displayResult,
+                    textStyle = textStyle,
+                    isFocused = isFocused,
+                    displayCursor = displayCursor,
+                    cursorInDirective = cursorInDirective,
+                    cursorAlpha = cursorAlpha,
+                    lineIndex = lineIndex,
+                    controller = controller,
+                    onDirectiveTap = onDirectiveTap,
+                    onTextLayout = { textLayoutResult = it },
+                    onContentTap = onContentTap
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Renders line content with directive boxes for inline editor.
+ * Similar to DirectiveOverlayText but adapted for inline editing context.
+ */
+@Composable
+private fun InlineDirectiveOverlayText(
+    displayResult: DisplayTextResult,
+    textStyle: TextStyle,
+    isFocused: Boolean,
+    displayCursor: Int,
+    cursorInDirective: Boolean,
+    cursorAlpha: Float,
+    lineIndex: Int,
+    controller: EditorController,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
+    onTextLayout: (TextLayoutResult) -> Unit,
+    onContentTap: (() -> Unit)? = null
+) {
+    var textLayoutResult: TextLayoutResult? by remember { mutableStateOf(null) }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        // Render the full display text
+        BasicText(
+            text = displayResult.displayText.ifEmpty { " " },
+            style = textStyle,
+            onTextLayout = { layout ->
+                textLayoutResult = layout
+                onTextLayout(layout)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .pointerInput(displayResult) {
+                    detectTapGestures { offset ->
+                        textLayoutResult?.let { layout ->
+                            val displayPosition = layout.getOffsetForPosition(offset)
+                            val sourcePosition = mapDisplayToSourceCursor(displayPosition, displayResult)
+                            controller.setCursor(lineIndex, sourcePosition)
+                        }
+                        onContentTap?.invoke()
+                    }
+                }
+                .drawWithContent {
+                    drawContent()
+
+                    val layout = textLayoutResult?.takeIf {
+                        it.layoutInput.text.length == displayResult.displayText.length ||
+                                (displayResult.displayText.isEmpty() && it.layoutInput.text.length == 1)
+                    } ?: return@drawWithContent
+
+                    // Draw cursor
+                    if (isFocused && !cursorInDirective) {
+                        val cursorPos = displayCursor.coerceIn(0, displayResult.displayText.length)
+                        val cursorRect = try {
+                            layout.getCursorRect(cursorPos)
+                        } catch (e: Exception) {
+                            Rect(0f, 0f, CursorWidth.toPx(), layout.size.height.toFloat())
+                        }
+                        drawLine(
+                            color = CursorColor.copy(alpha = cursorAlpha),
+                            start = Offset(cursorRect.left, cursorRect.top),
+                            end = Offset(cursorRect.left, cursorRect.bottom),
+                            strokeWidth = CursorWidth.toPx()
+                        )
+                    }
+
+                    // Draw dashed boxes around directive portions
+                    for (range in displayResult.directiveDisplayRanges) {
+                        val boxColor = when {
+                            range.hasError -> DirectiveErrorColor
+                            range.hasWarning -> DirectiveWarningColor
+                            else -> DirectiveSuccessColor
+                        }
+                        val startOffset = range.displayRange.first.coerceIn(0, displayResult.displayText.length)
+                        val endOffset = (range.displayRange.last + 1).coerceIn(0, displayResult.displayText.length)
+                        val padding = DirectiveBoxStyle.padding.toPx()
+
+                        if (startOffset < endOffset) {
+                            val path = layout.getPathForRange(startOffset, endOffset)
+                            val bounds = path.getBounds()
+
+                            drawRoundRect(
+                                color = boxColor,
+                                topLeft = Offset(bounds.left - padding, bounds.top - padding),
+                                size = Size(bounds.width + padding * 2, bounds.height + padding * 2),
+                                cornerRadius = CornerRadius(DirectiveBoxStyle.cornerRadius.toPx()),
+                                style = Stroke(
+                                    width = DirectiveBoxStyle.strokeWidth.toPx(),
+                                    pathEffect = PathEffect.dashPathEffect(
+                                        floatArrayOf(DirectiveBoxStyle.dashLength.toPx(), DirectiveBoxStyle.gapLength.toPx())
+                                    )
+                                )
+                            )
+                        } else if (range.displayText.isEmpty()) {
+                            val cursorRect = try {
+                                layout.getCursorRect(startOffset.coerceIn(0, displayResult.displayText.length))
+                            } catch (e: Exception) {
+                                Rect(0f, 0f, 2f, layout.size.height.toFloat())
+                            }
+                            drawLine(
+                                color = boxColor,
+                                start = Offset(cursorRect.left, cursorRect.top + padding),
+                                end = Offset(cursorRect.left, cursorRect.bottom - padding),
+                                strokeWidth = DirectiveBoxStyle.strokeWidth.toPx() * 1.5f,
+                                pathEffect = PathEffect.dashPathEffect(
+                                    floatArrayOf(DirectiveBoxStyle.dashLength.toPx() * 0.75f, DirectiveBoxStyle.gapLength.toPx())
+                                )
+                            )
+                        }
+                    }
+                }
+        )
+
+        // Invisible tap targets for directives
+        if (onDirectiveTap != null) {
+            Box(modifier = Modifier.matchParentSize()) {
+                val layout = textLayoutResult?.takeIf {
+                    it.layoutInput.text.length == displayResult.displayText.length ||
+                            (displayResult.displayText.isEmpty() && it.layoutInput.text.length == 1)
+                } ?: return@Box
+
+                for (range in displayResult.directiveDisplayRanges) {
+                    val startOffset = range.displayRange.first.coerceIn(0, displayResult.displayText.length)
+                    val endOffset = (range.displayRange.last + 1).coerceIn(0, displayResult.displayText.length)
+                    val padding = DirectiveBoxStyle.padding
+
+                    if (startOffset < endOffset) {
+                        val path = layout.getPathForRange(startOffset, endOffset)
+                        val bounds = path.getBounds()
+
+                        Box(
+                            modifier = Modifier
+                                .offset(
+                                    x = with(LocalDensity.current) { (bounds.left - padding.toPx()).toDp() },
+                                    y = with(LocalDensity.current) { (bounds.top - padding.toPx()).toDp() }
+                                )
+                                .size(
+                                    width = with(LocalDensity.current) { (bounds.width + padding.toPx() * 2).toDp() },
+                                    height = with(LocalDensity.current) { (bounds.height + padding.toPx() * 2).toDp() }
+                                )
+                                .clickable {
+                                    onDirectiveTap(range.key, range.sourceText)
+                                    onContentTap?.invoke()
+                                }
+                        )
+                    } else if (range.displayText.isEmpty()) {
+                        val cursorRect = try {
+                            layout.getCursorRect(startOffset.coerceIn(0, displayResult.displayText.length))
+                        } catch (e: Exception) {
+                            Rect(0f, 0f, 2f, layout.size.height.toFloat())
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .offset(
+                                    x = with(LocalDensity.current) { (cursorRect.left - EmptyDirectiveTapWidth.toPx() / 2).toDp() },
+                                    y = with(LocalDensity.current) { cursorRect.top.toDp() }
+                                )
+                                .size(
+                                    width = EmptyDirectiveTapWidth,
+                                    height = with(LocalDensity.current) { (cursorRect.bottom - cursorRect.top).toDp() }
+                                )
+                                .clickable {
+                                    onDirectiveTap(range.key, range.sourceText)
+                                    onContentTap?.invoke()
+                                }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Visual separator between notes in a multi-note view.
+ * Renders "---" with subtle styling.
+ */
+@Composable
+private fun NoteSeparator() {
+    Text(
+        text = "---",
+        style = TextStyle(color = ViewDividerColor),
+        modifier = Modifier.padding(vertical = 4.dp)
+    )
+}
+
+/**
+ * Modifier for view directive content - draws a left border indicator.
+ * This provides a subtle visual distinction for viewed content.
+ */
+private fun Modifier.viewIndicator(color: Color): Modifier = this.drawBehind {
+    val strokeWidth = 2.dp.toPx()
+
+    // Draw solid left border
+    drawLine(
+        color = color,
+        start = Offset(0f, 0f),
+        end = Offset(0f, size.height),
+        strokeWidth = strokeWidth
+    )
 }
 

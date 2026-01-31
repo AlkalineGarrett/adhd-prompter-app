@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
+import org.alkaline.taskbrain.data.Note
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -14,6 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -41,6 +47,10 @@ import androidx.compose.ui.unit.dp
  * @param directiveResults Map of directive key to execution result (keys are position-based)
  * @param textStyle The text style for rendering
  * @param onDirectiveTap Called when a directive is tapped, with position-based key and source text
+ * @param onViewNoteTap Called when a note within a view directive is tapped for inline editing.
+ *        Parameters: (directiveKey, noteId, noteContent) - note content is the rendered content
+ * @param onViewEditDirective Called when the edit button on a view directive is tapped.
+ *        Parameters: (directiveKey, sourceText) - opens the directive editor overlay
  * @param modifier Modifier for the root composable
  */
 @Composable
@@ -50,6 +60,8 @@ fun DirectiveLineContent(
     directiveResults: Map<String, DirectiveResult>,
     textStyle: TextStyle,
     onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
+    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
+    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Build display text with directive results replacing source
@@ -90,10 +102,19 @@ fun DirectiveLineContent(
                         val isView = directiveRange?.isView ?: false
 
                         if (isView && segment.isComputed && segment.result?.error == null) {
+                            // Extract ViewVal from result to get notes
+                            val viewVal = segment.result?.toValue() as? ViewVal
                             ViewDirectiveContent(
+                                viewVal = viewVal,
                                 displayText = segment.displayText,
                                 textStyle = textStyle,
-                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                                onNoteTap = { noteId, noteContent ->
+                                    onViewNoteTap?.invoke(segment.key, noteId, noteContent)
+                                },
+                                onEditDirective = {
+                                    onViewEditDirective?.invoke(segment.key, segment.sourceText)
+                                        ?: onDirectiveTap(segment.key, segment.sourceText)
+                                }
                             )
                         } else {
                             DirectiveResultBox(
@@ -127,10 +148,19 @@ fun DirectiveLineContent(
                         val isView = directiveRange?.isView ?: false
 
                         if (isView && segment.isComputed && segment.result?.error == null) {
+                            // Extract ViewVal from result to get notes
+                            val viewVal = segment.result?.toValue() as? ViewVal
                             ViewDirectiveContent(
+                                viewVal = viewVal,
                                 displayText = segment.displayText,
                                 textStyle = textStyle,
-                                onTap = { onDirectiveTap(segment.key, segment.sourceText) }
+                                onNoteTap = { noteId, noteContent ->
+                                    onViewNoteTap?.invoke(segment.key, noteId, noteContent)
+                                },
+                                onEditDirective = {
+                                    onViewEditDirective?.invoke(segment.key, segment.sourceText)
+                                        ?: onDirectiveTap(segment.key, segment.sourceText)
+                                }
                             )
                         } else {
                             DirectiveResultBox(
@@ -148,34 +178,142 @@ fun DirectiveLineContent(
     }
 }
 
+// Layout constants for view directive
+private val ViewEditButtonSize = 24.dp
+private val ViewEditIconSize = 16.dp
+
 /**
  * Content from a view directive, rendered inline without a box.
  * Shows the viewed notes' content with a subtle left border indicator.
  * Supports multi-line content from viewed notes.
  *
- * Milestone 10.
+ * Features:
+ * - Edit button at top-right to open directive editor overlay
+ * - Each note section is independently tappable for inline editing
+ * - Notes are separated by "---" dividers (non-editable)
+ *
+ * Milestone 10: Initial view functionality
+ * Phase 1: Added edit button and note tap callbacks
  */
 @Composable
 private fun ViewDirectiveContent(
+    viewVal: ViewVal?,
     displayText: String,
     textStyle: TextStyle,
-    onTap: () -> Unit
+    onNoteTap: (noteId: String, noteContent: String) -> Unit,
+    onEditDirective: () -> Unit
 ) {
+    val notes = viewVal?.notes ?: emptyList()
+    val renderedContents = viewVal?.renderedContents
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap)
             .viewIndicator(DirectiveColors.ViewIndicator)
             .padding(start = 8.dp, top = 4.dp, bottom = 4.dp)
     ) {
-        SelectionContainer {
+        // Edit directive button at top-right
+        IconButton(
+            onClick = onEditDirective,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .size(ViewEditButtonSize)
+                .padding(end = 4.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "Edit view directive",
+                tint = DirectiveColors.ViewIndicator,
+                modifier = Modifier.size(ViewEditIconSize)
+            )
+        }
+
+        // Note content - either split by sections or as a single block
+        if (notes.isEmpty()) {
+            // Empty view - show placeholder
             Text(
                 text = displayText,
+                style = textStyle.copy(color = DirectiveColors.ViewIndicator),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = ViewEditButtonSize)
+            )
+        } else if (notes.size == 1) {
+            // Single note - simple case
+            val note = notes.first()
+            val content = renderedContents?.firstOrNull() ?: note.content
+            ViewNoteSection(
+                note = note,
+                content = content,
+                textStyle = textStyle,
+                onTap = { onNoteTap(note.id, content) },
+                modifier = Modifier.padding(end = ViewEditButtonSize)
+            )
+        } else {
+            // Multiple notes with separators
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = ViewEditButtonSize)
+            ) {
+                notes.forEachIndexed { index, note ->
+                    // Separator before each note except first
+                    if (index > 0) {
+                        NoteSeparator()
+                    }
+
+                    // Note section
+                    val content = renderedContents?.getOrNull(index) ?: note.content
+                    ViewNoteSection(
+                        note = note,
+                        content = content,
+                        textStyle = textStyle,
+                        onTap = { onNoteTap(note.id, content) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A single note section within a view directive.
+ * Tappable for inline editing.
+ */
+@Composable
+private fun ViewNoteSection(
+    note: Note,
+    content: String,
+    textStyle: TextStyle,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(onClick = onTap)
+    ) {
+        SelectionContainer {
+            Text(
+                text = content,
                 style = textStyle,
                 modifier = Modifier.fillMaxWidth()
             )
         }
     }
+}
+
+/**
+ * Visual separator between notes in a multi-note view.
+ * Renders "---" with subtle styling.
+ */
+@Composable
+private fun NoteSeparator() {
+    Text(
+        text = "---",
+        style = TextStyle(color = DirectiveColors.ViewDivider),
+        modifier = Modifier.padding(vertical = 4.dp)
+    )
 }
 
 /**

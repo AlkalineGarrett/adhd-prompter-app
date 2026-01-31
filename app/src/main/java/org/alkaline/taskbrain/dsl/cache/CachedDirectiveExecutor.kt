@@ -1,7 +1,6 @@
 package org.alkaline.taskbrain.dsl.cache
 
 import org.alkaline.taskbrain.data.Note
-import org.alkaline.taskbrain.dsl.directives.DirectiveExecutionResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.language.Lexer
@@ -87,13 +86,33 @@ class CachedDirectiveExecutor(
         val (cacheKey, analysis) = analysisResult
         val noteId = currentNote?.id ?: GLOBAL_CACHE_PLACEHOLDER
         val usesSelfAccess = analysis.usesSelfAccess
+        val isMutating = analysis.isMutating
         val dependencies = analysis.toPartialDependencies()
 
         // Step 2: Check if we should suppress staleness (during inline editing)
         val shouldSuppressStaleness = currentNote?.id != null &&
             editSessionManager?.shouldSuppressInvalidation(currentNote.id) == true
 
-        // Step 3: Check cache
+        // Step 3: For mutating directives, NEVER re-execute due to staleness
+        // Mutating directives (e.g., [.root.name: "x"]) should only run once,
+        // not be re-triggered when cache becomes stale. Otherwise, edits to the
+        // mutated note would be overwritten by the original mutation value.
+        if (isMutating) {
+            // Check for ANY cached result (even stale)
+            val cachedResult = cacheManager.get(cacheKey, noteId, usesSelfAccess)
+            if (cachedResult != null) {
+                val directiveResult = cachedResultToDirectiveResult(cachedResult)
+                return CachedExecutionResult(
+                    result = directiveResult,
+                    cacheHit = true,
+                    dependencies = cachedResult.dependencies,
+                    mutations = emptyList()
+                )
+            }
+            // No cached result - this is the first execution, allow it to proceed
+        }
+
+        // Step 4: Check cache (with staleness for non-mutating directives)
         val cachedResult = if (shouldSuppressStaleness) {
             // During editing, return cached result without staleness check
             cacheManager.get(cacheKey, noteId, usesSelfAccess)
@@ -113,7 +132,7 @@ class CachedDirectiveExecutor(
             )
         }
 
-        // Step 4: Cache miss - execute fresh
+        // Step 5: Cache miss - execute fresh
         return executeFreshWithCaching(
             sourceText = sourceText,
             notes = notes,

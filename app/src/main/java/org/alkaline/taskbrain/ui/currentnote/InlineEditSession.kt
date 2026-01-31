@@ -1,0 +1,314 @@
+package org.alkaline.taskbrain.ui.currentnote
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+
+/**
+ * Represents an active inline editing session for a note within a view directive.
+ *
+ * When a user taps on a note's content within a view, an InlineEditSession is created
+ * to manage the editing state separately from the host note's editor.
+ *
+ * Key responsibilities:
+ * - Hold EditorState and EditorController for the viewed note
+ * - Track the note ID being edited
+ * - Track whether content has been modified (dirty state)
+ * - Provide the original content for comparison on save
+ * - Hold directive results for rendering directives within the viewed note
+ * - Track expanded directive state for inline directive editing
+ */
+@Stable
+class InlineEditSession(
+    val noteId: String,
+    val originalContent: String,
+    val editorState: EditorState,
+    val controller: EditorController
+) {
+    /**
+     * Whether the content has been modified from the original.
+     */
+    val isDirty: Boolean
+        get() = editorState.text != originalContent
+
+    /**
+     * The current content of the editor.
+     */
+    val currentContent: String
+        get() = editorState.text
+
+    /**
+     * Directive results for the viewed note's content.
+     * Keyed by "lineIndex:startOffset" (same format as main editor).
+     * These are used to render directives within the inline editor.
+     */
+    var directiveResults: Map<String, DirectiveResult> by mutableStateOf(emptyMap())
+        internal set
+
+    /**
+     * The key of the currently expanded directive (for showing DirectiveEditRow).
+     * Format: "lineIndex:startOffset"
+     * Null means no directive is expanded.
+     */
+    var expandedDirectiveKey: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * The source text of the currently expanded directive.
+     */
+    var expandedDirectiveSourceText: String? by mutableStateOf(null)
+        private set
+
+    /**
+     * Flag indicating we're in the process of collapsing a directive.
+     * When true, focus loss should not trigger edit mode exit.
+     * This is set before collapsing and cleared when focus is regained.
+     */
+    var isCollapsingDirective: Boolean by mutableStateOf(false)
+
+    /**
+     * Update directive results (called after execution completes).
+     */
+    fun updateDirectiveResults(results: Map<String, DirectiveResult>) {
+        directiveResults = results
+    }
+
+    /**
+     * Toggle the expanded state of a directive.
+     * If already expanded, collapses it. If collapsed, expands it (and collapses any other).
+     */
+    fun toggleDirectiveExpanded(directiveKey: String, sourceText: String) {
+        if (expandedDirectiveKey == directiveKey) {
+            // Already expanded - collapse it
+            collapseDirective()
+        } else {
+            // Expand this directive (collapses any other)
+            expandedDirectiveKey = directiveKey
+            expandedDirectiveSourceText = sourceText
+        }
+    }
+
+    /**
+     * Collapse the currently expanded directive.
+     * Sets isCollapsingDirective flag to prevent focus loss from exiting edit mode.
+     */
+    fun collapseDirective() {
+        isCollapsingDirective = true
+        expandedDirectiveKey = null
+        expandedDirectiveSourceText = null
+    }
+
+    /**
+     * Clear the collapsing flag. Call this when focus is regained after collapsing.
+     */
+    fun clearCollapsingFlag() {
+        isCollapsingDirective = false
+    }
+
+    /**
+     * Check if a specific directive is expanded.
+     */
+    fun isDirectiveExpanded(directiveKey: String): Boolean {
+        return expandedDirectiveKey == directiveKey
+    }
+
+    /**
+     * Update a directive's result after refresh/confirm.
+     */
+    fun updateDirectiveResult(directiveKey: String, result: DirectiveResult) {
+        directiveResults = directiveResults.toMutableMap().apply {
+            put(directiveKey, result)
+        }
+    }
+}
+
+/**
+ * State holder for managing inline edit sessions.
+ *
+ * Only one inline edit session can be active at a time. When a new session is started,
+ * the previous one should be saved (if dirty) and closed.
+ */
+@Stable
+class InlineEditState {
+    /**
+     * The currently active inline edit session, or null if none.
+     */
+    var activeSession: InlineEditSession? by mutableStateOf(null)
+        private set
+
+    /**
+     * Whether an inline edit session is currently active.
+     */
+    val isActive: Boolean
+        get() = activeSession != null
+
+    /**
+     * The EditorController for the active session, or null if none.
+     * Use this to route CommandBar actions when inline editing is active.
+     */
+    val activeController: EditorController?
+        get() = activeSession?.controller
+
+    /**
+     * Callback to execute directives for content.
+     * Set by the screen that provides the ViewModel.
+     * Parameters: (content: String, onResults: (Map<String, DirectiveResult>) -> Unit)
+     */
+    var onExecuteDirectives: ((String, (Map<String, DirectiveResult>) -> Unit) -> Unit)? = null
+
+    /**
+     * Callback to execute a single directive and get the result.
+     * Used for refresh/confirm actions.
+     * Parameters: (sourceText: String, onResult: (DirectiveResult) -> Unit)
+     */
+    var onExecuteSingleDirective: ((String, (DirectiveResult) -> Unit) -> Unit)? = null
+
+    /**
+     * Callback when a directive edit is confirmed.
+     * The directive source text may have been modified.
+     * Parameters: (lineIndex: Int, directiveKey: String, oldSourceText: String, newSourceText: String)
+     */
+    var onDirectiveEditConfirm: ((Int, String, String, String) -> Unit)? = null
+
+    /**
+     * Start a new inline edit session for a note.
+     * Automatically triggers directive execution for the content.
+     *
+     * @param noteId The ID of the note being edited
+     * @param content The note's content to edit
+     * @return The created session
+     */
+    fun startSession(noteId: String, content: String): InlineEditSession {
+        val editorState = EditorState()
+        editorState.updateFromText(content)
+        val controller = EditorController(editorState)
+
+        val session = InlineEditSession(
+            noteId = noteId,
+            originalContent = content,
+            editorState = editorState,
+            controller = controller
+        )
+        activeSession = session
+
+        // Execute directives for the content
+        onExecuteDirectives?.invoke(content) { results ->
+            session.updateDirectiveResults(results)
+        }
+
+        return session
+    }
+
+    /**
+     * End the current inline edit session.
+     *
+     * @return The session that was ended (for saving if dirty), or null if no session was active
+     */
+    fun endSession(): InlineEditSession? {
+        val session = activeSession
+        activeSession = null
+        return session
+    }
+
+    /**
+     * Check if we're currently editing a specific note.
+     */
+    fun isEditingNote(noteId: String): Boolean {
+        return activeSession?.noteId == noteId
+    }
+
+    /**
+     * Toggle expanded state for a directive in the active session.
+     * Shows/hides the DirectiveEditRow for the directive.
+     */
+    fun toggleDirectiveExpanded(directiveKey: String, sourceText: String) {
+        activeSession?.toggleDirectiveExpanded(directiveKey, sourceText)
+    }
+
+    /**
+     * Collapse any expanded directive in the active session.
+     */
+    fun collapseDirective() {
+        activeSession?.collapseDirective()
+    }
+
+    /**
+     * Refresh a directive (re-execute and update result, keeping it expanded).
+     */
+    fun refreshDirective(directiveKey: String, sourceText: String) {
+        onExecuteSingleDirective?.invoke(sourceText) { result ->
+            activeSession?.updateDirectiveResult(directiveKey, result)
+        }
+    }
+
+    /**
+     * Confirm a directive edit - update the source text in the editor if changed.
+     */
+    fun confirmDirective(lineIndex: Int, directiveKey: String, oldSourceText: String, newSourceText: String) {
+        // If text changed, update the editor content
+        if (oldSourceText != newSourceText) {
+            activeSession?.controller?.let { controller ->
+                // Replace the old directive text with the new one
+                val editorState = activeSession?.editorState ?: return@let
+                val line = editorState.lines.getOrNull(lineIndex) ?: return@let
+                val content = line.content
+                val startOffset = directiveKey.split(":").getOrNull(1)?.toIntOrNull() ?: return@let
+
+                // Find and replace the directive text
+                val newContent = content.replaceRange(
+                    startOffset,
+                    startOffset + oldSourceText.length,
+                    newSourceText
+                )
+                // Update line content with cursor at end of new directive
+                val newCursor = startOffset + newSourceText.length
+                controller.updateLineContent(lineIndex, newContent, newCursor)
+            }
+
+            // Re-execute to get the new result
+            onExecuteSingleDirective?.invoke(newSourceText) { result ->
+                activeSession?.updateDirectiveResult(directiveKey, result)
+            }
+        }
+
+        // Collapse the directive
+        activeSession?.collapseDirective()
+
+        // Notify callback
+        onDirectiveEditConfirm?.invoke(lineIndex, directiveKey, oldSourceText, newSourceText)
+    }
+}
+
+/**
+ * Remember an InlineEditState for managing inline editing within views.
+ */
+@Composable
+fun rememberInlineEditState(): InlineEditState {
+    return remember { InlineEditState() }
+}
+
+/**
+ * CompositionLocal for providing InlineEditState to nested composables.
+ * This allows view directive components to access the inline edit state
+ * without threading it through all intermediate layers.
+ */
+val LocalInlineEditState = compositionLocalOf<InlineEditState?> { null }
+
+/**
+ * Provides InlineEditState to the composition tree via CompositionLocal.
+ */
+@Composable
+fun ProvideInlineEditState(
+    inlineEditState: InlineEditState,
+    content: @Composable () -> Unit
+) {
+    CompositionLocalProvider(LocalInlineEditState provides inlineEditState) {
+        content()
+    }
+}

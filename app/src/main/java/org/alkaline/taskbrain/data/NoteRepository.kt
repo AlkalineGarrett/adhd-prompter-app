@@ -111,11 +111,12 @@ class NoteRepository(
             val userId = requireUserId()
             val parentRef = noteRef(noteId)
 
-            db.runTransaction { transaction ->
+            val parentContent = trackedLines.firstOrNull()?.content ?: ""
+
+            val result = db.runTransaction { transaction ->
                 val oldChildIds = getExistingChildIds(transaction, parentRef)
                 val idsToDelete = oldChildIds.filter { it.isNotEmpty() }.toMutableSet()
 
-                val parentContent = trackedLines.firstOrNull()?.content ?: ""
                 // Drop trailing empty lines (user's typing line) before saving
                 val childLines = trackedLines.drop(1).dropLastWhile { it.content.isEmpty() }
 
@@ -128,6 +129,8 @@ class NoteRepository(
 
                 createdIds
             }.await()
+
+            result
         }
     }.onFailure { Log.e(TAG, "Error saving note", it) }
 
@@ -417,6 +420,140 @@ class NoteRepository(
             Unit
         }
     }.onFailure { Log.e(TAG, "Error updating lastAccessedAt", it) }
+
+    /**
+     * Saves a note with full multi-line content, properly handling child notes.
+     * Used for inline editing of notes within view directives.
+     *
+     * This function:
+     * 1. Loads the existing note structure (parent + children)
+     * 2. Maps new lines to existing child note IDs using content matching
+     * 3. Creates, updates, or deletes child notes as needed
+     *
+     * @param noteId The ID of the note to update
+     * @param newContent The new full content (may be multi-line)
+     * @return Result indicating success or failure
+     */
+    suspend fun saveNoteWithFullContent(noteId: String, newContent: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            requireUserId()
+
+            Log.d(TAG, "saveNoteWithFullContent: START noteId=$noteId")
+            Log.d(TAG, "saveNoteWithFullContent: newContent has ${newContent.lines().size} lines, first line='${newContent.lines().firstOrNull()}'")
+
+            // Load existing note to get current structure
+            val existingNote = loadNoteById(noteId).getOrNull()
+                ?: throw IllegalStateException("Note not found: $noteId")
+
+            Log.d(TAG, "saveNoteWithFullContent: existingNote.content='${existingNote.content}', containedNotes=${existingNote.containedNotes.size}")
+
+            // Build tracked lines from existing structure
+            val existingLines = buildExistingLines(noteId, existingNote)
+            Log.d(TAG, "saveNoteWithFullContent: existingLines=${existingLines.size}, first='${existingLines.firstOrNull()?.content}'")
+
+            // Split new content into lines
+            val newLinesContent = newContent.lines()
+            Log.d(TAG, "saveNoteWithFullContent: newLinesContent=${newLinesContent.size}, lines=${newLinesContent.take(3)}")
+
+            // Match new lines to existing IDs (NoteLineTracker algorithm)
+            val trackedLines = matchLinesToIds(noteId, existingLines, newLinesContent)
+            Log.d(TAG, "saveNoteWithFullContent: trackedLines=${trackedLines.size}, first='${trackedLines.firstOrNull()?.content}', firstId=${trackedLines.firstOrNull()?.noteId}")
+
+            // Save using existing saveNoteWithChildren logic
+            saveNoteWithChildren(noteId, trackedLines).getOrThrow()
+
+            Log.d(TAG, "Saved note with full content: $noteId (${trackedLines.size} lines)")
+
+            // Verify what was saved by reloading (debug only)
+            val verifyNote = loadNoteById(noteId).getOrNull()
+            val verifyChildren = if (verifyNote?.containedNotes?.isNotEmpty() == true) {
+                loadChildNotes(verifyNote.containedNotes)
+            } else emptyList()
+            Log.d(TAG, "saveNoteWithFullContent: VERIFY after save - parent content='${verifyNote?.content}', children=${verifyChildren.size}")
+            if (verifyChildren.isNotEmpty()) {
+                verifyChildren.forEachIndexed { idx, child ->
+                    Log.d(TAG, "saveNoteWithFullContent: VERIFY child $idx: '${child.content}'")
+                }
+            }
+
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error saving note with full content", it) }
+
+    /**
+     * Builds a list of NoteLines from an existing note's structure.
+     */
+    private suspend fun buildExistingLines(noteId: String, note: Note): List<NoteLine> {
+        val lines = mutableListOf<NoteLine>()
+
+        // First line is the parent
+        lines.add(NoteLine(note.content, noteId))
+
+        // Load child notes if any
+        if (note.containedNotes.isNotEmpty()) {
+            val childLines = loadChildNotes(note.containedNotes)
+            lines.addAll(childLines)
+        }
+
+        return lines
+    }
+
+    /**
+     * Matches new line content to existing note IDs using a two-phase algorithm:
+     * 1. Exact content matches (preserves IDs when lines are reordered)
+     * 2. Positional fallback (for modified lines)
+     */
+    private fun matchLinesToIds(
+        parentNoteId: String,
+        existingLines: List<NoteLine>,
+        newLinesContent: List<String>
+    ): List<NoteLine> {
+        if (existingLines.isEmpty()) {
+            return newLinesContent.mapIndexed { index, content ->
+                NoteLine(content, if (index == 0) parentNoteId else null)
+            }
+        }
+
+        // Map content to list of indices in existing lines
+        val contentToOldIndices = mutableMapOf<String, MutableList<Int>>()
+        existingLines.forEachIndexed { index, line ->
+            contentToOldIndices.getOrPut(line.content) { mutableListOf() }.add(index)
+        }
+
+        val newIds = arrayOfNulls<String>(newLinesContent.size)
+        val oldConsumed = BooleanArray(existingLines.size)
+
+        // Phase 1: Exact matches
+        newLinesContent.forEachIndexed { index, content ->
+            val indices = contentToOldIndices[content]
+            if (!indices.isNullOrEmpty()) {
+                val oldIdx = indices.removeAt(0)
+                newIds[index] = existingLines[oldIdx].noteId
+                oldConsumed[oldIdx] = true
+            }
+        }
+
+        // Phase 2: Positional matches for modifications
+        newLinesContent.forEachIndexed { index, content ->
+            if (newIds[index] == null) {
+                if (index < existingLines.size && !oldConsumed[index]) {
+                    newIds[index] = existingLines[index].noteId
+                    oldConsumed[index] = true
+                }
+            }
+        }
+
+        val trackedLines = newLinesContent.mapIndexed { index, content ->
+            NoteLine(content, newIds[index])
+        }.toMutableList()
+
+        // Ensure first line always has parent ID
+        if (trackedLines.isNotEmpty() && trackedLines[0].noteId != parentNoteId) {
+            trackedLines[0] = trackedLines[0].copy(noteId = parentNoteId)
+        }
+
+        return trackedLines
+    }
 
     companion object {
         private const val TAG = "NoteRepository"

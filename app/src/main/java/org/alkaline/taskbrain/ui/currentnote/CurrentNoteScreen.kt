@@ -122,6 +122,65 @@ fun CurrentNoteScreen(
     }
     val controller = rememberEditorController(editorState)
 
+    // Inline editing state for view directives - allows editing viewed notes with full editor support
+    val inlineEditState = rememberInlineEditState()
+
+    // Wire up directive execution callbacks for inline editing
+    LaunchedEffect(inlineEditState) {
+        inlineEditState.onExecuteDirectives = { content, onResults ->
+            currentNoteViewModel.executeDirectivesForContent(content, onResults)
+        }
+        inlineEditState.onExecuteSingleDirective = { sourceText, onResult ->
+            currentNoteViewModel.executeSingleDirective(sourceText, onResult)
+        }
+        inlineEditState.onDirectiveEditConfirm = { lineIndex, directiveKey, oldSourceText, newSourceText ->
+            // Save immediately when directive is edited (don't wait for focus loss)
+            android.util.Log.d("InlineEditCache", "=== onDirectiveEditConfirm START ===")
+            android.util.Log.d("InlineEditCache", "lineIndex=$lineIndex, directiveKey=$directiveKey")
+            android.util.Log.d("InlineEditCache", "oldSourceText='$oldSourceText' -> newSourceText='$newSourceText'")
+            inlineEditState.activeSession?.let { session ->
+                val noteId = session.noteId
+                val newContent = session.currentContent
+                val contentPreview = newContent.take(100).replace("\n", "\\n")
+                android.util.Log.d("InlineEditCache", "noteId=$noteId, isDirty=${session.isDirty}")
+                android.util.Log.d("InlineEditCache", "newContent preview: '$contentPreview...'")
+                android.util.Log.d("InlineEditCache", "userContent (host) preview: '${userContent.take(100).replace("\n", "\\n")}...'")
+                android.util.Log.d("InlineEditCache", "Calling saveInlineNoteContent...")
+                currentNoteViewModel.saveInlineNoteContent(
+                    noteId = noteId,
+                    newContent = newContent,
+                    onSuccess = {
+                        android.util.Log.d("InlineEditCache", "saveInlineNoteContent SUCCESS for noteId=$noteId")
+                        // Invalidate tab cache so switching tabs shows fresh content
+                        recentTabsViewModel.invalidateCache(noteId)
+                        android.util.Log.d("InlineEditCache", "Tab cache invalidated, calling executeDirectivesForContent...")
+                        // Re-execute directives for the inline editor to show updated results
+                        // Then refresh the host note's view directive
+                        currentNoteViewModel.executeDirectivesForContent(newContent) { results ->
+                            android.util.Log.d("InlineEditCache", "executeDirectivesForContent returned ${results.size} results")
+                            results.forEach { (key, result) ->
+                                val displayText = result.toValue()?.toDisplayString()
+                                android.util.Log.d("InlineEditCache", "  result[$key]: display='${displayText?.take(50)}', error=${result.error}")
+                            }
+                            session.updateDirectiveResults(results)
+                            android.util.Log.d("InlineEditCache", "Session directive results updated, calling forceRefreshAllDirectives...")
+                            // Now refresh host note's directives so the view shows updated content
+                            // This runs after inline editor directives are updated
+                            currentNoteViewModel.forceRefreshAllDirectives(userContent)
+                            android.util.Log.d("InlineEditCache", "forceRefreshAllDirectives called (async)")
+                        }
+                    }
+                )
+            } ?: run {
+                android.util.Log.w("InlineEditCache", "No active session!")
+            }
+            android.util.Log.d("InlineEditCache", "=== onDirectiveEditConfirm END (async ops pending) ===")
+        }
+    }
+
+    // Route commands to the inline editor if one is active, otherwise to host note's controller
+    val activeController = inlineEditState.activeController ?: controller
+
     // Context and coroutine scope for undo state persistence
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -655,8 +714,10 @@ fun CurrentNoteScreen(
         // Key on displayedNoteId to force full recreation of editor tree when switching tabs.
         // Without this, Compose reuses composables by position, causing stale state in
         // remember blocks (like interactionSource) that breaks touch handling.
-        key(displayedNoteId) {
-            NoteTextField(
+        // Provide InlineEditState via CompositionLocal for view directive inline editing
+        ProvideInlineEditState(inlineEditState) {
+            key(displayedNoteId) {
+                NoteTextField(
                 textFieldValue = textFieldValue,
                 onTextFieldValueChange = updateTextFieldValue,
                 focusRequester = mainContentFocusRequester,
@@ -710,7 +771,8 @@ fun CurrentNoteScreen(
 
                         // Position cursor at end of the new directive text
                         val cursorPos = startOffset + newText.length
-                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
+                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                        controller.setCursor(lineIndex, prefixLength + cursorPos)
 
                         // Confirm the new directive (re-execute and collapse)
                         val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
@@ -720,7 +782,8 @@ fun CurrentNoteScreen(
                     } else if (startOffset >= 0 && uuid != null) {
                         // No text change - position cursor at end of directive
                         val cursorPos = startOffset + sourceText.length
-                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
+                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                        controller.setCursor(lineIndex, prefixLength + cursorPos)
 
                         // Re-execute and collapse (important for dynamic directives like [now])
                         currentNoteViewModel.confirmDirective(uuid, sourceText)
@@ -743,7 +806,8 @@ fun CurrentNoteScreen(
                     val foundStartOffset = lineContent.indexOf(sourceText)
                     if (foundStartOffset >= 0) {
                         val cursorPos = foundStartOffset + sourceText.length
-                        controller.setCursor(lineIndex, editorState.lines[lineIndex].prefix.length + cursorPos)
+                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                        controller.setCursor(lineIndex, prefixLength + cursorPos)
                     }
                 },
                 onDirectiveRefresh = { lineIndex, positionKey, sourceText, newText ->
@@ -786,39 +850,75 @@ fun CurrentNoteScreen(
                         }
                     }
                 },
+                onViewNoteTap = { directiveKey, noteId, noteContent ->
+                    // Save inline-edited note content
+                    android.util.Log.d("CurrentNoteScreen", "onViewNoteTap: saving noteId=$noteId, content preview='${noteContent.take(40)}...'")
+                    currentNoteViewModel.saveInlineNoteContent(
+                        noteId = noteId,
+                        newContent = noteContent,
+                        onSuccess = {
+                            android.util.Log.d("CurrentNoteScreen", "onViewNoteTap: save SUCCESS for noteId=$noteId")
+                            // Invalidate the tab cache for this note so switching tabs shows fresh content
+                            recentTabsViewModel.invalidateCache(noteId)
+                            // Force re-execute ALL directives with fresh data from Firestore
+                            // This properly refreshes view directives without UI flicker
+                            currentNoteViewModel.forceRefreshAllDirectives(userContent)
+                        }
+                    )
+                },
+                onViewEditDirective = { directiveKey, sourceText ->
+                    // Open directive editor overlay for the view
+                    // Use same logic as onDirectiveTap to toggle expanded state
+                    val parts = directiveKey.split(":")
+                    val lineIndex = parts.getOrNull(0)?.toIntOrNull()
+                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                    val uuid = if (lineIndex != null && startOffset != null) {
+                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                    } else null
+                    if (uuid != null) {
+                        currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
+                    }
+                },
                 modifier = Modifier.weight(1f)
             )
+            }
         }
 
         CommandBar(
-            onToggleBullet = { controller.toggleBullet() },
-            onToggleCheckbox = { controller.toggleCheckbox() },
-            onIndent = { controller.indent() },
-            onUnindent = { controller.unindent() },
+            onToggleBullet = { activeController.toggleBullet() },
+            onToggleCheckbox = { activeController.toggleCheckbox() },
+            onIndent = { activeController.indent() },
+            onUnindent = { activeController.unindent() },
             onMoveUp = {
-                if (controller.moveUp()) {
+                // Move operations only apply to host note, not inline editing
+                if (!inlineEditState.isActive && controller.moveUp()) {
                     userContent = editorState.text
                     isSaved = false
                 }
             },
             onMoveDown = {
-                if (controller.moveDown()) {
+                // Move operations only apply to host note, not inline editing
+                if (!inlineEditState.isActive && controller.moveDown()) {
                     userContent = editorState.text
                     isSaved = false
                 }
             },
-            moveUpState = controller.getMoveUpState(),
-            moveDownState = controller.getMoveDownState(),
-            onPaste = { clipText -> controller.paste(clipText) },
-            isPasteEnabled = isMainContentFocused && !editorState.hasSelection,
+            moveUpState = if (inlineEditState.isActive) MoveButtonState(isEnabled = false, isWarning = false) else controller.getMoveUpState(),
+            moveDownState = if (inlineEditState.isActive) MoveButtonState(isEnabled = false, isWarning = false) else controller.getMoveDownState(),
+            onPaste = { clipText -> activeController.paste(clipText) },
+            isPasteEnabled = (isMainContentFocused || inlineEditState.isActive) &&
+                !(inlineEditState.activeSession?.editorState?.hasSelection ?: editorState.hasSelection),
             onAddAlarm = {
-                controller.commitUndoState(continueEditing = true)
-                val lineContent = editorState.currentLine?.text ?: ""
-                alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
-                alarmDialogLineIndex = editorState.focusedLineIndex
-                showAlarmDialog = true
+                // Alarm only applies to host note
+                if (!inlineEditState.isActive) {
+                    controller.commitUndoState(continueEditing = true)
+                    val lineContent = editorState.currentLine?.text ?: ""
+                    alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
+                    alarmDialogLineIndex = editorState.focusedLineIndex
+                    showAlarmDialog = true
+                }
             },
-            isAlarmEnabled = isMainContentFocused && !editorState.hasSelection
+            isAlarmEnabled = isMainContentFocused && !editorState.hasSelection && !inlineEditState.isActive
         )
 
         AgentCommandSection(

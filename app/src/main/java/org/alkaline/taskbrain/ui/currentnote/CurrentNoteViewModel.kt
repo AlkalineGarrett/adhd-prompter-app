@@ -8,10 +8,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -36,6 +38,9 @@ import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
 import org.alkaline.taskbrain.dsl.directives.matchDirectiveInstances
+import org.alkaline.taskbrain.dsl.runtime.values.DateTimeVal
+import org.alkaline.taskbrain.dsl.runtime.values.DateVal
+import org.alkaline.taskbrain.dsl.runtime.values.TimeVal
 import org.alkaline.taskbrain.dsl.directives.parseAllDirectiveLocations
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.Parser
@@ -195,6 +200,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
         currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
         _currentNoteIdLiveData.value = currentNoteId
+        Log.d(TAG, "loadContent: switching to noteId=$currentNoteId, cachedNotes=${cachedNotes?.size}, cachedNotesNull=${cachedNotes == null}")
 
         // Save the current note as the last viewed note
         sharedPreferences.edit().putString(LAST_VIEWED_NOTE_KEY, currentNoteId).apply()
@@ -209,6 +215,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         // Check cache first for instant tab switching
         val cached = recentTabsViewModel?.getCachedContent(currentNoteId)
         if (cached != null) {
+            Log.d(TAG, "loadContent: using RecentTabsViewModel cache for $currentNoteId")
             // Use cached content - instant!
             _isNoteDeleted.value = cached.isDeleted
             lineTracker.setTrackedLines(cached.noteLines)
@@ -221,6 +228,7 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             }
             return
         }
+        Log.d(TAG, "loadContent: cache miss for $currentNoteId, fetching from Firebase")
 
         // Cache miss - fetch from Firebase
         _loadStatus.value = LoadStatus.Loading
@@ -287,6 +295,11 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
                     // Sync alarm line content with updated note content
                     syncAlarmLineContent(trackedLines)
+
+                    // Invalidate notes cache so other notes' view directives get fresh data
+                    // This must happen BEFORE executeAndStoreDirectives to ensure
+                    // ensureNotesLoaded() fetches fresh notes when switching tabs
+                    cachedNotes = null
 
                     // Execute directives and store results
                     executeAndStoreDirectives(content)
@@ -525,13 +538,17 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
 
         // Load notes if not cached
         if (cachedNotes == null) {
-            Log.d(TAG, "ensureNotesLoaded: loading notes from repository...")
+            Log.d(TAG, "ensureNotesLoaded: FETCHING FRESH from Firestore...")
             // Use loadNotesWithFullContent for directives that need complete note text (e.g., view())
             val result = repository.loadNotesWithFullContent()
             val notes = result.getOrNull() ?: emptyList()
             cachedNotes = notes
             cachedCurrentNote = notes.find { it.id == currentNoteId }
-            Log.d(TAG, "ensureNotesLoaded: loaded ${notes.size} notes, found currentNote in list: ${cachedCurrentNote != null}")
+            Log.d(TAG, "ensureNotesLoaded: FETCHED ${notes.size} notes from Firestore, found currentNote in list: ${cachedCurrentNote != null}")
+            // Log first few note contents for debugging
+            notes.take(3).forEach { note ->
+                Log.d(TAG, "ensureNotesLoaded: note ${note.id} content preview: '${note.content.take(40)}...'")
+            }
         }
 
         // If current note not found in top-level notes (e.g., it's a child note), load it separately
@@ -701,6 +718,83 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Force re-execute all directives with fresh data from Firestore.
+     * Used after inline editing a viewed note to refresh the view.
+     *
+     * Unlike executeDirectivesLive, this:
+     * 1. Always refreshes cachedNotes from Firestore first
+     * 2. Clears the directive executor cache
+     * 3. Re-executes ALL directives (doesn't skip existing results)
+     * 4. Updates results in place (preserves collapsed state, no UI flicker)
+     */
+    fun forceRefreshAllDirectives(content: String) {
+        Log.d("InlineEditCache", "=== forceRefreshAllDirectives START ===")
+        Log.d("InlineEditCache", "content preview: '${content.take(100).replace("\n", "\\n")}...'")
+        if (!DirectiveFinder.containsDirectives(content)) {
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: no directives, returning")
+            return
+        }
+
+        viewModelScope.launch {
+            // 1. Refresh notes from Firestore FIRST to get fresh data
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: calling refreshNotesCache...")
+            val notes = refreshNotesCache()
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: got ${notes.size} notes from Firestore")
+            notes.forEach { note ->
+                val firstLine = note.content.lines().firstOrNull() ?: ""
+                Log.d("InlineEditCache", "  note ${note.id}: firstLine='$firstLine', content='${note.content.take(80).replace("\n", "\\n")}...'")
+            }
+
+            // 2. Clear executor cache so directives re-evaluate with fresh data
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: clearing directiveCacheManager...")
+            directiveCacheManager.clearAll()
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: cache cleared")
+
+            // 3. Parse and match directive instances
+            val newLocations = parseAllDirectiveLocations(content)
+            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
+            directiveInstances = updatedInstances
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: found ${updatedInstances.size} directives to re-execute")
+            updatedInstances.forEach { inst ->
+                Log.d("InlineEditCache", "  directive: uuid=${inst.uuid}, sourceText='${inst.sourceText}'")
+            }
+
+            // 4. Re-execute ALL directives (not just missing ones)
+            val freshResults = mutableMapOf<String, DirectiveResult>()
+            for (instance in updatedInstances) {
+                Log.d("InlineEditCache", "forceRefreshAllDirectives: executing '${instance.sourceText}'...")
+                val cachedResult = cachedDirectiveExecutor.execute(
+                    instance.sourceText, notes, cachedCurrentNote, noteOperations
+                )
+                freshResults[instance.uuid] = cachedResult.result
+                Log.d("InlineEditCache", "  result: cacheHit=${cachedResult.cacheHit}, error=${cachedResult.result.error}")
+
+                // Log view directive content
+                val viewVal = cachedResult.result.toValue() as? ViewVal
+                if (viewVal != null) {
+                    Log.d("InlineEditCache", "  VIEW directive: ${viewVal.notes.size} notes")
+                    viewVal.notes.forEachIndexed { idx, note ->
+                        val noteContent = viewVal.renderedContents?.getOrNull(idx) ?: note.content
+                        Log.d("InlineEditCache", "    note[$idx] id=${note.id}: '${noteContent.take(60).replace("\n", "\\n")}...'")
+                    }
+                }
+            }
+
+            // 5. Merge with current collapsed state (preserves UI state, avoids flicker)
+            val currentResults = _directiveResults.value ?: emptyMap()
+            Log.d("InlineEditCache", "forceRefreshAllDirectives: merging ${freshResults.size} fresh results with ${currentResults.size} current results")
+            val mergedResults = freshResults.mapValues { (uuid, result) ->
+                val currentCollapsed = currentResults[uuid]?.collapsed ?: result.collapsed
+                result.copy(collapsed = currentCollapsed)
+            }
+
+            // 6. Update results
+            _directiveResults.value = mergedResults
+            Log.d("InlineEditCache", "=== forceRefreshAllDirectives DONE - updated ${mergedResults.size} directives ===")
+        }
+    }
+
+    /**
      * Execute all directives in the content and store results.
      * Called after note save succeeds.
      * Preserves collapsed state from local results.
@@ -720,6 +814,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             directiveInstances = updatedInstances
 
             // Refresh notes cache (notes may have changed after save)
+            // The staleness checker will detect which directives need re-execution
+            // based on their dependencies (e.g., dependsOnAllNames for find(name:...))
             val notes = refreshNotesCache()
 
             // Notify observers that notes cache was refreshed (for view directive updates)
@@ -764,6 +860,12 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             Log.d(TAG, "Executed ${mergedResults.size} directives")
+
+            // IMPORTANT: Invalidate notes cache after execution completes.
+            // The refreshNotesCache() above may have fetched stale data from Firestore
+            // due to eventual consistency (the save write hasn't propagated yet).
+            // Setting cachedNotes = null ensures the next tab switch fetches truly fresh data.
+            cachedNotes = null
         }
     }
 
@@ -802,7 +904,23 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         for (instance in newInstances) {
             val textHash = DirectiveResult.hashDirective(instance.sourceText)
             val cached = cachedByHash[textHash]
-            if (cached != null) {
+            val cachedValue = cached?.toValue()
+            val cachedResultType = cached?.result?.get("type") as? String
+
+            // Skip cached view results - they depend on other notes and can become stale
+            // Views should always be re-executed to get fresh data
+            // Check BOTH the deserialized value AND the raw type field (in case deserialization fails)
+            val isViewResult = cachedValue is ViewVal || cachedResultType == "view"
+
+            // Skip cached bare temporal values - they are now invalid and need re-execution
+            // to get the proper error message. This handles old cache entries from before
+            // the "bare temporal not allowed" rule was added.
+            val isBareTemporalResult = cachedValue is DateVal ||
+                    cachedValue is TimeVal ||
+                    cachedValue is DateTimeVal ||
+                    cachedResultType in listOf("date", "time", "datetime")
+
+            if (cached != null && !isViewResult && !isBareTemporalResult) {
                 uuidResults[instance.uuid] = cached
             } else {
                 missingInstances.add(instance)
@@ -812,7 +930,6 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         if (missingInstances.isEmpty()) {
             // All directives have cached results
             _directiveResults.postValue(uuidResults)
-            Log.d(TAG, "Loaded ${uuidResults.size} cached directive results")
             return
         }
 
@@ -826,11 +943,14 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             val cachedResult = cachedDirectiveExecutor.execute(instance.sourceText, notes, cachedCurrentNote, noteOperations)
             allMutations.addAll(cachedResult.mutations)
             uuidResults[instance.uuid] = cachedResult.result
+
+            val viewVal = cachedResult.result.toValue() as? ViewVal
+
             // Register refresh triggers if this is a refresh directive
             registerRefreshTriggersIfNeeded(instance.sourceText, cachedCurrentNote?.id)
             // Store in Firestore using text hash
             // Skip view directive results - they depend on other notes and can become stale
-            val isViewResult = cachedResult.result.toValue() is ViewVal
+            val isViewResult = viewVal != null
             if (!isViewResult) {
                 val textHash = DirectiveResult.hashDirective(instance.sourceText)
                 directiveResultRepository.saveResult(currentNoteId, textHash, cachedResult.result)
@@ -843,7 +963,6 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         processMutations(allMutations, skipEditorCallback = true)
 
         _directiveResults.postValue(uuidResults)
-        Log.d(TAG, "Loaded ${uuidResults.size - missingInstances.size} cached + executed ${missingInstances.size} new directives")
     }
 
     /**
@@ -1037,6 +1156,74 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     /**
+     * Execute directives for arbitrary content (e.g., a viewed note being edited inline).
+     * Returns directive results keyed by "lineIndex:startOffset" for use in rendering.
+     *
+     * This is used when inline editing a viewed note to render its directives properly.
+     * The results are separate from the main note's directive results.
+     *
+     * @param content The content to parse and execute directives for
+     * @param onResults Callback with the results when execution completes
+     */
+    fun executeDirectivesForContent(content: String, onResults: (Map<String, DirectiveResult>) -> Unit) {
+        Log.d("InlineEditCache", "=== executeDirectivesForContent START ===")
+        Log.d("InlineEditCache", "content preview: '${content.take(100).replace("\n", "\\n")}...'")
+        if (!DirectiveFinder.containsDirectives(content)) {
+            Log.d("InlineEditCache", "executeDirectivesForContent: no directives found")
+            onResults(emptyMap())
+            return
+        }
+
+        viewModelScope.launch {
+            Log.d("InlineEditCache", "executeDirectivesForContent: calling ensureNotesLoaded...")
+            val notes = ensureNotesLoaded()
+            Log.d("InlineEditCache", "executeDirectivesForContent: got ${notes.size} notes")
+            val locations = parseAllDirectiveLocations(content)
+            Log.d("InlineEditCache", "executeDirectivesForContent: found ${locations.size} directive locations")
+
+            val results = mutableMapOf<String, DirectiveResult>()
+            for (loc in locations) {
+                val key = DirectiveFinder.directiveKey(loc.lineIndex, loc.startOffset)
+                Log.d("InlineEditCache", "executeDirectivesForContent: executing '${loc.sourceText}' at key=$key")
+                // Execute directive (mutations are skipped for inline view - read-only context)
+                try {
+                    val cachedResult = cachedDirectiveExecutor.execute(
+                        loc.sourceText, notes, cachedCurrentNote, null // null noteOperations = read-only
+                    )
+                    results[key] = cachedResult.result
+                    val displayText = cachedResult.result.toValue()?.toDisplayString()
+                    Log.d("InlineEditCache", "  result: cacheHit=${cachedResult.cacheHit}, display='${displayText?.take(50)}', error=${cachedResult.result.error}")
+                } catch (e: Exception) {
+                    Log.e("InlineEditCache", "executeDirectivesForContent: error executing '${loc.sourceText}'", e)
+                    // Store error result
+                    results[key] = DirectiveResult.failure(e.message ?: "Execution error")
+                }
+            }
+
+            Log.d("InlineEditCache", "=== executeDirectivesForContent DONE - returning ${results.size} results ===")
+            onResults(results)
+        }
+    }
+
+    /**
+     * Execute a single directive and return its result.
+     * Used for refresh/confirm actions in inline directive editing.
+     *
+     * @param sourceText The directive source text (e.g., "[add(1,2)]")
+     * @param onResult Callback with the result when execution completes
+     */
+    fun executeSingleDirective(sourceText: String, onResult: (DirectiveResult) -> Unit) {
+        viewModelScope.launch {
+            val notes = ensureNotesLoaded()
+            val cachedResult = cachedDirectiveExecutor.execute(
+                sourceText, notes, cachedCurrentNote, null // null noteOperations = read-only
+            )
+            Log.d(TAG, "executeSingleDirective: executed '$sourceText'")
+            onResult(cachedResult.result)
+        }
+    }
+
+    /**
      * Start an edit session for inline editing within a view.
      * Call this when the user starts editing content that belongs to another note
      * (e.g., editing a note displayed in a view directive).
@@ -1070,6 +1257,62 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
      * Check if an inline edit session is currently active.
      */
     fun isInlineEditSessionActive(): Boolean = editSessionManager.isEditSessionActive()
+
+    /**
+     * Saves the content of a note edited inline within a view directive.
+     * This is a simple content update that doesn't affect child note structure.
+     *
+     * The method:
+     * 1. Starts an inline edit session to suppress cache invalidation during edit
+     * 2. Updates the note content in Firestore
+     * 3. Invalidates the directive cache so views refresh
+     * 4. Ends the edit session which triggers view refresh
+     *
+     * @param noteId The ID of the note to update
+     * @param newContent The new content for the note
+     * @param onSuccess Optional callback when save succeeds
+     * @param onFailure Optional callback when save fails
+     */
+    fun saveInlineNoteContent(
+        noteId: String,
+        newContent: String,
+        onSuccess: (() -> Unit)? = null,
+        onFailure: ((Throwable) -> Unit)? = null
+    ) {
+        val lines = newContent.lines()
+        Log.d("InlineEditCache", "=== saveInlineNoteContent START ===")
+        Log.d("InlineEditCache", "noteId=$noteId")
+        Log.d("InlineEditCache", "content has ${lines.size} lines, first='${lines.firstOrNull()}'")
+        Log.d("InlineEditCache", "full content: '${newContent.take(100).replace("\n", "\\n")}...'")
+        Log.d("InlineEditCache", "cachedNotes was ${if (cachedNotes == null) "NULL" else "${cachedNotes?.size} notes"}")
+
+        // Synchronously invalidate caches BEFORE the async save starts.
+        // This ensures that any subsequent loadDirectiveResults (e.g., on tab switch)
+        // will fetch fresh data from Firestore, not stale cached data.
+        Log.d("InlineEditCache", "saveInlineNoteContent: INVALIDATING cachedNotes and directive cache...")
+        cachedNotes = null
+        directiveCacheManager.clearAll()
+        Log.d("InlineEditCache", "saveInlineNoteContent: caches invalidated")
+
+        viewModelScope.launch {
+            startInlineEditSession(noteId)
+
+            Log.d("InlineEditCache", "saveInlineNoteContent: calling repository.saveNoteWithFullContent...")
+            // Use saveNoteWithFullContent to properly handle multi-line notes
+            // This preserves child note IDs and handles line additions/deletions
+            repository.saveNoteWithFullContent(noteId, newContent)
+                .onSuccess {
+                    Log.d("InlineEditCache", "=== saveInlineNoteContent SUCCESS for $noteId ===")
+                    onSuccess?.invoke()
+                }
+                .onFailure { e ->
+                    Log.e("InlineEditCache", "=== saveInlineNoteContent FAILED for $noteId ===", e)
+                    onFailure?.invoke(e)
+                }
+
+            endInlineEditSession()
+        }
+    }
 
     /**
      * Register refresh triggers for a directive if it contains refresh[...].

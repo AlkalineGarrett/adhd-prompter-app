@@ -147,6 +147,15 @@ object DirectiveFinder {
                 )
             }
 
+            // Check for unwrapped mutations (property assignments must be in once[])
+            val mutationResult = IdempotencyAnalyzer.checkUnwrappedMutations(directive.expression)
+            if (!mutationResult.isIdempotent) {
+                return DirectiveExecutionResult(
+                    DirectiveResult.failure(mutationResult.nonIdempotentReason ?: "Unwrapped mutation"),
+                    emptyList()
+                )
+            }
+
             val value = Executor().execute(directive, env)
 
             // Check for no-effect values that can't be meaningfully displayed
