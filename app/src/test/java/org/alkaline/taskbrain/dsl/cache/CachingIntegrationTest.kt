@@ -342,6 +342,133 @@ class CachingIntegrationTest {
 
     // endregion
 
+    // region Phase 1 - View Transitive Dependency Tests
+
+    @Test
+    fun `view directive tracks viewed note IDs as dependencies`() {
+        // Create notes where one contains a view directive
+        val viewedNote = Note(id = "viewed", content = "Viewed content with [add(1, 2)]", path = "viewed")
+        val hostNote = Note(id = "host", content = "Host note", path = "host")
+        val notes = listOf(viewedNote, hostNote)
+
+        val result = executor.execute(
+            sourceText = "[view find(path: \"viewed\")]",
+            notes = notes,
+            currentNote = hostNote
+        )
+
+        // The viewed note ID should be in both firstLineNotes and nonFirstLineNotes
+        // This ensures any change to the viewed note's content triggers staleness
+        assertTrue(
+            "Viewed note ID should be tracked in firstLineNotes",
+            result.dependencies.firstLineNotes.contains("viewed")
+        )
+        assertTrue(
+            "Viewed note ID should be tracked in nonFirstLineNotes",
+            result.dependencies.nonFirstLineNotes.contains("viewed")
+        )
+    }
+
+    @Test
+    fun `view becomes stale when viewed note content changes`() {
+        // Create notes where one contains a view directive
+        val viewedNote = Note(id = "viewed", content = "Original content", path = "viewed")
+        val hostNote = Note(id = "host", content = "Host note", path = "host")
+        val originalNotes = listOf(viewedNote, hostNote)
+
+        // First execution - cache the view result
+        val result1 = executor.execute(
+            sourceText = "[view find(path: \"viewed\")]",
+            notes = originalNotes,
+            currentNote = hostNote
+        )
+        assertFalse("First execution should be cache miss", result1.cacheHit)
+
+        // Verify the viewed note is tracked as dependency (in both sets for full content)
+        assertTrue(
+            "Viewed note should be tracked in firstLineNotes",
+            result1.dependencies.firstLineNotes.contains("viewed")
+        )
+
+        // Modify the viewed note's content
+        val modifiedNotes = listOf(
+            viewedNote.copy(content = "Modified content"),
+            hostNote
+        )
+
+        // Second execution with modified content should detect staleness
+        val result2 = executor.execute(
+            sourceText = "[view find(path: \"viewed\")]",
+            notes = modifiedNotes,
+            currentNote = hostNote
+        )
+
+        // Should be cache miss because the viewed note's content changed
+        assertFalse(
+            "View should be stale when viewed note content changes",
+            result2.cacheHit
+        )
+    }
+
+    @Test
+    fun `multiple viewed notes are all tracked as dependencies`() {
+        // Create multiple notes to be viewed
+        val note1 = Note(id = "inbox-1", content = "First note", path = "inbox/note1")
+        val note2 = Note(id = "inbox-2", content = "Second note", path = "inbox/note2")
+        val hostNote = Note(id = "host", content = "Host note", path = "host")
+        val notes = listOf(note1, note2, hostNote)
+
+        val result = executor.execute(
+            sourceText = "[view find(path: pattern(\"inbox/\" any*(1..)))]",
+            notes = notes,
+            currentNote = hostNote
+        )
+
+        // Both viewed note IDs should be tracked in firstLineNotes
+        // (checking firstLineNotes is sufficient - they're also in nonFirstLineNotes)
+        assertTrue(
+            "First viewed note should be tracked",
+            result.dependencies.firstLineNotes.contains("inbox-1")
+        )
+        assertTrue(
+            "Second viewed note should be tracked",
+            result.dependencies.firstLineNotes.contains("inbox-2")
+        )
+    }
+
+    @Test
+    fun `nested directives in viewed notes propagate dependencies`() {
+        // Create a viewed note with a directive that has its own dependencies
+        val viewedNote = Note(
+            id = "viewed",
+            content = "Viewed note with [find(path: \"other\")]",
+            path = "viewed"
+        )
+        val otherNote = Note(id = "other", content = "Other note", path = "other")
+        val hostNote = Note(id = "host", content = "Host note", path = "host")
+        val notes = listOf(viewedNote, otherNote, hostNote)
+
+        val result = executor.execute(
+            sourceText = "[view find(path: \"viewed\")]",
+            notes = notes,
+            currentNote = hostNote
+        )
+
+        // The host view should have dependencies from nested directives
+        // At minimum, the viewed note should be tracked in firstLineNotes
+        assertTrue(
+            "Viewed note should be tracked",
+            result.dependencies.firstLineNotes.contains("viewed")
+        )
+        // The nested find() should contribute note existence dependency
+        assertTrue(
+            "Nested find should contribute dependencies",
+            result.dependencies.dependsOnNoteExistence || result.dependencies.dependsOnPath
+        )
+    }
+
+    // endregion
+
     // region Factory Tests
 
     @Test

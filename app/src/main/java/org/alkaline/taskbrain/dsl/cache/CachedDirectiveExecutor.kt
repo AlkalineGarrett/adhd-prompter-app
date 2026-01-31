@@ -7,7 +7,10 @@ import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.LexerException
 import org.alkaline.taskbrain.dsl.language.ParseException
 import org.alkaline.taskbrain.dsl.language.Parser
+import org.alkaline.taskbrain.dsl.runtime.CachedExecutionResultInterface
+import org.alkaline.taskbrain.dsl.runtime.CachedExecutorInterface
 import org.alkaline.taskbrain.dsl.runtime.NoteOperations
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 
 /**
  * Integrates directive caching with execution.
@@ -37,7 +40,7 @@ class CachedDirectiveExecutor(
     private val editSessionManager: EditSessionManager? = null,
     private val dependencyCollector: TransitiveDependencyCollector = TransitiveDependencyCollector(),
     private val dependencyRegistry: DirectiveDependencyRegistry = DirectiveDependencyRegistry()
-) {
+) : CachedExecutorInterface {
     /**
      * Result of cached execution.
      */
@@ -146,6 +149,23 @@ class CachedDirectiveExecutor(
     }
 
     /**
+     * Execute a directive with caching support - interface implementation.
+     * Used by view() to execute nested directives with proper dependency tracking.
+     *
+     * Phase 1 (Caching Audit): Added to implement CachedExecutorInterface.
+     */
+    override fun executeCached(
+        sourceText: String,
+        notes: List<Note>,
+        currentNote: Note?,
+        noteOperations: NoteOperations?,
+        viewStack: List<String>
+    ): CachedExecutionResultInterface {
+        val result = execute(sourceText, notes, currentNote, noteOperations, viewStack)
+        return CachedExecutionResultAdapter(result)
+    }
+
+    /**
      * Analyze a directive to get its cache key and dependencies.
      * Returns null if parsing fails (will be executed fresh to get error).
      */
@@ -165,6 +185,8 @@ class CachedDirectiveExecutor(
 
     /**
      * Execute directive without caching (for parse errors or when analysis fails).
+     *
+     * Phase 1 (Caching Audit): Passes this executor for nested view() execution.
      */
     private fun executeFresh(
         sourceText: String,
@@ -174,7 +196,12 @@ class CachedDirectiveExecutor(
         viewStack: List<String>
     ): CachedExecutionResult {
         val execResult = DirectiveFinder.executeDirective(
-            sourceText, notes, currentNote, noteOperations, viewStack
+            sourceText = sourceText,
+            notes = notes,
+            currentNote = currentNote,
+            noteOperations = noteOperations,
+            viewStack = viewStack,
+            cachedExecutor = this  // Phase 1: Pass executor for nested directives
         )
         return CachedExecutionResult(
             result = execResult.result,
@@ -202,12 +229,23 @@ class CachedDirectiveExecutor(
 
         try {
             // Execute the directive
+            // Phase 1 (Caching Audit): Pass this executor for nested view() directives
             val execResult = DirectiveFinder.executeDirective(
-                sourceText, notes, currentNote, noteOperations, viewStack
+                sourceText = sourceText,
+                notes = notes,
+                currentNote = currentNote,
+                noteOperations = noteOperations,
+                viewStack = viewStack,
+                cachedExecutor = this
             )
 
             // Finish collecting dependencies
-            val finalDependencies = dependencyCollector.finishDirective()
+            var finalDependencies = dependencyCollector.finishDirective()
+
+            // Phase 1.3: Extract viewed note IDs from ViewVal results
+            // When view() renders notes, we need to track those note IDs as dependencies
+            // so that changes to viewed notes trigger staleness detection.
+            finalDependencies = enrichWithViewDependencies(execResult.result, finalDependencies)
 
             // Register dependencies for transitive lookups
             dependencyRegistry.register(cacheKey, finalDependencies)
@@ -252,6 +290,36 @@ class CachedDirectiveExecutor(
         // Use DirectiveErrorFactory to classify
         val error = DirectiveErrorFactory.fromExecutionException(errorMessage)
         return error.isDeterministic
+    }
+
+    /**
+     * Enrich dependencies with viewed note IDs from ViewVal results.
+     *
+     * Phase 1.3 (Caching Audit): When view() renders notes, we track those note IDs
+     * in BOTH firstLineNotes and nonFirstLineNotes so that ANY changes to viewed
+     * note content trigger staleness detection.
+     *
+     * We track in both sets because view() displays the full content of each note:
+     * - firstLineNotes: detects changes to note names (first line)
+     * - nonFirstLineNotes: detects changes to note bodies (lines 2+)
+     */
+    private fun enrichWithViewDependencies(
+        result: DirectiveResult,
+        dependencies: DirectiveDependencies
+    ): DirectiveDependencies {
+        val value = result.toValue() ?: return dependencies
+        if (value !is ViewVal) return dependencies
+
+        // Extract all viewed note IDs
+        val viewedNoteIds = value.notes.map { it.id }.toSet()
+        if (viewedNoteIds.isEmpty()) return dependencies
+
+        // Add viewed note IDs to both first-line and non-first-line dependencies
+        // This ensures any content change in viewed notes triggers staleness
+        return dependencies.copy(
+            firstLineNotes = dependencies.firstLineNotes + viewedNoteIds,
+            nonFirstLineNotes = dependencies.nonFirstLineNotes + viewedNoteIds
+        )
     }
 
     /**
@@ -371,4 +439,28 @@ object CachedDirectiveExecutorFactory {
             editSessionManager = editSessionManager
         )
     }
+}
+
+/**
+ * Adapter to expose CachedExecutionResult through the interface.
+ * This breaks the circular dependency between runtime and cache packages.
+ *
+ * Phase 1 (Caching Audit): Added for view() transitive dependency tracking.
+ */
+internal class CachedExecutionResultAdapter(
+    private val result: CachedDirectiveExecutor.CachedExecutionResult
+) : CachedExecutionResultInterface {
+    override val displayValue: String?
+        get() = if (result.result.isComputed) {
+            result.result.toValue()?.toDisplayString()
+        } else null
+
+    override val errorMessage: String?
+        get() = result.result.error
+
+    override val cacheHit: Boolean
+        get() = result.cacheHit
+
+    override val dependencies: Any
+        get() = result.dependencies
 }

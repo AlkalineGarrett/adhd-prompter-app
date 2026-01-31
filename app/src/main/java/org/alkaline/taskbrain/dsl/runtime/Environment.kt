@@ -63,6 +63,7 @@ class Environment private constructor(
      * Milestone 10: Propagates view stack for circular dependency detection.
      * Phase 0c: Propagates onceCache for once[...] expression caching.
      * Phase 3: Propagates mockedTime for trigger verification.
+     * Phase 1 (Caching Audit): Propagates cachedExecutor for transitive dependency tracking.
      */
     fun child(): Environment = Environment(
         parent = this,
@@ -73,7 +74,8 @@ class Environment private constructor(
             executor = getExecutor(),
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
-            mockedTime = getMockedTime()
+            mockedTime = getMockedTime(),
+            cachedExecutor = getCachedExecutor()
         )
     )
 
@@ -129,9 +131,43 @@ class Environment private constructor(
             executor = executor,
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
-            mockedTime = getMockedTime()
+            mockedTime = getMockedTime(),
+            cachedExecutor = getCachedExecutor()
         )
     )
+
+    // region Cached Executor (Phase 1 - Caching Audit)
+
+    /**
+     * Get the cached executor for nested directive execution.
+     * Used by view() to execute nested directives with proper dependency tracking.
+     *
+     * Phase 1 (Caching Audit).
+     */
+    fun getCachedExecutor(): CachedExecutorInterface? =
+        context.cachedExecutor ?: parent?.getCachedExecutor()
+
+    /**
+     * Create a child environment with a cached executor set.
+     * Used by CachedDirectiveExecutor to inject itself for nested execution.
+     *
+     * Phase 1 (Caching Audit).
+     */
+    fun withCachedExecutor(cachedExecutor: CachedExecutorInterface): Environment = Environment(
+        parent = this,
+        context = NoteContext(
+            notes = getNotes(),
+            currentNote = getCurrentNoteRaw(),
+            noteOperations = getNoteOperations(),
+            executor = getExecutor(),
+            viewStack = getViewStack(),
+            onceCache = getOnceCache(),
+            mockedTime = getMockedTime(),
+            cachedExecutor = cachedExecutor
+        )
+    )
+
+    // endregion
 
     // region OnceCache (Phase 0c)
 
@@ -194,7 +230,8 @@ class Environment private constructor(
             executor = getExecutor(),
             viewStack = getViewStack() + noteId,
             onceCache = getOnceCache(),
-            mockedTime = getMockedTime()
+            mockedTime = getMockedTime(),
+            cachedExecutor = getCachedExecutor()
         )
     )
 
@@ -225,7 +262,8 @@ class Environment private constructor(
             executor = getExecutor(),
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
-            mockedTime = time
+            mockedTime = time,
+            cachedExecutor = getCachedExecutor()
         )
     )
 

@@ -6,6 +6,7 @@ import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.LexerException
 import org.alkaline.taskbrain.dsl.language.ParseException
 import org.alkaline.taskbrain.dsl.language.Parser
+import org.alkaline.taskbrain.dsl.runtime.CachedExecutorInterface
 import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
@@ -124,6 +125,7 @@ object DirectiveFinder {
      * @param currentNote Optional current note for [.] reference (Milestone 6)
      * @param noteOperations Optional note operations for mutations (Milestone 7)
      * @param viewStack Optional view stack for circular dependency detection (Milestone 10)
+     * @param cachedExecutor Optional cached executor for nested directive execution (Phase 1)
      * @return DirectiveExecutionResult containing the result and any mutations that occurred
      */
     fun executeDirective(
@@ -131,9 +133,10 @@ object DirectiveFinder {
         notes: List<Note>? = null,
         currentNote: Note? = null,
         noteOperations: NoteOperations? = null,
-        viewStack: List<String> = emptyList()
+        viewStack: List<String> = emptyList(),
+        cachedExecutor: CachedExecutorInterface? = null
     ): DirectiveExecutionResult {
-        val env = createEnvironment(notes, currentNote, noteOperations, viewStack)
+        val env = createEnvironment(notes, currentNote, noteOperations, viewStack, cachedExecutor)
         return try {
             val tokens = Lexer(sourceText).tokenize()
             val directive = Parser(tokens, sourceText).parseDirective()
@@ -181,14 +184,25 @@ object DirectiveFinder {
 
     /**
      * Create an environment with the appropriate context.
+     *
+     * Phase 1 (Caching Audit): Added cachedExecutor parameter for transitive dependency tracking.
      */
     private fun createEnvironment(
         notes: List<Note>?,
         currentNote: Note?,
         noteOperations: NoteOperations?,
-        viewStack: List<String> = emptyList()
+        viewStack: List<String> = emptyList(),
+        cachedExecutor: CachedExecutorInterface? = null
     ): Environment {
-        return Environment(NoteContext(notes, currentNote, noteOperations, viewStack = viewStack))
+        return Environment(
+            NoteContext(
+                notes = notes,
+                currentNote = currentNote,
+                noteOperations = noteOperations,
+                viewStack = viewStack,
+                cachedExecutor = cachedExecutor
+            )
+        )
     }
 
     /**

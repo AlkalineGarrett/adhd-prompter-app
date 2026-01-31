@@ -314,6 +314,9 @@ object NoteFunctions {
      * Render note content by evaluating any directives it contains.
      * Sets the viewed note as the current note so [.] references work correctly.
      * Pushes the note onto the view stack to detect circular dependencies.
+     *
+     * Phase 1 (Caching Audit): Uses CachedDirectiveExecutor when available
+     * to enable transitive dependency tracking for nested directives.
      */
     private fun renderNoteContent(viewedNote: org.alkaline.taskbrain.data.Note, env: Environment): String {
         val content = viewedNote.content
@@ -327,6 +330,10 @@ object NoteFunctions {
         // Push this note onto the view stack for circular dependency detection
         val viewStack = env.getViewStack() + viewedNote.id
 
+        // Get the cached executor if available (Phase 1)
+        val cachedExecutor = env.getCachedExecutor()
+        val allNotes = env.getNotes() ?: emptyList()
+
         // Build rendered content by replacing directive source with results
         val result = StringBuilder()
         var lastEnd = 0
@@ -339,22 +346,38 @@ object NoteFunctions {
 
             // Execute the directive with the viewed note as the current note
             // This ensures [.] references the viewed note, not the parent note
-            val execResult = DirectiveFinder.executeDirective(
-                directive.sourceText,
-                env.getNotes(),
-                viewedNote,  // Use viewed note as current note
-                env.getNoteOperations(),
-                viewStack
-            )
-
-            if (execResult.result.error != null) {
-                // On error, keep the source text
-                result.append(directive.sourceText)
+            val displayValue = if (cachedExecutor != null) {
+                // Phase 1: Use cached executor for transitive dependency tracking
+                val cachedResult = cachedExecutor.executeCached(
+                    sourceText = directive.sourceText,
+                    notes = allNotes,
+                    currentNote = viewedNote,
+                    noteOperations = env.getNoteOperations(),
+                    viewStack = viewStack
+                )
+                if (cachedResult.errorMessage != null) {
+                    // On error, keep the source text
+                    directive.sourceText
+                } else {
+                    cachedResult.displayValue ?: directive.sourceText
+                }
             } else {
-                // Append the evaluated result
-                result.append(execResult.result.toValue()?.toDisplayString() ?: directive.sourceText)
+                // Fallback: Use DirectiveFinder directly (for tests without caching)
+                val execResult = DirectiveFinder.executeDirective(
+                    directive.sourceText,
+                    allNotes,
+                    viewedNote,
+                    env.getNoteOperations(),
+                    viewStack
+                )
+                if (execResult.result.error != null) {
+                    directive.sourceText
+                } else {
+                    execResult.result.toValue()?.toDisplayString() ?: directive.sourceText
+                }
             }
 
+            result.append(displayValue)
             lastEnd = directive.endOffset
         }
 
