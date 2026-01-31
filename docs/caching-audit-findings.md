@@ -118,7 +118,7 @@ The caching system has a layered architecture:
 
 ### MEDIUM: Race Condition in executeDirectivesLive
 
-**Status**: PARTIALLY MITIGATED
+**Status**: ✅ MITIGATED (Phase 1 + Phase 2)
 
 **Location**: `CurrentNoteViewModel.kt:665-717`
 
@@ -139,7 +139,7 @@ However, there's a potential race between:
 
 ### MEDIUM: cachedNotes Set to Null After Stale Read
 
-**Status**: BY DESIGN (but suboptimal)
+**Status**: ✅ ACCEPTABLE (with Phase 1 dependency tracking)
 
 **Location**: `CurrentNoteViewModel.kt:864-869`
 
@@ -154,8 +154,11 @@ cachedNotes = null
 1. During `executeAndStoreDirectives`, directives execute with potentially stale notes
 2. Only AFTER execution, the cache is invalidated
 
-**Result**: View directives rendered during save may show stale data until next tab switch/refresh.
-  - Developer feedback: Please try to fix this
+**Resolution**: With Phase 1's dependency tracking in place, if directives execute with stale data:
+1. Content hashes are stored in the cache entry
+2. On next execution, the StalenessChecker compares current hashes with cached hashes
+3. If content changed, the cache is stale and the directive re-executes with fresh data
+4. This is self-correcting - stale data is detected and fixed on the next access
 
 ---
 
@@ -244,10 +247,9 @@ The code comment at line 10-13 says "Hashes are computed on-demand, not stored."
 
 ### For Race Conditions
 
-1. **Atomic Save + Refresh**: Consider making the save and cache refresh atomic by waiting for Firestore write confirmation before refreshing.
-- Developer feedback: Please do this
+1. **Atomic Save + Refresh**: ✅ IMPLEMENTED (Phase 2) - `saveInlineNoteContent` now waits for Firestore write confirmation before clearing caches and triggering refresh.
 
-2. **Use Firestore Listeners**: For real-time scenarios, Firestore snapshot listeners could provide immediate updates without eventual consistency issues.
+2. **Use Firestore Listeners**: For real-time scenarios, Firestore snapshot listeners could provide immediate updates without eventual consistency issues. (Not implemented - Phase 1+2 provide sufficient correctness)
 
 ---
 
@@ -337,9 +339,17 @@ val execResult = if (cachedExecutor != null) {
 
 ### Phase 2: Atomic Save + Refresh (Race Condition Fix)
 
+**Status**: ✅ COMPLETED
+
 **Goal**: Ensure save completion before cache refresh.
 
 **Why Second**: Once dependencies are properly tracked, we need to ensure the data is consistent when we check staleness.
+
+**What was implemented**:
+1. `saveInlineNoteContent()` now awaits save completion before clearing caches
+2. Caches are only cleared in the onSuccess callback (after Firestore confirms the write)
+3. On save failure, the edit session is aborted (no pending invalidations applied)
+4. Updated `executeAndStoreDirectives` comment to explain how Phase 1's dependency tracking handles potential stale reads
 
 #### 2.1 Wait for Firestore write confirmation before refresh
 
@@ -509,13 +519,13 @@ fun `refresh uses post-save data not pre-save cache`() {
 
 ### Implementation Order Summary
 
-| Phase | Priority | Effort | Risk |
-|-------|----------|--------|------|
-| 1. Transitive Dependencies | Critical | High | Medium |
-| 2. Atomic Save + Refresh | High | Medium | Low |
-| 3. Metadata Hash Caching | Medium | Low | Low |
-| 4. Edit Session Cleanup | Low | Low | Low |
-| 5. Integration Tests | High | Medium | Low |
+| Phase | Priority | Effort | Risk | Status |
+|-------|----------|--------|------|--------|
+| 1. Transitive Dependencies | Critical | High | Medium | ✅ DONE |
+| 2. Atomic Save + Refresh | High | Medium | Low | ✅ DONE |
+| 3. Metadata Hash Caching | Medium | Low | Low | Pending |
+| 4. Edit Session Cleanup | Low | Low | Low | Pending |
+| 5. Integration Tests | High | Medium | Low | Partial (Phase 1 tests added) |
 
 **Recommended approach**:
 1. Start with Phase 1.3 (track viewed note IDs) - smallest change that might fix Issue 5

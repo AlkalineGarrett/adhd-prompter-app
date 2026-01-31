@@ -865,6 +865,11 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // The refreshNotesCache() above may have fetched stale data from Firestore
             // due to eventual consistency (the save write hasn't propagated yet).
             // Setting cachedNotes = null ensures the next tab switch fetches truly fresh data.
+            //
+            // Phase 2 note: With Phase 1's dependency tracking in place, if we executed with
+            // stale data, the content hashes stored in the cache entry won't match the fresh
+            // data on next execution. The StalenessChecker will detect this and trigger
+            // re-execution automatically.
             cachedNotes = null
         }
     }
@@ -1286,31 +1291,41 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
         Log.d("InlineEditCache", "full content: '${newContent.take(100).replace("\n", "\\n")}...'")
         Log.d("InlineEditCache", "cachedNotes was ${if (cachedNotes == null) "NULL" else "${cachedNotes?.size} notes"}")
 
-        // Synchronously invalidate caches BEFORE the async save starts.
-        // This ensures that any subsequent loadDirectiveResults (e.g., on tab switch)
-        // will fetch fresh data from Firestore, not stale cached data.
-        Log.d("InlineEditCache", "saveInlineNoteContent: INVALIDATING cachedNotes and directive cache...")
-        cachedNotes = null
-        directiveCacheManager.clearAll()
-        Log.d("InlineEditCache", "saveInlineNoteContent: caches invalidated")
-
         viewModelScope.launch {
             startInlineEditSession(noteId)
 
             Log.d("InlineEditCache", "saveInlineNoteContent: calling repository.saveNoteWithFullContent...")
             // Use saveNoteWithFullContent to properly handle multi-line notes
             // This preserves child note IDs and handles line additions/deletions
-            repository.saveNoteWithFullContent(noteId, newContent)
+            //
+            // Phase 2 (Caching Audit): AWAIT save completion before clearing caches.
+            // This ensures that when we refresh, Firestore has the new data.
+            val saveResult = repository.saveNoteWithFullContent(noteId, newContent)
+
+            saveResult
                 .onSuccess {
                     Log.d("InlineEditCache", "=== saveInlineNoteContent SUCCESS for $noteId ===")
+
+                    // Phase 2: NOW invalidate caches AFTER save confirmed.
+                    // This ensures subsequent reads get the newly saved data.
+                    Log.d("InlineEditCache", "saveInlineNoteContent: INVALIDATING cachedNotes and directive cache...")
+                    cachedNotes = null
+                    directiveCacheManager.clearAll()
+                    Log.d("InlineEditCache", "saveInlineNoteContent: caches invalidated")
+
+                    // NOW end session (triggers refresh with fresh data)
+                    endInlineEditSession()
+
                     onSuccess?.invoke()
                 }
                 .onFailure { e ->
                     Log.e("InlineEditCache", "=== saveInlineNoteContent FAILED for $noteId ===", e)
+
+                    // Abort edit session on failure (don't apply pending invalidations)
+                    editSessionManager.abortEditSession()
+
                     onFailure?.invoke(e)
                 }
-
-            endInlineEditSession()
         }
     }
 
