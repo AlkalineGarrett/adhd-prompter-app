@@ -30,6 +30,7 @@ import org.alkaline.taskbrain.dsl.cache.CachedDirectiveExecutor
 import org.alkaline.taskbrain.dsl.cache.CachedDirectiveExecutorFactory
 import org.alkaline.taskbrain.dsl.cache.DirectiveCacheManager
 import org.alkaline.taskbrain.dsl.cache.EditSessionManager
+import org.alkaline.taskbrain.dsl.cache.MetadataHasher
 import org.alkaline.taskbrain.dsl.cache.RefreshScheduler
 import org.alkaline.taskbrain.dsl.cache.RefreshTriggerAnalyzer
 import org.alkaline.taskbrain.dsl.directives.DirectiveExecutionResult
@@ -151,6 +152,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
     fun invalidateNotesCache() {
         cachedNotes = null
         cachedCurrentNote = null
+        // Phase 3: Invalidate metadata hash cache when notes change
+        MetadataHasher.invalidateCache()
         // Also clear the directive cache to force re-execution with fresh data
         directiveCacheManager.clearAll()
     }
@@ -300,6 +303,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     // This must happen BEFORE executeAndStoreDirectives to ensure
                     // ensureNotesLoaded() fetches fresh notes when switching tabs
                     cachedNotes = null
+                    // Phase 3: Invalidate metadata hash cache when notes change
+                    MetadataHasher.invalidateCache()
 
                     // Execute directives and store results
                     executeAndStoreDirectives(content)
@@ -871,6 +876,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
             // data on next execution. The StalenessChecker will detect this and trigger
             // re-execution automatically.
             cachedNotes = null
+            // Phase 3: Invalidate metadata hash cache when notes change
+            MetadataHasher.invalidateCache()
         }
     }
 
@@ -1310,6 +1317,8 @@ class CurrentNoteViewModel(application: Application) : AndroidViewModel(applicat
                     // This ensures subsequent reads get the newly saved data.
                     Log.d("InlineEditCache", "saveInlineNoteContent: INVALIDATING cachedNotes and directive cache...")
                     cachedNotes = null
+                    // Phase 3: Invalidate metadata hash cache when notes change
+                    MetadataHasher.invalidateCache()
                     directiveCacheManager.clearAll()
                     Log.d("InlineEditCache", "saveInlineNoteContent: caches invalidated")
 

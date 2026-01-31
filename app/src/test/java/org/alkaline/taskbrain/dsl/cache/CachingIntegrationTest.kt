@@ -42,6 +42,8 @@ class CachingIntegrationTest {
             cacheManager = cacheManager,
             editSessionManager = editSessionManager
         )
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
     }
 
     // region Cache Hit/Miss Tests

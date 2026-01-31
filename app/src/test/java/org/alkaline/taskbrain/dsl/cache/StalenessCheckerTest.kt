@@ -4,6 +4,7 @@ import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.runtime.StringVal
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import java.util.Date
 
@@ -12,6 +13,12 @@ import java.util.Date
  * Phase 1: Data structures and hashing infrastructure.
  */
 class StalenessCheckerTest {
+
+    @Before
+    fun setUp() {
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
+    }
 
     // region Metadata staleness
 

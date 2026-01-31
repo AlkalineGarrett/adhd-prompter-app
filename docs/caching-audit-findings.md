@@ -405,9 +405,17 @@ The current pattern at line 864-869 invalidates cache AFTER execution. Change to
 
 ### Phase 3: Global Metadata Hash Caching
 
+**Status**: ✅ COMPLETED
+
 **Goal**: Cache expensive hash computations.
 
 **Why Third**: Performance optimization, doesn't affect correctness.
+
+**What was implemented**:
+1. `MetadataHasher` now caches computed hashes in memory
+2. Cache uses `System.identityHashCode(notes)` for identity - only returns cached values when same list object is passed
+3. `invalidateCache()` added and called from ViewModel whenever `cachedNotes` is set to null
+4. Updated test files to call `MetadataHasher.invalidateCache()` in `@Before` setup
 
 #### 3.1 Add cached hash storage to MetadataHasher
 
@@ -523,7 +531,7 @@ fun `refresh uses post-save data not pre-save cache`() {
 |-------|----------|--------|------|--------|
 | 1. Transitive Dependencies | Critical | High | Medium | ✅ DONE |
 | 2. Atomic Save + Refresh | High | Medium | Low | ✅ DONE |
-| 3. Metadata Hash Caching | Medium | Low | Low | Pending |
+| 3. Metadata Hash Caching | Medium | Low | Low | ✅ DONE |
 | 4. Edit Session Cleanup | Low | Low | Low | Pending |
 | 5. Integration Tests | High | Medium | Low | Partial (Phase 1 tests added) |
 

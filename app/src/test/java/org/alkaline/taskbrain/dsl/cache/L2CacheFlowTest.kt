@@ -25,6 +25,8 @@ class L2CacheFlowTest {
     fun setUp() {
         l2Cache = InMemoryL2Cache()
         manager = DirectiveCacheManager(l2Cache = l2Cache)
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
     }
 
     // region L2 Fallback Tests

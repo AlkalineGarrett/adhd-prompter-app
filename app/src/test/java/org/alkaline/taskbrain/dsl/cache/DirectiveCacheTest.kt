@@ -210,6 +210,8 @@ class DirectiveCacheTest {
     @Before
     fun setUp() {
         manager = DirectiveCacheManager()
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
     }
 
     @Test

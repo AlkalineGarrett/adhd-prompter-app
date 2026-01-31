@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.dsl.cache
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Note
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 import java.util.Date
 
@@ -11,6 +12,12 @@ import java.util.Date
  * Phase 1: Data structures and hashing infrastructure.
  */
 class MetadataHasherTest {
+
+    @Before
+    fun setUp() {
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
+    }
 
     // region computePathHash
 

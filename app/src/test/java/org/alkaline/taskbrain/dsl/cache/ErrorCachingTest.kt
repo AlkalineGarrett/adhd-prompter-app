@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.dsl.cache
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.runtime.NumberVal
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -10,6 +11,12 @@ import org.junit.Test
  * Phase 4: Error classification for caching.
  */
 class ErrorCachingTest {
+
+    @Before
+    fun setUp() {
+        // Phase 3: Clear cached metadata hashes before each test
+        MetadataHasher.invalidateCache()
+    }
 
     // region CachedDirectiveResult Error Support
 
