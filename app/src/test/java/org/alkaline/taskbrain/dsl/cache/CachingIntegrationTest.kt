@@ -492,4 +492,269 @@ class CachingIntegrationTest {
     }
 
     // endregion
+
+    // region Phase 5 - Integration Tests
+
+    /**
+     * Test 5.1: Inline editing -> save -> view refresh flow
+     *
+     * Simulates the complete flow:
+     * 1. Host note A has [view find(path: "B")]
+     * 2. Note B has content "Original"
+     * 3. Execute directives on A - view shows "Original"
+     * 4. Start inline edit session (editing B from A's view)
+     * 5. During edit, A's cache is suppressed
+     * 6. End edit session (simulating save completion)
+     * 7. Execute directives on A again with modified B
+     * 8. Assert view now shows "Modified"
+     */
+    @Test
+    fun `view updates after inline edit save - full flow`() {
+        // Setup: Note A views Note B
+        val noteB = Note(id = "B", content = "Original", path = "B")
+        val noteA = Note(id = "A", content = "Dashboard", path = "A")
+        val originalNotes = listOf(noteA, noteB)
+
+        // Step 1: Execute view directive on A - caches result
+        val result1 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = originalNotes,
+            currentNote = noteA
+        )
+        assertFalse("First execution should be cache miss", result1.cacheHit)
+        assertTrue(
+            "View should display 'Original'",
+            result1.result.toValue()?.toDisplayString()?.contains("Original") == true
+        )
+
+        // Step 2: Start edit session (editing B from A's view)
+        editSessionManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
+
+        // Step 3: Request invalidation for A (would normally happen during edit)
+        // This should be suppressed because A is the originating note
+        executor.invalidateForChangedNotes(setOf("A"))
+
+        // Step 4: Verify cache is still valid (suppressed)
+        val resultDuringEdit = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = originalNotes,
+            currentNote = noteA
+        )
+        assertTrue("Cache should still be valid during edit session", resultDuringEdit.cacheHit)
+
+        // Step 5: End edit session (simulates save completion)
+        editSessionManager.endEditSession()
+
+        // Step 6: Simulate the "save" by creating modified notes
+        val modifiedNotes = listOf(
+            noteA,
+            noteB.copy(content = "Modified")
+        )
+
+        // Step 7: Execute again with modified content
+        // Cache should be stale because:
+        // 1. Pending invalidation was applied when session ended
+        // 2. Content hash changed
+        val result2 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = modifiedNotes,
+            currentNote = noteA
+        )
+
+        // Should be cache miss (content changed)
+        assertFalse("Should detect staleness after edit", result2.cacheHit)
+        assertTrue(
+            "View should now display 'Modified'",
+            result2.result.toValue()?.toDisplayString()?.contains("Modified") == true
+        )
+    }
+
+    /**
+     * Test 5.2: Transitive dependency propagation
+     *
+     * Verifies that dependencies from nested directives propagate to parent view.
+     */
+    @Test
+    fun `nested directive dependencies propagate to parent view - path change`() {
+        // Note B has a directive that depends on its own path
+        val noteB = Note(id = "B", content = "My path: [.path]", path = "original/path")
+        val noteA = Note(id = "A", content = "Dashboard", path = "A")
+        val originalNotes = listOf(noteA, noteB)
+
+        // Execute view on A - this should track B's content
+        val result1 = executor.execute(
+            sourceText = "[view find(path: pattern(\"original/\" any*(1..)))]",
+            notes = originalNotes,
+            currentNote = noteA
+        )
+        assertFalse("First execution should be cache miss", result1.cacheHit)
+
+        // Verify B is tracked as a dependency
+        assertTrue(
+            "Viewed note B should be tracked in dependencies",
+            result1.dependencies.firstLineNotes.contains("B")
+        )
+
+        // Change B's content (which changes the [.path] output)
+        val modifiedNotes = listOf(
+            noteA,
+            noteB.copy(content = "My path changed: [.path]")
+        )
+
+        // Execute again - should detect staleness because B's content changed
+        val result2 = executor.execute(
+            sourceText = "[view find(path: pattern(\"original/\" any*(1..)))]",
+            notes = modifiedNotes,
+            currentNote = noteA
+        )
+
+        assertFalse(
+            "View should be stale when viewed note's content changes",
+            result2.cacheHit
+        )
+    }
+
+    /**
+     * Test 5.3: Cache refresh uses current data after invalidation
+     *
+     * Verifies that after cache invalidation, the next execution uses fresh data.
+     * This tests the atomic refresh pattern (Phase 2).
+     */
+    @Test
+    fun `refresh uses fresh data after cache invalidation`() {
+        // Setup
+        val noteB = Note(id = "B", content = "Version 1", path = "B")
+        val noteA = Note(id = "A", content = "Host", path = "A")
+        val v1Notes = listOf(noteA, noteB)
+
+        // Execute and cache
+        val result1 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = v1Notes,
+            currentNote = noteA
+        )
+        assertFalse(result1.cacheHit)
+        assertTrue(
+            result1.result.toValue()?.toDisplayString()?.contains("Version 1") == true
+        )
+
+        // Second execution - should be cached
+        val result2 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = v1Notes,
+            currentNote = noteA
+        )
+        assertTrue("Should be cache hit with same data", result2.cacheHit)
+
+        // Simulate save completing: invalidate cache, then provide new data
+        executor.clearAll()  // This simulates directiveCacheManager.clearAll()
+        MetadataHasher.invalidateCache()  // Phase 3: Also clear metadata cache
+
+        // Create new version of notes (simulating post-save data)
+        val v2Notes = listOf(
+            noteA,
+            noteB.copy(content = "Version 2")
+        )
+
+        // Execute with fresh data after invalidation
+        val result3 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = v2Notes,
+            currentNote = noteA
+        )
+
+        // Should be cache miss (cache was cleared) and show new content
+        assertFalse("Should be cache miss after invalidation", result3.cacheHit)
+        assertTrue(
+            "Should display Version 2 after refresh",
+            result3.result.toValue()?.toDisplayString()?.contains("Version 2") == true
+        )
+    }
+
+    /**
+     * Test 5.3b: Stale cache detection without explicit invalidation
+     *
+     * Verifies that even without explicit invalidation, staleness is detected
+     * when content hashes don't match.
+     */
+    @Test
+    fun `staleness detected via content hash mismatch`() {
+        // Setup
+        val noteB = Note(id = "B", content = "Original content", path = "B")
+        val noteA = Note(id = "A", content = "Host", path = "A")
+        val v1Notes = listOf(noteA, noteB)
+
+        // Execute and cache
+        val result1 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = v1Notes,
+            currentNote = noteA
+        )
+        assertFalse(result1.cacheHit)
+
+        // Verify dependency tracking
+        assertTrue(
+            "Should track viewed note in dependencies",
+            result1.dependencies.firstLineNotes.contains("B")
+        )
+
+        // Create modified notes WITHOUT invalidating cache
+        // The staleness checker should detect this via hash comparison
+        val v2Notes = listOf(
+            noteA,
+            noteB.copy(content = "Modified content")
+        )
+
+        // Execute with new data - staleness should be detected
+        val result2 = executor.execute(
+            sourceText = "[view find(path: \"B\")]",
+            notes = v2Notes,
+            currentNote = noteA
+        )
+
+        assertFalse(
+            "Staleness should be detected via hash mismatch",
+            result2.cacheHit
+        )
+        assertTrue(
+            "Should display modified content",
+            result2.result.toValue()?.toDisplayString()?.contains("Modified content") == true
+        )
+    }
+
+    /**
+     * Test: Edit session abort discards pending invalidations
+     *
+     * Verifies that aborting an edit session (e.g., user cancels)
+     * does not apply the queued invalidations.
+     */
+    @Test
+    fun `edit session abort discards pending invalidations`() {
+        // Setup
+        val noteB = Note(id = "B", content = "Original", path = "B")
+        val noteA = Note(id = "A", content = "Host", path = "A")
+        val notes = listOf(noteA, noteB)
+
+        // Cache a result
+        executor.execute("[view find(path: \"B\")]", notes, noteA)
+
+        // Start edit session
+        editSessionManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
+
+        // Queue an invalidation for A
+        editSessionManager.requestInvalidation("A", InvalidationReason.CONTENT_CHANGED)
+        assertEquals(1, editSessionManager.pendingInvalidationCount())
+
+        // Abort the session (user cancelled)
+        editSessionManager.abortEditSession()
+
+        // Pending invalidations should be discarded
+        assertEquals(0, editSessionManager.pendingInvalidationCount())
+
+        // Cache should still be valid (not invalidated)
+        val result = executor.execute("[view find(path: \"B\")]", notes, noteA)
+        assertTrue("Cache should still be valid after abort", result.cacheHit)
+    }
+
+    // endregion
 }
