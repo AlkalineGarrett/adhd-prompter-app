@@ -1,6 +1,8 @@
 package org.alkaline.taskbrain.dsl.cache
 
 import org.alkaline.taskbrain.data.Note
+import org.alkaline.taskbrain.util.CacheStats
+import org.alkaline.taskbrain.util.LruCache
 
 /**
  * Interface for directive result caching.
@@ -47,6 +49,9 @@ class GlobalDirectiveCache(
     override fun clear() = cache.clear()
 
     override fun stats(): CacheStats = cache.stats()
+
+    /** Evict entries until size is at or below the target */
+    fun evictTo(targetSize: Int) = cache.evictTo(targetSize)
 
     companion object {
         const val DEFAULT_GLOBAL_CACHE_SIZE = 1000
@@ -394,14 +399,7 @@ class DirectiveCacheManager(
     fun evictForMemoryPressure(percentToKeep: Int = 50) {
         val globalStats = globalCache.stats()
         val targetGlobalSize = (globalStats.size * percentToKeep) / 100
-
-        // Re-create global cache with reduced entries
-        // Note: LruCache.evictTo handles this
-        val lruCacheField = globalCache.javaClass.getDeclaredField("cache")
-        lruCacheField.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        val lruCache = lruCacheField.get(globalCache) as LruCache<String, CachedDirectiveResult>
-        lruCache.evictTo(targetGlobalSize)
+        globalCache.evictTo(targetGlobalSize)
     }
 
     /**

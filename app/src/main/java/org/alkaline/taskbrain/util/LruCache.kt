@@ -1,13 +1,13 @@
-package org.alkaline.taskbrain.dsl.cache
+package org.alkaline.taskbrain.util
 
 /**
  * A simple LRU (Least Recently Used) cache implementation.
  *
- * Phase 5: Cache architecture.
- *
  * Uses a LinkedHashMap with access-order iteration to automatically
  * maintain LRU ordering. When the cache exceeds maxSize, the eldest
  * (least recently used) entry is removed.
+ *
+ * Thread-safe: all operations are synchronized.
  *
  * @param maxSize Maximum number of entries in the cache
  */

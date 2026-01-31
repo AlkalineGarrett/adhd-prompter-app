@@ -2,13 +2,13 @@ package org.alkaline.taskbrain.dsl.cache
 
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Note
+import org.alkaline.taskbrain.util.Sha256Hasher
 import org.junit.Assert.*
 import org.junit.Test
 import java.util.Date
 
 /**
  * Tests for ContentHasher.
- * Phase 1: Data structures and hashing infrastructure.
  */
 class ContentHasherTest {
 
@@ -112,7 +112,7 @@ class ContentHasherTest {
         val note = createNote(path = "inbox/tasks")
         val hash = ContentHasher.hashField(note, NoteField.PATH)
 
-        assertEquals(ContentHasher.hash("inbox/tasks"), hash)
+        assertEquals(Sha256Hasher.hash("inbox/tasks"), hash)
     }
 
     @Test
@@ -121,7 +121,7 @@ class ContentHasherTest {
         val note = createNote(updatedAt = timestamp)
         val hash = ContentHasher.hashField(note, NoteField.MODIFIED)
 
-        assertEquals(ContentHasher.hash("1234567890000"), hash)
+        assertEquals(Sha256Hasher.hash("1234567890000"), hash)
     }
 
     @Test
@@ -130,7 +130,7 @@ class ContentHasherTest {
         val note = createNote(createdAt = timestamp)
         val hash = ContentHasher.hashField(note, NoteField.CREATED)
 
-        assertEquals(ContentHasher.hash("1234567890000"), hash)
+        assertEquals(Sha256Hasher.hash("1234567890000"), hash)
     }
 
     @Test
@@ -139,7 +139,7 @@ class ContentHasherTest {
         val note = createNote(lastAccessedAt = timestamp)
         val hash = ContentHasher.hashField(note, NoteField.VIEWED)
 
-        assertEquals(ContentHasher.hash("1234567890000"), hash)
+        assertEquals(Sha256Hasher.hash("1234567890000"), hash)
     }
 
     @Test
@@ -148,7 +148,7 @@ class ContentHasherTest {
         val hash = ContentHasher.hashField(note, NoteField.MODIFIED)
 
         // Should hash empty string
-        assertEquals(ContentHasher.hash(""), hash)
+        assertEquals(Sha256Hasher.hash(""), hash)
     }
 
     // endregion
@@ -183,15 +183,15 @@ class ContentHasherTest {
     @Test
     fun `hash is deterministic`() {
         val input = "test input string"
-        val hash1 = ContentHasher.hash(input)
-        val hash2 = ContentHasher.hash(input)
+        val hash1 = Sha256Hasher.hash(input)
+        val hash2 = Sha256Hasher.hash(input)
 
         assertEquals(hash1, hash2)
     }
 
     @Test
     fun `hash is hex string`() {
-        val hash = ContentHasher.hash("test")
+        val hash = Sha256Hasher.hash("test")
 
         assertTrue(hash.matches(Regex("[0-9a-f]+")))
         assertEquals(64, hash.length) // SHA-256 produces 64 hex chars

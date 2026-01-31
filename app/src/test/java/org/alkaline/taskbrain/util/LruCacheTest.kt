@@ -1,11 +1,10 @@
-package org.alkaline.taskbrain.dsl.cache
+package org.alkaline.taskbrain.util
 
 import org.junit.Assert.*
 import org.junit.Test
 
 /**
  * Tests for LruCache implementation.
- * Phase 5: Cache architecture.
  */
 class LruCacheTest {
 

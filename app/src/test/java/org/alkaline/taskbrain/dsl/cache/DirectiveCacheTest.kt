@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.dsl.cache
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.runtime.NumberVal
 import org.alkaline.taskbrain.dsl.runtime.StringVal
+import org.alkaline.taskbrain.util.CacheStats
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test

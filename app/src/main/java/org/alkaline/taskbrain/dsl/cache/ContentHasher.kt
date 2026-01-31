@@ -1,12 +1,10 @@
 package org.alkaline.taskbrain.dsl.cache
 
 import org.alkaline.taskbrain.data.Note
-import java.security.MessageDigest
+import org.alkaline.taskbrain.util.Sha256Hasher
 
 /**
  * Utilities for hashing note content.
- *
- * Phase 1: Data structures and hashing infrastructure.
  */
 object ContentHasher {
 
@@ -15,7 +13,7 @@ object ContentHasher {
      */
     fun hashFirstLine(content: String): String {
         val firstLine = content.lineSequence().firstOrNull() ?: ""
-        return hash(firstLine)
+        return Sha256Hasher.hash(firstLine)
     }
 
     /**
@@ -28,7 +26,7 @@ object ContentHasher {
         } else {
             ""
         }
-        return hash(nonFirstLines)
+        return Sha256Hasher.hash(nonFirstLines)
     }
 
     /**
@@ -43,7 +41,7 @@ object ContentHasher {
             NoteField.CREATED -> note.createdAt?.toDate()?.time?.toString() ?: ""
             NoteField.VIEWED -> note.lastAccessedAt?.toDate()?.time?.toString() ?: ""
         }
-        return hash(value)
+        return Sha256Hasher.hash(value)
     }
 
     /**
@@ -58,14 +56,5 @@ object ContentHasher {
             firstLineHash = if (needsFirstLine) hashFirstLine(note.content) else null,
             nonFirstLineHash = if (needsNonFirstLine) hashNonFirstLine(note.content) else null
         )
-    }
-
-    /**
-     * Compute a SHA-256 hash of a string, returning hex representation.
-     */
-    internal fun hash(input: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(input.toByteArray(Charsets.UTF_8))
-        return hashBytes.joinToString("") { "%02x".format(it) }
     }
 }
