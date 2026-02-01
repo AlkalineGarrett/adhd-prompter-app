@@ -70,7 +70,7 @@ private val DirectiveSuccessColor = Color(0xFF4CAF50)  // Green
 
 // View directive colors
 private val ViewIndicatorColor = Color(0xFFB0BEC5)   // Blue-gray (left border for views)
-private val ViewDividerColor = Color(0xFFCFD8DC)     // Light blue-gray (divider between viewed notes)
+private val ViewDividerColor = Color(0xFF9C27B0)     // Purple (divider between viewed notes)
 
 // Dashed box drawing parameters
 private object DirectiveBoxStyle {
@@ -703,10 +703,18 @@ private fun ViewDirectiveInlineContent(
                             isEditing = editingNoteIndex == index,
                             onStartEditing = { editingNoteIndex = index },
                             onSave = { newContent ->
-                                editingNoteIndex = null
+                                // Only clear editingNoteIndex if still pointing to this note
+                                // (avoids overwriting when transitioning to another note)
+                                if (editingNoteIndex == index) {
+                                    editingNoteIndex = null
+                                }
                                 onNoteTap(note.id, newContent)
                             },
-                            onCancel = { editingNoteIndex = null }
+                            onCancel = {
+                                if (editingNoteIndex == index) {
+                                    editingNoteIndex = null
+                                }
+                            }
                         )
                     }
                 }
@@ -1312,15 +1320,25 @@ private fun InlineDirectiveOverlayText(
 
 /**
  * Visual separator between notes in a multi-note view.
- * Renders "---" with subtle styling.
+ * Renders a dashed purple horizontal line.
  */
 @Composable
 private fun NoteSeparator() {
-    Text(
-        text = "---",
-        style = TextStyle(color = ViewDividerColor),
-        modifier = Modifier.padding(vertical = 4.dp)
-    )
+    androidx.compose.foundation.Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+    ) {
+        val dashLength = 4.dp.toPx()
+        val gapLength = 3.dp.toPx()
+        drawLine(
+            color = ViewDividerColor,
+            start = Offset(0f, 0f),
+            end = Offset(size.width, 0f),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(dashLength, gapLength))
+        )
+    }
 }
 
 /**
