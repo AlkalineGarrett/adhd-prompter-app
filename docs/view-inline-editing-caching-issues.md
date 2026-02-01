@@ -131,13 +131,49 @@ internal fun getEffectiveDisplayContent(
 
 2. Updated `EditableViewNoteSection` to use this helper.
 
-**Limitation**: During the transitional state, directives in the content (like `[add(1,1)]`) will appear as raw text instead of rendered results (like `2`). This is a minor visual artifact that resolves when the refresh completes.
+**Implementation** details:
 
-**Test**: `EffectiveDisplayContentTest.kt` - Unit tests for the helper function, including a test that fails without the fix.
+1. `renderContentWithDirectives()` - Renders multi-line content by replacing directive source text with computed results using `DirectiveSegmenter.buildDisplayText` for each line.
+
+2. `getEffectiveDisplayContent()` - Now takes `sessionDirectiveResults` and uses `renderContentWithDirectives()` to produce properly rendered output during the transitional state.
+
+This ensures directives are displayed with their computed values (e.g., `2` instead of `[add(1,1)]`) even during the transitional state, by reusing the session's already-computed directive results.
+
+**Test**: `EffectiveDisplayContentTest.kt` - Unit tests including:
+- Basic transitional state behavior
+- Directive rendering with session results
+- Multi-line content with directives on different lines
 
 **Files Modified**:
-- `DirectiveAwareLineInput.kt` - Added helper function, updated display logic
-- `EffectiveDisplayContentTest.kt` - New unit test file
+- `DirectiveAwareLineInput.kt` - Added `renderContentWithDirectives()` and updated `getEffectiveDisplayContent()`
+- `EffectiveDisplayContentTest.kt` - Unit tests for the fix
+
+---
+
+## Issue 7: Focus Lost After Directive Confirm in View (RESOLVED)
+
+**Symptom**: When editing a directive within a viewed note and confirming:
+1. New rendered value shows briefly (correct)
+2. Focus is lost, dashed lines disappear, OLD value shows
+3. Then NEW value shows again
+
+**Root Cause**: Two issues:
+1. `onDirectiveEditConfirm` was ending the session after save, which would exit edit mode
+2. `isCollapsingDirective` flag was cleared immediately when focus was gained, but focus could be lost again during recomposition, triggering the focus loss handler
+
+**Fix**:
+1. **Don't end session on directive confirm** - User should stay in edit mode after confirming a directive. Only exit when they tap out.
+2. **Delay clearing `isCollapsingDirective`** - Added a 500ms delay before clearing the flag, allowing the save chain to complete before focus loss can trigger exit-edit-mode.
+
+**Implementation**:
+- `CurrentNoteScreen.kt`: `onDirectiveEditConfirm` no longer ends the session
+- `DirectiveAwareLineInput.kt`:
+  - Removed immediate `clearCollapsingFlag()` call from `onFocusChanged`
+  - Added `LaunchedEffect(session.isCollapsingDirective)` that clears the flag after 500ms delay
+
+**Files Modified**:
+- `CurrentNoteScreen.kt` - Simplified `onDirectiveEditConfirm` to not end session
+- `DirectiveAwareLineInput.kt` - Delayed flag clearing for stable focus handling
 
 ---
 

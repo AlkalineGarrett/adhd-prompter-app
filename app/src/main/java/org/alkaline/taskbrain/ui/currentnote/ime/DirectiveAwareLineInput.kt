@@ -506,30 +506,58 @@ private fun mapDisplayToSourceCursor(displayCursor: Int, displayResult: DisplayT
 // =============================================================================
 
 /**
+ * Renders multi-line content by replacing directive source text with computed results.
+ *
+ * @param content The raw content (may contain directive source like [add(1,1)])
+ * @param directiveResults Map of directive key ("lineIndex:startOffset") to result
+ * @return The rendered content with directives replaced by their display values
+ */
+internal fun renderContentWithDirectives(
+    content: String,
+    directiveResults: Map<String, DirectiveResult>
+): String {
+    if (directiveResults.isEmpty()) {
+        return content
+    }
+
+    return content.lines().mapIndexed { lineIndex, lineContent ->
+        val displayResult = DirectiveSegmenter.buildDisplayText(lineContent, lineIndex, directiveResults)
+        displayResult.displayText
+    }.joinToString("\n")
+}
+
+/**
  * Determines the effective display content during the transitional state.
  *
  * When saving an inline edit, there's a window between when isEditing becomes false
  * and when directiveResults is refreshed with new content. During this window,
  * displayContent (from directiveResults) contains STALE content.
  *
- * This function returns sessionContent during the transitional state to ensure
- * the user sees their edits immediately, rather than a flash of old content.
+ * This function returns rendered sessionContent during the transitional state to ensure
+ * the user sees their edits immediately with directives properly rendered.
  *
  * @param isEditing Whether the note is currently in edit mode
  * @param hasActiveSession Whether there's an active inline edit session for this note
  * @param displayContent The content from directiveResults (may be stale during transition)
- * @param sessionContent The current content from the active session (always fresh)
- * @return The content to display
+ * @param sessionContent The current raw content from the active session (always fresh)
+ * @param sessionDirectiveResults The directive results from the session (for rendering)
+ * @return The content to display (with directives rendered)
  */
 internal fun getEffectiveDisplayContent(
     isEditing: Boolean,
     hasActiveSession: Boolean,
     displayContent: String,
-    sessionContent: String?
+    sessionContent: String?,
+    sessionDirectiveResults: Map<String, DirectiveResult>?
 ): String {
     return if (!isEditing && hasActiveSession && sessionContent != null) {
-        // Transitional state: session still active after save, use fresh content from session
-        sessionContent
+        // Transitional state: session still active after save
+        // Render the fresh content using the session's directive results
+        if (sessionDirectiveResults != null && sessionDirectiveResults.isNotEmpty()) {
+            renderContentWithDirectives(sessionContent, sessionDirectiveResults)
+        } else {
+            sessionContent
+        }
     } else {
         displayContent
     }
@@ -676,12 +704,13 @@ private fun EditableViewNoteSection(
 
     // Use helper function to get correct content during transitional state
     val hasActiveSession = inlineEditState?.isEditingNote(note.id) == true
-    val sessionContent = inlineEditState?.activeSession?.currentContent
+    val activeSession = inlineEditState?.activeSession
     val effectiveDisplayContent = getEffectiveDisplayContent(
         isEditing = isEditing,
         hasActiveSession = hasActiveSession,
         displayContent = displayContent,
-        sessionContent = sessionContent
+        sessionContent = activeSession?.currentContent,
+        sessionDirectiveResults = activeSession?.directiveResults
     )
 
     // Reset hasBeenFocused when exiting edit mode
@@ -715,8 +744,8 @@ private fun EditableViewNoteSection(
                 onFocusChanged = { isFocused ->
                     if (isFocused) {
                         hasBeenFocused = true
-                        // Clear collapsing flag when focus is regained
-                        session.clearCollapsingFlag()
+                        // Don't clear the collapsing flag immediately - it will be cleared
+                        // after a short delay via LaunchedEffect to handle rapid focus changes
                     } else if (hasBeenFocused && isEditing) {
                         // Check if focus moved to an expanded directive editor (part of inline editing)
                         // or if we're in the process of collapsing a directive (focus will return)
@@ -746,6 +775,17 @@ private fun EditableViewNoteSection(
                     focusRequester.requestFocus()
                 } catch (_: Exception) {
                     // Focus request failed - ignore
+                }
+            }
+
+            // Clear the collapsing flag after a delay when focus is gained
+            // This delay allows the directive confirm save chain to complete
+            // before we allow focus loss to trigger exit-edit-mode
+            LaunchedEffect(session.isCollapsingDirective) {
+                if (session.isCollapsingDirective) {
+                    // Wait for things to settle before clearing the flag
+                    kotlinx.coroutines.delay(500)
+                    session.clearCollapsingFlag()
                 }
             }
         } else {
@@ -819,9 +859,9 @@ private fun InlineNoteEditor(
             // Directive was collapsed, request focus back to the editor
             try {
                 focusRequester.requestFocus()
-                // Note: clearCollapsingFlag() will be called when focus is gained
+                // The collapsing flag will be cleared after a delay in EditableViewNoteSection
             } catch (_: Exception) {
-                // Clear flag anyway to prevent getting stuck
+                // Clear flag on exception to prevent getting stuck
                 session.clearCollapsingFlag()
             }
         }

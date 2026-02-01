@@ -140,51 +140,28 @@ fun CurrentNoteScreen(
         }
         inlineEditState.onDirectiveEditConfirm = { lineIndex, directiveKey, oldSourceText, newSourceText ->
             // Save immediately when directive is edited (don't wait for focus loss)
-            android.util.Log.d("InlineEditCache", "=== onDirectiveEditConfirm START ===")
-            android.util.Log.d("InlineEditCache", "lineIndex=$lineIndex, directiveKey=$directiveKey")
-            android.util.Log.d("InlineEditCache", "oldSourceText='$oldSourceText' -> newSourceText='$newSourceText'")
+            // But DON'T end the session - user should stay in edit mode after confirming a directive
             inlineEditState.activeSession?.let { session ->
                 val noteId = session.noteId
                 val newContent = session.currentContent
-                val contentPreview = newContent.take(100).replace("\n", "\\n")
-                android.util.Log.d("InlineEditCache", "noteId=$noteId, isDirty=${session.isDirty}")
-                android.util.Log.d("InlineEditCache", "newContent preview: '$contentPreview...'")
-                android.util.Log.d("InlineEditCache", "userContent (host) preview: '${userContent.take(100).replace("\n", "\\n")}...'")
-                android.util.Log.d("InlineEditCache", "Calling saveInlineNoteContent...")
                 currentNoteViewModel.saveInlineNoteContent(
                     noteId = noteId,
                     newContent = newContent,
                     onSuccess = {
-                        android.util.Log.d("InlineEditCache", "saveInlineNoteContent SUCCESS for noteId=$noteId")
                         // Invalidate tab cache so switching tabs shows fresh content
                         recentTabsViewModel.invalidateCache(noteId)
-                        android.util.Log.d("InlineEditCache", "Tab cache invalidated, calling executeDirectivesForContent...")
                         // Re-execute directives for the inline editor to show updated results
-                        // Then refresh the host note's view directive
                         currentNoteViewModel.executeDirectivesForContent(newContent) { results ->
-                            android.util.Log.d("InlineEditCache", "executeDirectivesForContent returned ${results.size} results")
-                            results.forEach { (key, result) ->
-                                val displayText = result.toValue()?.toDisplayString()
-                                android.util.Log.d("InlineEditCache", "  result[$key]: display='${displayText?.take(50)}', error=${result.error}")
-                            }
                             session.updateDirectiveResults(results)
-                            android.util.Log.d("InlineEditCache", "Session directive results updated, calling forceRefreshAllDirectives...")
-                            // Now refresh host note's directives so the view shows updated content
-                            // End session in the callback to ensure results are updated first
+                            // Refresh host note's directives so the view shows updated content
+                            // But DON'T end the session - user stays in edit mode
                             currentNoteViewModel.forceRefreshAllDirectives(userContent) {
-                                android.util.Log.d("InlineEditCache", "forceRefreshAllDirectives COMPLETE, ending sessions NOW")
-                                // End BOTH sessions: ViewModel session AND UI session
-                                currentNoteViewModel.endInlineEditSession()
-                                inlineEditState.endSession()
+                                // Session stays active - user can continue editing or tap out
                             }
-                            android.util.Log.d("InlineEditCache", "forceRefreshAllDirectives called (async)")
                         }
                     }
                 )
-            } ?: run {
-                android.util.Log.w("InlineEditCache", "No active session!")
             }
-            android.util.Log.d("InlineEditCache", "=== onDirectiveEditConfirm END (async ops pending) ===")
         }
     }
 

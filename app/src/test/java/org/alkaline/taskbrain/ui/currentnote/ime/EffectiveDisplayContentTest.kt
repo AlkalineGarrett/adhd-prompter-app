@@ -1,5 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote.ime
 
+import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.runtime.values.NumberVal
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -13,7 +15,7 @@ import org.junit.Test
  *
  * THE FIX:
  * During the transitional state (isEditing=false, hasActiveSession=true),
- * use sessionContent instead of displayContent.
+ * use sessionContent rendered with sessionDirectiveResults instead of displayContent.
  */
 class EffectiveDisplayContentTest {
 
@@ -28,7 +30,8 @@ class EffectiveDisplayContentTest {
             isEditing = true,
             hasActiveSession = true,
             displayContent = oldContent,
-            sessionContent = newContent
+            sessionContent = newContent,
+            sessionDirectiveResults = null
         )
         assertEquals(oldContent, result)
     }
@@ -40,7 +43,8 @@ class EffectiveDisplayContentTest {
             isEditing = false,
             hasActiveSession = false,
             displayContent = oldContent,
-            sessionContent = null
+            sessionContent = null,
+            sessionDirectiveResults = null
         )
         assertEquals(oldContent, result)
     }
@@ -59,7 +63,8 @@ class EffectiveDisplayContentTest {
             isEditing = false,
             hasActiveSession = true,
             displayContent = oldContent,  // STALE - from directiveResults
-            sessionContent = newContent   // FRESH - from session
+            sessionContent = newContent,  // FRESH - from session
+            sessionDirectiveResults = emptyMap()
         )
 
         // The fix ensures we use sessionContent during transitional state
@@ -78,7 +83,8 @@ class EffectiveDisplayContentTest {
             isEditing = false,
             hasActiveSession = true,
             displayContent = oldContent,
-            sessionContent = null
+            sessionContent = null,
+            sessionDirectiveResults = null
         )
         assertEquals(oldContent, result)
     }
@@ -94,8 +100,55 @@ class EffectiveDisplayContentTest {
             isEditing = false,
             hasActiveSession = false,  // Session ended after refresh
             displayContent = freshDisplayContent,
-            sessionContent = null
+            sessionContent = null,
+            sessionDirectiveResults = null
         )
         assertEquals(freshDisplayContent, result)
+    }
+
+    @Test
+    fun `transitional state renders directives using session directive results`() {
+        // Session content has raw directive text, but session has computed results
+        val rawContent = "Result is [add(1,1)]"
+        val staleDisplayContent = "Result is 999"  // Old computed value
+
+        // The session has the correct computed result
+        val sessionResults = mapOf(
+            "0:10" to DirectiveResult.success(NumberVal(2.0))  // [add(1,1)] = 2
+        )
+
+        val result = getEffectiveDisplayContent(
+            isEditing = false,
+            hasActiveSession = true,
+            displayContent = staleDisplayContent,
+            sessionContent = rawContent,
+            sessionDirectiveResults = sessionResults
+        )
+
+        // Should render the directive using session results, not show raw or stale
+        assertEquals("Result is 2", result)
+    }
+
+    @Test
+    fun `transitional state with multi-line content renders all directives`() {
+        // Multi-line content with directives on different lines
+        val rawContent = "Line 0: [add(1,1)]\nLine 1: [add(2,2)]"
+        val staleDisplayContent = "Line 0: 999\nLine 1: 888"
+
+        // Session has correct results for both directives
+        val sessionResults = mapOf(
+            "0:8" to DirectiveResult.success(NumberVal(2.0)),   // Line 0: [add(1,1)] = 2
+            "1:8" to DirectiveResult.success(NumberVal(4.0))    // Line 1: [add(2,2)] = 4
+        )
+
+        val result = getEffectiveDisplayContent(
+            isEditing = false,
+            hasActiveSession = true,
+            displayContent = staleDisplayContent,
+            sessionContent = rawContent,
+            sessionDirectiveResults = sessionResults
+        )
+
+        assertEquals("Line 0: 2\nLine 1: 4", result)
     }
 }
