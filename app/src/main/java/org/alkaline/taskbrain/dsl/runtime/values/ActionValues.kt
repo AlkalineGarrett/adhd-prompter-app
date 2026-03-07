@@ -68,22 +68,26 @@ data class ButtonVal(
  * @param frequency The schedule frequency (daily, hourly, weekly)
  * @param action The lambda to execute on schedule
  * @param atTime Optional specific time for daily/weekly schedules (e.g., "09:00")
+ * @param precise Whether to use exact timing (AlarmManager) vs approximate (WorkManager)
  */
 data class ScheduleVal(
     val frequency: ScheduleFrequency,
     val action: LambdaVal,
-    val atTime: String? = null
+    val atTime: String? = null,
+    val precise: Boolean = false
 ) : DslValue() {
     override val typeName: String = "schedule"
 
     override fun toDisplayString(): String {
         val timeStr = atTime?.let { " at $it" } ?: ""
-        return "[Schedule: ${frequency.identifier}$timeStr]"
+        val preciseStr = if (precise) " (precise)" else ""
+        return "[Schedule: ${frequency.identifier}$timeStr$preciseStr]"
     }
 
     override fun serializeValue(): Any = mapOf(
         "frequency" to frequency.identifier,
-        "atTime" to atTime
+        "atTime" to atTime,
+        "precise" to precise
         // action (lambda) cannot be serialized
     )
 
@@ -96,13 +100,14 @@ data class ScheduleVal(
             val frequencyId = map["frequency"] as? String ?: "daily"
             val frequency = ScheduleFrequency.fromIdentifier(frequencyId) ?: ScheduleFrequency.DAILY
             val atTime = map["atTime"] as? String
+            val precise = map["precise"] as? Boolean ?: false
             // Create a placeholder lambda - the actual action must be re-executed from source
             val placeholderLambda = LambdaVal(
                 params = emptyList(),
                 body = StringLiteral("Placeholder - re-execute from source", 0),
                 capturedEnv = Environment()
             )
-            return ScheduleVal(frequency, placeholderLambda, atTime)
+            return ScheduleVal(frequency, placeholderLambda, atTime, precise)
         }
     }
 }

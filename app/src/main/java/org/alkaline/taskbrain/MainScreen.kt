@@ -1,18 +1,21 @@
 package org.alkaline.taskbrain
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -46,18 +49,22 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.StateFlow
+import org.alkaline.taskbrain.dsl.directives.ScheduleManager
 import org.alkaline.taskbrain.ui.Dimens
+import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
 import org.alkaline.taskbrain.ui.auth.GoogleSignInScreen
+import org.alkaline.taskbrain.ui.components.MissedSchedulesBanner
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteScreen
 import org.alkaline.taskbrain.ui.currentnote.CurrentNoteViewModel
 import org.alkaline.taskbrain.ui.currentnote.RecentTabsViewModel
 import org.alkaline.taskbrain.ui.notelist.NoteListScreen
-import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
+import org.alkaline.taskbrain.ui.schedules.SchedulesScreen
 
 sealed class Screen(val route: String, val titleResourceId: Int, val icon: ImageVector) {
     object CurrentNote : Screen("current_note", R.string.title_current_note, Icons.Filled.Description)
     object NoteList : Screen("note_list", R.string.title_note_list, Icons.Filled.Dashboard)
     object Notifications : Screen("notifications", R.string.title_notifications, Icons.Filled.Notifications)
+    object Schedules : Screen("schedules", R.string.title_schedules, Icons.Filled.Schedule)
     object Login : Screen("login", R.string.google_title_text, Icons.Filled.Home) // Icon not used for login
 }
 
@@ -174,15 +181,42 @@ fun MainScreen(
              }
         }
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = startDestination,
+        // Observe missed schedules count for the banner
+        val missedCount by ScheduleManager.observeMissedCount().collectAsState(initial = 0)
+        val navBackStackEntry by navController.currentBackStackEntryAsState()
+        val currentDestination = navBackStackEntry?.destination
+        val showBanner = isUserSignedIn &&
+            currentDestination?.route != Screen.Login.route &&
+            currentDestination?.route != Screen.Schedules.route
+
+        Column(
             modifier = Modifier
                 .padding(innerPadding)
                 .consumeWindowInsets(innerPadding)
                 .imePadding()
                 .fillMaxSize()
         ) {
+            // Show missed schedules banner when appropriate
+            if (showBanner) {
+                MissedSchedulesBanner(
+                    missedCount = missedCount,
+                    onClick = {
+                        navController.navigate(Screen.Schedules.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                )
+            }
+
+            NavHost(
+                navController = navController,
+                startDestination = startDestination,
+                modifier = Modifier.fillMaxSize()
+            ) {
             composable(Screen.Login.route) {
                 GoogleSignInScreen(
                     isLoading = false,
@@ -265,6 +299,14 @@ fun MainScreen(
             composable(Screen.Notifications.route) {
                 AlarmsScreen()
             }
+            composable(Screen.Schedules.route) {
+                SchedulesScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
         }
     }
 }

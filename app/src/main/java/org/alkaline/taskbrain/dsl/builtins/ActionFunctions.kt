@@ -1,9 +1,13 @@
 package org.alkaline.taskbrain.dsl.builtins
 
+import org.alkaline.taskbrain.dsl.language.StringLiteral
+import org.alkaline.taskbrain.dsl.runtime.BooleanVal
 import org.alkaline.taskbrain.dsl.runtime.BuiltinFunction
 import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 import org.alkaline.taskbrain.dsl.runtime.ButtonVal
+import org.alkaline.taskbrain.dsl.runtime.Environment
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
+import org.alkaline.taskbrain.dsl.runtime.LambdaVal
 import org.alkaline.taskbrain.dsl.runtime.ScheduleFrequency
 import org.alkaline.taskbrain.dsl.runtime.ScheduleVal
 import org.alkaline.taskbrain.dsl.runtime.StringVal
@@ -43,46 +47,58 @@ object ActionFunctions {
      * schedule(frequency, action) - Creates a scheduled action that runs at specified intervals.
      *
      * Usage:
-     * - schedule(daily, [new(path: date)])
+     * - schedule(daily, [new(path: date)])           - daily at any time
+     * - schedule(daily_at("09:00"), [new(path: date)]) - daily at 9 AM
+     * - schedule(daily_at("09:00", precise: true), [new(path: date)]) - daily at 9 AM exactly
      * - schedule(hourly, [refresh_data])
      *
-     * @param frequency Schedule frequency (daily, hourly, weekly) - can be ScheduleVal or identifier
+     * @param frequency Schedule frequency - can be:
+     *   - ScheduleVal from daily_at(), weekly_at() (includes time and precision)
+     *   - StringVal identifier (daily, hourly, weekly)
      * @param action Lambda/deferred block to execute on schedule
      */
     private val scheduleFunction = BuiltinFunction(name = "schedule") { args, _ ->
         val frequencyArg = args.require(0, "frequency")
         val action = args.requireLambda(1, "schedule", "action")
 
-        val frequency = when (frequencyArg) {
-            is ScheduleVal -> frequencyArg.frequency
+        val (frequency, atTime, precise) = when (frequencyArg) {
+            is ScheduleVal -> Triple(frequencyArg.frequency, frequencyArg.atTime, frequencyArg.precise)
             is StringVal -> {
-                ScheduleFrequency.fromIdentifier(frequencyArg.value)
+                val freq = ScheduleFrequency.fromIdentifier(frequencyArg.value)
                     ?: throw ExecutionException(
                         "Unknown schedule frequency '${frequencyArg.value}'. " +
-                            "Valid options: ${ScheduleFrequency.entries.joinToString { it.identifier }}"
+                            "Valid options: ${ScheduleFrequency.entries.joinToString { it.identifier }}, " +
+                            "or use daily_at(\"HH:mm\"), weekly_at(\"HH:mm\")"
                     )
+                Triple(freq, null, false)
             }
             else -> throw ExecutionException(
-                "schedule() frequency must be a schedule identifier (daily, hourly, weekly), " +
-                    "got ${frequencyArg.typeName}"
+                "schedule() frequency must be a schedule identifier (daily, hourly, weekly) " +
+                    "or time-specific (daily_at, weekly_at), got ${frequencyArg.typeName}"
             )
         }
 
-        ScheduleVal(frequency, action)
+        ScheduleVal(frequency, action, atTime, precise)
     }
 }
 
 /**
- * Schedule frequency constants: daily, hourly, weekly.
+ * Schedule frequency constants and time-specific functions.
  *
- * These are registered as zero-arg functions that return the frequency identifier.
+ * Simple frequencies: daily, hourly, weekly (zero-arg, return identifier)
+ * Time-specific: daily_at("HH:mm"), weekly_at("HH:mm") (return ScheduleVal with time)
  */
 object ScheduleConstants {
 
     fun register(registry: BuiltinRegistry) {
+        // Simple frequency constants
         registry.register(dailyConstant)
         registry.register(hourlyConstant)
         registry.register(weeklyConstant)
+
+        // Time-specific frequency functions
+        registry.register(dailyAtFunction)
+        registry.register(weeklyAtFunction)
     }
 
     private val dailyConstant = BuiltinFunction(name = "daily") { args, _ ->
@@ -98,5 +114,76 @@ object ScheduleConstants {
     private val weeklyConstant = BuiltinFunction(name = "weekly") { args, _ ->
         args.requireNoArgs("weekly")
         StringVal(ScheduleFrequency.WEEKLY.identifier)
+    }
+
+    /**
+     * daily_at("HH:mm", precise: true/false) - Daily schedule at a specific time.
+     *
+     * Usage:
+     * - schedule(daily_at("09:00"), [action])           - approximate timing
+     * - schedule(daily_at("09:00", precise: true), [action]) - exact timing via AlarmManager
+     *
+     * @param time Time in HH:mm format (24-hour)
+     * @param precise (named, optional) Whether to use exact timing (default: false)
+     */
+    private val dailyAtFunction = BuiltinFunction(name = "daily_at") { args, _ ->
+        val timeStr = args.requireString(0, "daily_at", "time")
+        validateTimeFormat(timeStr.value, "daily_at")
+
+        // Check for optional 'precise' named parameter
+        val precise = (args["precise"] as? BooleanVal)?.value ?: false
+
+        // Return a ScheduleVal with frequency, time, and precision (placeholder lambda)
+        val placeholderLambda = createPlaceholderLambda()
+        ScheduleVal(ScheduleFrequency.DAILY, placeholderLambda, timeStr.value, precise)
+    }
+
+    /**
+     * weekly_at("HH:mm", precise: true/false) - Weekly schedule at a specific time.
+     *
+     * Usage:
+     * - schedule(weekly_at("09:00"), [action])           - approximate timing
+     * - schedule(weekly_at("09:00", precise: true), [action]) - exact timing via AlarmManager
+     *
+     * Note: Currently schedules for same day of week. Future enhancement
+     * could add day parameter: weekly_at("Monday", "09:00")
+     *
+     * @param time Time in HH:mm format (24-hour)
+     * @param precise (named, optional) Whether to use exact timing (default: false)
+     */
+    private val weeklyAtFunction = BuiltinFunction(name = "weekly_at") { args, _ ->
+        val timeStr = args.requireString(0, "weekly_at", "time")
+        validateTimeFormat(timeStr.value, "weekly_at")
+
+        // Check for optional 'precise' named parameter
+        val precise = (args["precise"] as? BooleanVal)?.value ?: false
+
+        val placeholderLambda = createPlaceholderLambda()
+        ScheduleVal(ScheduleFrequency.WEEKLY, placeholderLambda, timeStr.value, precise)
+    }
+
+    /**
+     * Validate time format is HH:mm (24-hour).
+     */
+    private fun validateTimeFormat(time: String, funcName: String) {
+        val regex = Regex("""^([01]?\d|2[0-3]):([0-5]\d)$""")
+        if (!regex.matches(time)) {
+            throw ExecutionException(
+                "$funcName() time must be in HH:mm format (24-hour), got \"$time\". " +
+                    "Examples: \"09:00\", \"14:30\", \"00:00\""
+            )
+        }
+    }
+
+    /**
+     * Create a placeholder lambda for ScheduleVal returned by frequency functions.
+     * The actual action lambda is provided to schedule() separately.
+     */
+    private fun createPlaceholderLambda(): LambdaVal {
+        return LambdaVal(
+            params = emptyList(),
+            body = StringLiteral("placeholder", 0),
+            capturedEnv = Environment()
+        )
     }
 }

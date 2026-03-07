@@ -32,4 +32,16 @@
 
     <!-- Note List Strings -->
     <string name="section_deleted_notes">Deleted notes</string>
+
+    <!-- Schedules Screen Strings -->
+    <string name="title_schedules">Schedules</string>
+    <string name="missed_schedules_banner">%d schedule(s) missed - tap to review</string>
+    <string name="tab_last_24_hours">Last 24 Hours</string>
+    <string name="tab_next_24_hours">Next 24 Hours</string>
+    <string name="tab_missed">Missed</string>
+    <string name="run_selected">Run</string>
+    <string name="dismiss_selected">Dismiss</string>
+    <string name="no_history">No executions in the last 24 hours</string>
+    <string name="no_upcoming">No schedules in the next 24 hours</string>
+    <string name="no_missed">No missed schedules</string>
 </resources>

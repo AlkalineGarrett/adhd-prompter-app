@@ -39,6 +39,7 @@ import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
+import org.alkaline.taskbrain.dsl.directives.ScheduleManager
 import org.alkaline.taskbrain.dsl.directives.matchDirectiveInstances
 import org.alkaline.taskbrain.dsl.runtime.values.DateTimeVal
 import org.alkaline.taskbrain.dsl.runtime.values.DateVal
@@ -905,6 +906,11 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             }
 
             Log.d(TAG, "Executed ${mergedResults.size} directives")
+
+            // Register any schedule directives found in this note
+            cachedCurrentNote?.let { note ->
+                ScheduleManager.registerSchedulesFromNote(note)
+            }
 
             // IMPORTANT: Invalidate notes cache after execution completes.
             // The refreshNotesCache() above may have fetched stale data from Firestore

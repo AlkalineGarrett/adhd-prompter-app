@@ -205,6 +205,99 @@ class ActionFunctionsTest {
 
     // endregion
 
+    // region Time-specific frequency functions
+
+    @Test
+    fun `daily_at returns ScheduleVal with time`() {
+        val result = execute("[daily_at(\"09:00\")]")
+
+        assertTrue(result is ScheduleVal)
+        val schedule = result as ScheduleVal
+        assertEquals(ScheduleFrequency.DAILY, schedule.frequency)
+        assertEquals("09:00", schedule.atTime)
+    }
+
+    @Test
+    fun `weekly_at returns ScheduleVal with time`() {
+        val result = execute("[weekly_at(\"14:30\")]")
+
+        assertTrue(result is ScheduleVal)
+        val schedule = result as ScheduleVal
+        assertEquals(ScheduleFrequency.WEEKLY, schedule.frequency)
+        assertEquals("14:30", schedule.atTime)
+    }
+
+    @Test
+    fun `schedule with daily_at creates ScheduleVal with time`() {
+        val result = execute("[schedule(daily_at(\"09:00\"), [5])]")
+
+        assertTrue(result is ScheduleVal)
+        val schedule = result as ScheduleVal
+        assertEquals(ScheduleFrequency.DAILY, schedule.frequency)
+        assertEquals("09:00", schedule.atTime)
+        assertNotNull(schedule.action)
+    }
+
+    @Test
+    fun `schedule with weekly_at creates ScheduleVal with time`() {
+        val result = execute("[schedule(weekly_at(\"08:30\"), [5])]")
+
+        assertTrue(result is ScheduleVal)
+        val schedule = result as ScheduleVal
+        assertEquals(ScheduleFrequency.WEEKLY, schedule.frequency)
+        assertEquals("08:30", schedule.atTime)
+        assertNotNull(schedule.action)
+    }
+
+    @Test
+    fun `daily_at with single digit hour is valid`() {
+        // Single-digit hours like "9:00" are valid (matches [01]?\d in regex)
+        val result = execute("[daily_at(\"9:00\")]")
+        assertTrue(result is ScheduleVal)
+        assertEquals("9:00", (result as ScheduleVal).atTime)
+    }
+
+    @Test
+    fun `daily_at with completely invalid time throws error`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[daily_at(\"25:00\")]")  // Invalid hour
+        }
+        assertTrue(exception.message!!.contains("HH:mm format"))
+    }
+
+    @Test
+    fun `weekly_at with invalid time throws error`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[weekly_at(\"12:60\")]")  // Invalid minutes
+        }
+        assertTrue(exception.message!!.contains("HH:mm format"))
+    }
+
+    @Test
+    fun `daily_at with no arguments throws error`() {
+        val exception = assertThrows(ExecutionException::class.java) {
+            execute("[daily_at()]")
+        }
+        assertTrue(exception.message!!.contains("time"))
+    }
+
+    @Test
+    fun `schedule with daily_at displays time in description`() {
+        val result = execute("[schedule(daily_at(\"09:00\"), [5])]") as ScheduleVal
+
+        assertEquals("[Schedule: daily at 09:00]", result.toDisplayString())
+    }
+
+    @Test
+    fun `schedule without time has no atTime`() {
+        val result = execute("[schedule(daily, [5])]")
+
+        assertTrue(result is ScheduleVal)
+        assertNull((result as ScheduleVal).atTime)
+    }
+
+    // endregion
+
     // region Idempotency analysis
 
     @Test

@@ -69,7 +69,15 @@ Mindl files are organized into subpackages under `app/src/main/java/org/alkaline
 ├── DirectiveInstance.kt      # UUID-stable directive tracking across edits
 ├── DirectiveResult.kt        # Cached execution result model
 ├── DirectiveResultRepository.kt  # Firestore storage for results
-└── DirectiveSegment.kt       # Segment types + DirectiveSegmenter + DisplayTextResult
+├── DirectiveSegment.kt       # Segment types + DirectiveSegmenter + DisplayTextResult
+├── Schedule.kt               # Schedule data model with ScheduleStatus enum
+├── ScheduleExecution.kt      # Execution history data model
+├── ScheduleRepository.kt     # Firestore CRUD for schedules
+├── ScheduleExecutionRepository.kt  # Firestore CRUD for execution records
+├── ScheduleWorker.kt         # WorkManager worker for periodic execution (15-min threshold)
+├── ScheduleManager.kt        # Registration, lifecycle, and manual execution
+├── ViewContentTracker.kt     # Position mapping for view content
+└── requirements.md           # Schedule feature requirements documentation
 ```
 
 **DirectiveInstance UUID Matching Algorithm** (`matchDirectiveInstances`):
@@ -94,13 +102,6 @@ The uniqueness check in pass 3 is critical: if multiple existing directives have
 ├── ime/DirectiveAwareLineInput.kt  # Custom input handling for directive lines
 ```
 
-**Future additions:**
-```
-dsl/
-├── ScheduleRepository.kt     # For Milestone 13
-└── ViewContentTracker.kt     # For Milestone 9 (view)
-```
-
 **Test structure** mirrors main source under `app/src/test/java/org/alkaline/taskbrain/dsl/`:
 ```
 ├── language/
@@ -119,7 +120,8 @@ dsl/
     ├── DirectiveFinderTest.kt
     ├── DirectiveInstanceTest.kt
     ├── DirectiveResultTest.kt
-    └── DirectiveSegmenterTest.kt
+    ├── DirectiveSegmenterTest.kt
+    └── ScheduleTest.kt          # Schedule data model tests
 ```
 
 **Test utilities** under `app/src/test/java/org/alkaline/taskbrain/testutil/`:
@@ -150,24 +152,51 @@ match /notes/{noteId}/directiveResults/{resultId} {
 }
 ```
 
-**Collection: `schedules`**
+**Collection: `users/{userId}/schedules/{scheduleId}`** ✅ IMPLEMENTED
 ```
 {
-  directiveHash: string,    // Hash of directive text (identity)
+  userId: string,           // Owner user ID
   noteId: string,           // Parent note reference
   notePath: string,         // For display purposes
-  rule: {
-    type: "at" | "daily_at",
-    datetime?: timestamp,   // For "at"
-    time?: string           // For "daily_at" (e.g., "09:00")
-  },
-  deferredAst: string,      // Serialized AST to execute
+  directiveHash: string,    // Hash of directive text (identity)
+  directiveSource: string,  // Full directive source for re-parsing
+  frequency: "daily" | "hourly" | "weekly",
+  atTime: string | null,    // Future: time-specific scheduling (e.g., "09:00")
   nextExecution: timestamp,
-  status: "active" | "paused" | "failed",
+  status: "ACTIVE" | "PAUSED" | "FAILED" | "CANCELLED",
   lastExecution: timestamp | null,
   lastError: string | null,
   failureCount: number,
+  createdAt: timestamp,
+  updatedAt: timestamp
+}
+```
+
+**Firestore Rules Addition:**
+```javascript
+match /users/{userId}/schedules/{scheduleId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+```
+
+**Collection: `users/{userId}/scheduleExecutions/{executionId}`** ✅ IMPLEMENTED
+```
+{
+  scheduleId: string,         // Reference to parent schedule
+  userId: string,             // Owner user ID
+  scheduledFor: timestamp,    // Original scheduled time
+  executedAt: timestamp | null,  // When executed (null = missed, pending review)
+  success: boolean,           // Whether execution succeeded
+  error: string | null,       // Error message if failed
+  manualRun: boolean,         // True if triggered from Schedules screen
   createdAt: timestamp
+}
+```
+
+**Firestore Rules Addition:**
+```javascript
+match /users/{userId}/scheduleExecutions/{executionId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
 }
 ```
 
@@ -1472,13 +1501,13 @@ When the schedule fires, the lambda is invoked, executing `new(path: date)` with
 
 ---
 
-## Milestone 13: Schedule (Partial - Syntax Complete, Backend Pending)
+## Milestone 13: Schedule ✅ COMPLETE
 
 **Target:** `[schedule(daily, [maybe_new(path: date)])]`
 
 ### Implementation Summary
 
-Schedule syntax was implemented in view caching Phase 0f. The syntax was simplified to use frequency constants rather than time-specific functions.
+Schedule syntax was implemented in view caching Phase 0f. The backend (repository, WorkManager) was implemented as the final part of Milestone 13.
 
 ### Completed ✅
 
@@ -1511,46 +1540,125 @@ data class ScheduleVal(
 - `schedule()` is recognized as a wrapper that makes non-idempotent actions (like `new()`, `.append()`) safe at top-level
 - `MutationValidator` allows mutations inside `schedule()` blocks
 
-### Pending 🔲
+**Backend Execution (directives/):**
+- `Schedule.kt` - Data model for stored schedules with status tracking
+- `ScheduleRepository.kt` - Firestore operations (upsert, find, cancel, mark executed)
+- `ScheduleWorker.kt` - WorkManager worker for client-side periodic execution
+- `ScheduleManager.kt` - Coordinates schedule registration and WorkManager setup
 
-**Backend Execution:**
-The original plan's backend components are still needed:
+### Package Structure
 
-1. **ScheduleRepository.kt** - Firestore storage for schedules:
-   ```kotlin
-   class ScheduleRepository(private val firestore: FirebaseFirestore) {
-       suspend fun upsertSchedule(...)
-       suspend fun findByHash(hash: String): Schedule?
-       suspend fun getSchedulesForNote(noteId: String): List<Schedule>
-       suspend fun getAllActiveSchedules(): List<Schedule>
-       suspend fun markExecuted(hash: String, success: Boolean, error: String?)
-       suspend fun cancelSchedule(hash: String)
-   }
-   ```
+```
+dsl/directives/
+├── Schedule.kt              # Schedule data model with ScheduleStatus enum
+├── ScheduleRepository.kt    # Firestore CRUD operations
+├── ScheduleWorker.kt        # WorkManager CoroutineWorker for execution
+└── ScheduleManager.kt       # Registration and lifecycle management
+```
 
-2. **Firebase Cloud Function** - Server-side schedule execution (see original plan)
+### Schedule.kt Model
+```kotlin
+data class Schedule(
+    val id: String,
+    val userId: String,
+    val noteId: String,
+    val notePath: String,
+    val directiveHash: String,
+    val directiveSource: String,
+    val frequency: ScheduleFrequency,
+    val atTime: String?,           // Future: "09:00" for time-specific scheduling
+    val nextExecution: Timestamp?,
+    val status: ScheduleStatus,    // ACTIVE, PAUSED, FAILED, CANCELLED
+    val lastExecution: Timestamp?,
+    val lastError: String?,
+    val failureCount: Int,
+    val createdAt: Timestamp?,
+    val updatedAt: Timestamp?
+)
+```
 
-3. **WorkManager Fallback** - Client-side fallback for offline execution (see original plan)
+### ScheduleRepository Methods
+- `upsertSchedule()` - Create or update schedule from directive
+- `findByHash()` - Find schedule by directive hash
+- `getSchedulesForNote()` - Get all schedules for a note
+- `getAllActiveSchedules()` - Get all active schedules
+- `getDueSchedules()` - Get schedules due for execution
+- `markExecuted()` - Record execution result (auto-pauses after 3 failures)
+- `pauseSchedule()` / `resumeSchedule()` - Manual pause/resume
+- `cancelSchedule()` / `cancelSchedulesForNote()` - Cancellation
 
-4. **UI: Schedule Indicator** - Visual feedback for notes with active schedules
+### WorkManager Integration
+- `ScheduleWorker` runs every 15 minutes (WorkManager minimum)
+- Queries due schedules, parses directive source, executes lambda
+- Records success/failure, calculates next execution time
+- Network constraint: requires connectivity
 
-5. **Note Deletion Handling** - Confirm schedule cancellation on note delete
+### Remaining UI Work
+- Schedule indicator on notes with active schedules 🔲
+- Schedule management screen to view/pause/cancel schedules ✅ (Schedules screen with 3 tabs)
+- Confirmation dialog when deleting notes with schedules 🔲
 
-### Syntax Change from Original Plan
+### Missed Schedule Detection ✅
 
-| Original | Implemented |
-|----------|-------------|
-| `schedule(daily_at("9:00"), later[...])` | `schedule(daily, [...])` |
-| `ScheduleRuleVal` with `DailyAt(time)` | `ScheduleVal` with `ScheduleFrequency` |
-| Time-specific scheduling | Frequency-based scheduling |
+Missed schedule tracking and UI was implemented to handle schedules that couldn't run on time.
 
-The simpler frequency-based approach (`daily`, `hourly`, `weekly`) was chosen for the MVP. Time-specific scheduling (e.g., "daily at 9:00 AM") can be added later if needed.
+**See:** `app/src/main/java/org/alkaline/taskbrain/dsl/directives/requirements.md` for full requirements.
 
-### Tests (ActionFunctionsTest.kt) ✅ All passing
-- `schedule(daily, action)` creates ScheduleVal ✅
+**Key behavior:**
+- Schedules ≤15 minutes late auto-execute normally
+- Schedules >15 minutes late are marked as "missed" and require user review
+- Missed schedules are shown in a banner and the Schedules screen Missed tab
+
+**New files:**
+- `ScheduleExecution.kt` - Execution history data model
+- `ScheduleExecutionRepository.kt` - Firestore CRUD for execution records
+- `ui/schedules/SchedulesScreen.kt` - 3-tab screen (Last 24 Hours, Next 24 Hours, Missed)
+- `ui/schedules/SchedulesViewModel.kt` - State management for tabs
+- `ui/components/MissedSchedulesBanner.kt` - Warning banner for missed schedules
+
+**Modified files:**
+- `ScheduleWorker.kt` - 15-minute threshold logic, records executions
+- `ScheduleRepository.kt` - Added `getSchedulesForNext24Hours()`, `advanceNextExecution()`
+- `ScheduleManager.kt` - Added `executeScheduleNow()` for manual execution
+- `MainScreen.kt` - Added Schedules route and banner integration
+
+### Time-Specific Scheduling ✅
+
+Time-specific scheduling was added via `daily_at()` and `weekly_at()` functions:
+
+```
+[schedule(daily_at("09:00"), [new(path: date)])]   # Daily at 9:00 AM
+[schedule(weekly_at("14:30"), [cleanup_action])]   # Weekly at 2:30 PM
+```
+
+**Syntax:**
+- `daily_at("HH:mm")` - Returns a `ScheduleVal` with DAILY frequency and specific time
+- `weekly_at("HH:mm")` - Returns a `ScheduleVal` with WEEKLY frequency and specific time
+- Time must be in 24-hour format (e.g., "09:00", "14:30", "00:00")
+
+**Implementation:**
+- `ActionFunctions.kt` - Added `daily_at()` and `weekly_at()` functions with time validation
+- `ScheduleRepository.calculateNextExecution()` - Uses `DailyTimeTrigger.nextTriggerAfter()` for consistent next-execution calculation with the view caching infrastructure
+
+### Future: Cloud Functions
+
+For production reliability, schedule execution should move to Firebase Cloud Functions:
+- **Current**: WorkManager on client device (15-minute minimum interval, requires app to be installed)
+- **Future**: Cloud Functions scheduled trigger (more reliable, works even if app is uninstalled)
+- The `ScheduleRepository` and data model are designed to support both backends
+
+### Tests ✅ All passing
+- `schedule(daily, action)` creates ScheduleVal ✅ (ActionFunctionsTest.kt)
 - Frequency constants (`daily`, `hourly`, `weekly`) work ✅
 - Schedule makes mutations safe at top-level ✅
 - Error handling for invalid frequency/action ✅
+- Schedule data model tests ✅ (ScheduleTest.kt)
+- Display description, isActive, shouldPause logic ✅
+- `daily_at("09:00")` returns ScheduleVal with time ✅
+- `weekly_at("14:30")` returns ScheduleVal with time ✅
+- `schedule(daily_at("09:00"), action)` creates ScheduleVal with time ✅
+- Time validation (invalid hour/minute formats rejected) ✅
+- Schedule display includes time (e.g., "[Schedule: daily at 09:00]") ✅
 
 ---
 
@@ -1594,7 +1702,7 @@ The simpler frequency-based approach (`daily`, `hourly`, `weekly`) was chosen fo
 ### Polish
 - Parse error display on focus-out 🔲
 - Global error navigation 🔲
-- Schedule view screen 🔲 (blocked by Milestone 13 backend)
+- Schedule view screen 🔲 (UI for viewing/managing schedules)
 - Retry policy visibility 🔲
 - Comments (`#`) 🔲
 - Bracket escaping (`[[`, `]]`) 🔲

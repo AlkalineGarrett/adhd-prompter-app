@@ -21,6 +21,38 @@ import androidx.compose.ui.unit.sp
 import java.io.PrintWriter
 import java.io.StringWriter
 
+/**
+ * Error dialog that shows a simple message without stack trace.
+ */
+@Composable
+fun ErrorDialog(
+    title: String = "Error",
+    message: String,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = title)
+        },
+        text = {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Dismiss")
+            }
+        }
+    )
+}
+
+/**
+ * Error dialog that shows a Throwable with full stack trace.
+ */
 @Composable
 fun ErrorDialog(
     title: String = "Error",
