@@ -47,7 +47,7 @@ export function CommandBar({ controller, onSave, dirty, saving }: CommandBarProp
 
       <div className={styles.group}>
         <button
-          className={styles.button}
+          className={`${styles.button} ${controller.getMoveUpState().isWarning ? styles.warning : ''}`}
           onClick={() => controller.moveUp()}
           title="Move up"
           disabled={!controller.getMoveUpState().isEnabled}
@@ -55,7 +55,7 @@ export function CommandBar({ controller, onSave, dirty, saving }: CommandBarProp
           ↑
         </button>
         <button
-          className={styles.button}
+          className={`${styles.button} ${controller.getMoveDownState().isWarning ? styles.warning : ''}`}
           onClick={() => controller.moveDown()}
           title="Move down"
           disabled={!controller.getMoveDownState().isEnabled}

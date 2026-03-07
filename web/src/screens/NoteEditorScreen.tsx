@@ -1,7 +1,9 @@
 import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react'
 import type { Note } from '@/data/Note'
 import { NoteRepository } from '@/data/NoteRepository'
+import { MutationType, type NoteMutation } from '@/dsl/runtime/NoteMutation'
+import { NoteRepositoryOperations } from '@/dsl/runtime/NoteRepositoryOperations'
 import { useEditor } from '@/hooks/useEditor'
 import { useDirectives } from '@/hooks/useDirectives'
 import { CommandBar } from '@/components/CommandBar'
@@ -9,6 +11,7 @@ import { EditorLine } from '@/components/EditorLine'
 import { InlineEditor } from '@/components/InlineEditor'
 import { RecentTabsBar, addOrUpdateTab } from '@/components/RecentTabsBar'
 import { db, auth } from '@/firebase/config'
+import { LineState } from '@/editor/LineState'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
@@ -39,8 +42,67 @@ export function NoteEditorScreen() {
     return () => { cancelled = true }
   }, [noteId])
 
+  // Create NoteOperations for DSL mutations
+  const noteOperations = useMemo(() => {
+    const userId = auth.currentUser?.uid
+    if (!userId) return undefined
+    return new NoteRepositoryOperations(db, userId)
+  }, [])
+
+  // Handle mutations from directive execution
+  const handleMutations = useCallback((mutations: NoteMutation[]) => {
+    for (const mutation of mutations) {
+      // Update local notes cache
+      setAllNotes((prev) =>
+        prev.map((n) => (n.id === mutation.noteId ? mutation.updatedNote : n)),
+      )
+
+      // Update current note cache if affected
+      if (mutation.noteId === noteId) {
+        setCurrentNote(mutation.updatedNote)
+      }
+
+      // Update editor content if the currently-edited note was mutated
+      if (mutation.noteId === noteId) {
+        switch (mutation.mutationType) {
+          case MutationType.CONTENT_CHANGED: {
+            // Update first line (content change = note name change)
+            const currentLines = editorState.lines.map((l) => l.text)
+            currentLines[0] = mutation.updatedNote.content
+            editorState.lines = currentLines.map((t) => new LineState(t))
+            editorState.requestFocusUpdate()
+            editorState.notifyChange()
+            controller.resetUndoHistory()
+            break
+          }
+          case MutationType.CONTENT_APPENDED: {
+            if (mutation.appendedText) {
+              const newLines = mutation.appendedText.split('\n')
+              for (const lineText of newLines) {
+                editorState.lines.push(new LineState(lineText))
+              }
+              editorState.requestFocusUpdate()
+              editorState.notifyChange()
+              controller.resetUndoHistory()
+            }
+            break
+          }
+          case MutationType.PATH_CHANGED:
+            // Path changes don't affect editor content
+            break
+        }
+      }
+    }
+  }, [noteId, editorState, controller])
+
   const { results: directiveResults, loadAndExecute, executeAndSave, refreshDirective } =
-    useDirectives({ noteId: noteId ?? null, notes: allNotes, currentNote })
+    useDirectives({
+      noteId: noteId ?? null,
+      notes: allNotes,
+      currentNote,
+      noteOperations,
+      onMutations: handleMutations,
+    })
 
   // Inline editing state for viewed notes
   const [inlineEditNoteId, setInlineEditNoteId] = useState<string | null>(null)
@@ -104,25 +166,38 @@ export function NoteEditorScreen() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [saveWithDirectives])
 
-  // Warn on unsaved changes
+  // Keep a ref to the save function so cleanup effects can use it
+  const saveRef = useRef(save)
+  saveRef.current = save
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+
+  // Auto-save on beforeunload (tab close/refresh)
   useEffect(() => {
-    if (!dirty) return
     const handler = (e: BeforeUnloadEvent) => {
-      e.preventDefault()
+      if (dirtyRef.current) {
+        // Trigger save — use sendBeacon pattern for reliability
+        void saveRef.current()
+        e.preventDefault()
+      }
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
-  }, [dirty])
+  }, [])
+
+  // Auto-save on unmount (navigation away)
+  useEffect(() => {
+    return () => {
+      if (dirtyRef.current) {
+        void saveRef.current()
+      }
+    }
+  }, [noteId])
 
   const handleBack = useCallback(() => {
-    if (dirty) {
-      if (confirm('You have unsaved changes. Discard them?')) {
-        navigate('/')
-      }
-    } else {
-      navigate('/')
-    }
-  }, [dirty, navigate])
+    // Auto-save triggers on unmount, so just navigate
+    navigate('/')
+  }, [navigate])
 
   if (loading) {
     return <div className="loading">Loading note...</div>
@@ -154,7 +229,7 @@ export function NoteEditorScreen() {
         saving={saving}
       />
 
-      <div className={styles.editor}>
+      <div className={`${styles.editor} ${currentNote?.state === 'deleted' ? styles.deletedEditor : ''}`}>
         {editorState.lines.map((_, index) => (
           <EditorLine
             key={index}

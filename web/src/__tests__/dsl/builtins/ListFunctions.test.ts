@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { Lexer } from '@/dsl/language/Lexer'
-import { Parser } from '@/dsl/language/Parser'
-import { Executor } from '@/dsl/runtime/Executor'
-import { Environment } from '@/dsl/runtime/Environment'
-import type { DslValue, ListVal } from '@/dsl/runtime/DslValue'
+import { Lexer } from '../../../dsl/language/Lexer'
+import { Parser } from '../../../dsl/language/Parser'
+import { Executor } from '../../../dsl/runtime/Executor'
+import { Environment } from '../../../dsl/runtime/Environment'
+import type { DslValue, ListVal } from '../../../dsl/runtime/DslValue'
 import {
   toDisplayString,
   numberVal,
@@ -14,8 +14,8 @@ import {
   booleanVal,
   UNDEFINED,
   listVal,
-} from '@/dsl/runtime/DslValue'
-import { sortCompareValues } from '@/dsl/builtins/ListFunctions'
+} from '../../../dsl/runtime/DslValue'
+import { sortCompareValues } from '../../../dsl/builtins/ListFunctions'
 
 function execute(source: string, env?: Environment): DslValue {
   const tokens = new Lexer(source).tokenize()

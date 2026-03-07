@@ -293,6 +293,39 @@ export class UndoManager {
     this.hasUncommittedChanges = false
     this.notifyStateChanged()
   }
+
+  // --- Persistence ---
+
+  exportState(): UndoManagerState {
+    return {
+      undoStack: [...this.undoStack],
+      redoStack: [...this.redoStack],
+      baselineSnapshot: this.baselineSnapshot,
+      isAtBaseline: this.isAtBaseline,
+      hasUncommittedChanges: this.hasUncommittedChanges,
+    }
+  }
+
+  importState(state: UndoManagerState): void {
+    this.undoStack = [...state.undoStack]
+    this.redoStack = [...state.redoStack]
+    this.baselineSnapshot = state.baselineSnapshot
+    this.isAtBaseline = state.isAtBaseline
+    this.hasUncommittedChanges = state.hasUncommittedChanges
+    this.pendingSnapshot = null
+    this.editingLineIndex = null
+    this.lastCommandType = null
+    this.lastMoveLineRange = null
+    this.notifyStateChanged()
+  }
+}
+
+export interface UndoManagerState {
+  undoStack: UndoSnapshot[]
+  redoStack: UndoSnapshot[]
+  baselineSnapshot: UndoSnapshot | null
+  isAtBaseline: boolean
+  hasUncommittedChanges: boolean
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {

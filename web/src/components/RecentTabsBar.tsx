@@ -28,12 +28,20 @@ export function RecentTabsBar() {
     async (e: React.MouseEvent, noteId: string) => {
       e.stopPropagation()
       await repo.removeTab(noteId)
-      setTabs((prev) => prev.filter((t) => t.noteId !== noteId))
+      const remainingTabs = tabs.filter((t) => t.noteId !== noteId)
+      setTabs(remainingTabs)
       if (noteId === currentNoteId) {
-        navigate('/')
+        // Navigate to adjacent tab, or home if none remain
+        const closedIndex = tabs.findIndex((t) => t.noteId === noteId)
+        const nextTab = remainingTabs[closedIndex] ?? remainingTabs[closedIndex - 1]
+        if (nextTab) {
+          navigate(`/note/${nextTab.noteId}`)
+        } else {
+          navigate('/')
+        }
       }
     },
-    [currentNoteId, navigate],
+    [currentNoteId, navigate, tabs],
   )
 
   if (tabs.length === 0) return null

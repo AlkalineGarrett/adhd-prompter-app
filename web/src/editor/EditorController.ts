@@ -537,6 +537,16 @@ export class EditorController {
     }
   }
 
+  setSelectionInLine(lineIndex: number, contentStart: number, contentEnd: number): void {
+    const line = this.state.lines[lineIndex]
+    if (!line) return
+    const lineStartOffset = this.state.getLineStartOffset(lineIndex)
+    const prefixLen = line.prefix.length
+    const globalStart = lineStartOffset + prefixLen + contentStart
+    const globalEnd = lineStartOffset + prefixLen + contentEnd
+    this.state.setSelection(globalStart, globalEnd)
+  }
+
   handleSpaceWithSelection(): boolean {
     if (!this.state.hasSelection) return false
     this.undoManager.recordCommand(this.state.lines, this.state.focusedLineIndex, CommandType.INDENT)

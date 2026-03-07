@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { Lexer } from '@/dsl/language/Lexer'
-import { Parser } from '@/dsl/language/Parser'
-import { Executor } from '@/dsl/runtime/Executor'
-import { Environment } from '@/dsl/runtime/Environment'
-import { BuiltinRegistry } from '@/dsl/runtime/BuiltinRegistry'
-import type { DslValue, NumberVal, StringVal, DateVal, TimeVal, DateTimeVal } from '@/dsl/runtime/DslValue'
+import { Lexer } from '../../../dsl/language/Lexer'
+import { Parser } from '../../../dsl/language/Parser'
+import { Executor } from '../../../dsl/runtime/Executor'
+import { Environment } from '../../../dsl/runtime/Environment'
+import { BuiltinRegistry } from '../../../dsl/runtime/BuiltinRegistry'
+import type { DslValue, NumberVal, StringVal, DateVal, TimeVal, DateTimeVal } from '../../../dsl/runtime/DslValue'
 import {
   toDisplayString,
   numberVal,
@@ -14,7 +14,7 @@ import {
   dateTimeVal,
   serializeValue,
   deserializeValue,
-} from '@/dsl/runtime/DslValue'
+} from '../../../dsl/runtime/DslValue'
 
 function execute(source: string, env?: Environment): DslValue {
   const tokens = new Lexer(source).tokenize()

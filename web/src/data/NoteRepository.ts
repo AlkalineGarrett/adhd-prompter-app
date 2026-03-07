@@ -27,6 +27,16 @@ export class NoteRepository {
     this.notesRef = collection(db, 'notes')
   }
 
+  /** Run an async operation with error logging. Rethrows after logging. */
+  private async logged<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn()
+    } catch (e) {
+      console.error(`NoteRepository.${operation} failed:`, e)
+      throw e
+    }
+  }
+
   private requireUserId(): string {
     const uid = this.auth.currentUser?.uid
     if (!uid) throw new Error('User not signed in')
@@ -58,6 +68,7 @@ export class NoteRepository {
   // --- Load operations ---
 
   async loadNoteWithChildren(noteId: string): Promise<NoteLine[]> {
+    return this.logged('loadNoteWithChildren', async () => {
     this.requireUserId()
     const docSnap = await getDoc(this.noteRef(noteId))
 
@@ -65,9 +76,9 @@ export class NoteRepository {
       return [{ content: '', noteId }]
     }
 
-    const data = docSnap.data()
-    const content = (data.content as string) ?? ''
-    const containedNotes = (data.containedNotes as string[]) ?? []
+    const note = noteFromFirestore(docSnap.id, docSnap.data())
+    const content = note.content
+    const containedNotes = note.containedNotes
 
     const parentLine: NoteLine = { content, noteId }
     const childLines = await this.loadChildNotes(containedNotes)
@@ -78,6 +89,7 @@ export class NoteRepository {
       return allLines
     }
     return [...allLines, { content: '', noteId: null }]
+    })
   }
 
   private async loadChildNotes(childIds: string[]): Promise<NoteLine[]> {
@@ -100,42 +112,50 @@ export class NoteRepository {
   }
 
   async loadUserNotes(): Promise<Note[]> {
-    const userId = this.requireUserId()
-    const q = query(this.notesRef, where('userId', '==', userId))
-    const snapshot = await getDocs(q)
+    return this.logged('loadUserNotes', async () => {
+      const userId = this.requireUserId()
+      const q = query(this.notesRef, where('userId', '==', userId))
+      const snapshot = await getDocs(q)
 
-    return snapshot.docs
-      .map((d) => noteFromFirestore(d.id, d.data()))
-      .filter((n) => n.parentNoteId == null && n.state !== 'deleted')
+      return snapshot.docs
+        .map((d) => noteFromFirestore(d.id, d.data()))
+        .filter((n) => n.parentNoteId == null && n.state !== 'deleted')
+    })
   }
 
   async loadAllUserNotes(): Promise<Note[]> {
-    const userId = this.requireUserId()
-    const q = query(this.notesRef, where('userId', '==', userId))
-    const snapshot = await getDocs(q)
+    return this.logged('loadAllUserNotes', async () => {
+      const userId = this.requireUserId()
+      const q = query(this.notesRef, where('userId', '==', userId))
+      const snapshot = await getDocs(q)
 
-    return snapshot.docs
-      .map((d) => noteFromFirestore(d.id, d.data()))
-      .filter((n) => n.parentNoteId == null)
+      return snapshot.docs
+        .map((d) => noteFromFirestore(d.id, d.data()))
+        .filter((n) => n.parentNoteId == null)
+    })
   }
 
   async loadNoteById(noteId: string): Promise<Note | null> {
-    this.requireUserId()
-    const docSnap = await getDoc(this.noteRef(noteId))
-    if (!docSnap.exists()) return null
-    return noteFromFirestore(docSnap.id, docSnap.data())
+    return this.logged('loadNoteById', async () => {
+      this.requireUserId()
+      const docSnap = await getDoc(this.noteRef(noteId))
+      if (!docSnap.exists()) return null
+      return noteFromFirestore(docSnap.id, docSnap.data())
+    })
   }
 
   async loadNotesWithFullContent(): Promise<Note[]> {
-    const userId = this.requireUserId()
-    const q = query(this.notesRef, where('userId', '==', userId))
-    const snapshot = await getDocs(q)
+    return this.logged('loadNotesWithFullContent', async () => {
+      const userId = this.requireUserId()
+      const q = query(this.notesRef, where('userId', '==', userId))
+      const snapshot = await getDocs(q)
 
-    const topLevelNotes = snapshot.docs
-      .map((d) => noteFromFirestore(d.id, d.data()))
-      .filter((n) => n.parentNoteId == null && n.state !== 'deleted')
+      const topLevelNotes = snapshot.docs
+        .map((d) => noteFromFirestore(d.id, d.data()))
+        .filter((n) => n.parentNoteId == null && n.state !== 'deleted')
 
-    return Promise.all(topLevelNotes.map((n) => this.reconstructNoteContent(n)))
+      return Promise.all(topLevelNotes.map((n) => this.reconstructNoteContent(n)))
+    })
   }
 
   private async reconstructNoteContent(note: Note): Promise<Note> {
@@ -155,31 +175,33 @@ export class NoteRepository {
     noteId: string,
     trackedLines: NoteLine[],
   ): Promise<Map<number, string>> {
-    const userId = this.requireUserId()
-    const parentRef = this.noteRef(noteId)
-    const parentContent = trackedLines[0]?.content ?? ''
+    return this.logged('saveNoteWithChildren', async () => {
+      const userId = this.requireUserId()
+      const parentRef = this.noteRef(noteId)
+      const parentContent = trackedLines[0]?.content ?? ''
 
-    return runTransaction(this.db, async (transaction) => {
-      const oldChildIds = this.getExistingChildIds(transaction, parentRef)
-      const idsToDelete = new Set(
-        (await oldChildIds).filter((id) => id !== ''),
-      )
+      return runTransaction(this.db, async (transaction) => {
+        const oldChildIds = this.getExistingChildIds(transaction, parentRef)
+        const idsToDelete = new Set(
+          (await oldChildIds).filter((id) => id !== ''),
+        )
 
-      // Drop trailing empty lines before saving
-      const childLines = dropLastWhile(trackedLines.slice(1), (l) => l.content === '')
+        // Drop trailing empty lines before saving
+        const childLines = dropLastWhile(trackedLines.slice(1), (l) => l.content === '')
 
-      const { containedNotes, createdIds } = await this.processChildLines(
-        transaction,
-        userId,
-        noteId,
-        childLines,
-        idsToDelete,
-      )
+        const { containedNotes, createdIds } = await this.processChildLines(
+          transaction,
+          userId,
+          noteId,
+          childLines,
+          idsToDelete,
+        )
 
-      this.updateParentNote(transaction, parentRef, userId, parentContent, containedNotes)
-      this.softDeleteRemovedNotes(transaction, idsToDelete)
+        this.updateParentNote(transaction, parentRef, userId, parentContent, containedNotes)
+        this.softDeleteRemovedNotes(transaction, idsToDelete)
 
-      return createdIds
+        return createdIds
+      })
     })
   }
 
@@ -283,71 +305,83 @@ export class NoteRepository {
   }
 
   async createNote(): Promise<string> {
-    const userId = this.requireUserId()
-    const ref = await addDoc(this.notesRef, this.newNoteData(userId, ''))
-    return ref.id
+    return this.logged('createNote', async () => {
+      const userId = this.requireUserId()
+      const ref = await addDoc(this.notesRef, this.newNoteData(userId, ''))
+      return ref.id
+    })
   }
 
   async createMultiLineNote(content: string): Promise<string> {
-    const userId = this.requireUserId()
-    const lines = content.split('\n')
-    const firstLine = lines[0] ?? ''
-    const childLines = lines.slice(1)
+    return this.logged('createMultiLineNote', async () => {
+      const userId = this.requireUserId()
+      const lines = content.split('\n')
+      const firstLine = lines[0] ?? ''
+      const childLines = lines.slice(1)
 
-    const batch = writeBatch(this.db)
-    const parentRef = doc(this.notesRef)
+      const batch = writeBatch(this.db)
+      const parentRef = doc(this.notesRef)
 
-    const childIds = childLines.map((line) => {
-      if (line !== '') {
-        const childRef = doc(this.notesRef)
-        batch.set(childRef, this.newNoteData(userId, line, parentRef.id))
-        return childRef.id
-      }
-      return ''
+      const childIds = childLines.map((line) => {
+        if (line !== '') {
+          const childRef = doc(this.notesRef)
+          batch.set(childRef, this.newNoteData(userId, line, parentRef.id))
+          return childRef.id
+        }
+        return ''
+      })
+
+      batch.set(parentRef, {
+        ...this.newNoteData(userId, firstLine),
+        containedNotes: childIds,
+      })
+      await batch.commit()
+      return parentRef.id
     })
-
-    batch.set(parentRef, {
-      ...this.newNoteData(userId, firstLine),
-      containedNotes: childIds,
-    })
-    await batch.commit()
-    return parentRef.id
   }
 
   async softDeleteNote(noteId: string): Promise<void> {
-    this.requireUserId()
-    await updateDoc(this.noteRef(noteId), {
-      state: 'deleted',
-      updatedAt: serverTimestamp(),
+    return this.logged('softDeleteNote', async () => {
+      this.requireUserId()
+      await updateDoc(this.noteRef(noteId), {
+        state: 'deleted',
+        updatedAt: serverTimestamp(),
+      })
     })
   }
 
   async undeleteNote(noteId: string): Promise<void> {
-    this.requireUserId()
-    await updateDoc(this.noteRef(noteId), {
-      state: null,
-      updatedAt: serverTimestamp(),
+    return this.logged('undeleteNote', async () => {
+      this.requireUserId()
+      await updateDoc(this.noteRef(noteId), {
+        state: null,
+        updatedAt: serverTimestamp(),
+      })
     })
   }
 
   async updateLastAccessed(noteId: string): Promise<void> {
-    this.requireUserId()
-    await updateDoc(this.noteRef(noteId), {
-      lastAccessedAt: serverTimestamp(),
+    return this.logged('updateLastAccessed', async () => {
+      this.requireUserId()
+      await updateDoc(this.noteRef(noteId), {
+        lastAccessedAt: serverTimestamp(),
+      })
     })
   }
 
   async saveNoteWithFullContent(noteId: string, newContent: string): Promise<void> {
-    this.requireUserId()
+    return this.logged('saveNoteWithFullContent', async () => {
+      this.requireUserId()
 
-    const existingNote = await this.loadNoteById(noteId)
-    if (!existingNote) throw new Error(`Note not found: ${noteId}`)
+      const existingNote = await this.loadNoteById(noteId)
+      if (!existingNote) throw new Error(`Note not found: ${noteId}`)
 
-    const existingLines = await this.buildExistingLines(noteId, existingNote)
-    const newLinesContent = newContent.split('\n')
-    const trackedLines = matchLinesToIds(noteId, existingLines, newLinesContent)
+      const existingLines = await this.buildExistingLines(noteId, existingNote)
+      const newLinesContent = newContent.split('\n')
+      const trackedLines = matchLinesToIds(noteId, existingLines, newLinesContent)
 
-    await this.saveNoteWithChildren(noteId, trackedLines)
+      await this.saveNoteWithChildren(noteId, trackedLines)
+    })
   }
 
   private async buildExistingLines(noteId: string, note: Note): Promise<NoteLine[]> {
@@ -360,10 +394,12 @@ export class NoteRepository {
   }
 
   async isNoteDeleted(noteId: string): Promise<boolean> {
-    this.requireUserId()
-    const docSnap = await getDoc(this.noteRef(noteId))
-    if (!docSnap.exists()) return false
-    return docSnap.data().state === 'deleted'
+    return this.logged('isNoteDeleted', async () => {
+      this.requireUserId()
+      const docSnap = await getDoc(this.noteRef(noteId))
+      if (!docSnap.exists()) return false
+      return docSnap.data().state === 'deleted'
+    })
   }
 }
 

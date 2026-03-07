@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { Lexer } from '@/dsl/language/Lexer'
-import { Parser } from '@/dsl/language/Parser'
-import { Executor } from '@/dsl/runtime/Executor'
-import { Environment } from '@/dsl/runtime/Environment'
-import type { DslValue, ListVal, ViewVal, NoteVal } from '@/dsl/runtime/DslValue'
+import { Lexer } from '../../../dsl/language/Lexer'
+import { Parser } from '../../../dsl/language/Parser'
+import { Executor } from '../../../dsl/runtime/Executor'
+import { Environment } from '../../../dsl/runtime/Environment'
+import type { DslValue, ListVal, ViewVal, NoteVal } from '../../../dsl/runtime/DslValue'
 import {
   toDisplayString,
   noteVal,
@@ -11,8 +11,8 @@ import {
   viewVal,
   serializeValue,
   deserializeValue,
-} from '@/dsl/runtime/DslValue'
-import type { Note } from '@/data/Note'
+} from '../../../dsl/runtime/DslValue'
+import type { Note } from '../../../data/Note'
 import { Timestamp } from 'firebase/firestore'
 
 function execute(source: string, env?: Environment): DslValue {

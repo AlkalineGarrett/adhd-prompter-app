@@ -43,6 +43,16 @@
   cursor: default;
 }
 
+.warning {
+  background: #fff3e0;
+  border-color: #ff9800;
+  color: #e65100;
+}
+
+.warning:hover:not(:disabled) {
+  background: #ffe0b2;
+}
+
 .spacer {
   flex: 1;
 }

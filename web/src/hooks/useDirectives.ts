@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import type { Note } from '@/data/Note'
+import type { NoteMutation } from '@/dsl/runtime/NoteMutation'
+import type { NoteOperations } from '@/dsl/runtime/NoteOperations'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
 import { executeAllDirectives, executeDirective } from '@/dsl/directives/DirectiveExecutor'
 import { hashDirective, findDirectives, directiveKey } from '@/dsl/directives/DirectiveFinder'
@@ -9,9 +11,11 @@ interface UseDirectivesOptions {
   noteId: string | null
   notes: Note[]
   currentNote: Note | null
+  noteOperations?: NoteOperations
+  onMutations?: (mutations: NoteMutation[]) => void
 }
 
-export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptions) {
+export function useDirectives({ noteId, notes, currentNote, noteOperations, onMutations }: UseDirectivesOptions) {
   const [results, setResults] = useState<Map<string, DirectiveResult>>(new Map())
   const [isExecuting, setIsExecuting] = useState(false)
   const resultsRef = useRef(results)
@@ -45,7 +49,7 @@ export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptio
               positionResults.set(posKey, cached)
             } else {
               // Execute fresh
-              const result = executeDirective(directive.sourceText, notes, currentNote)
+              const result = executeDirective(directive.sourceText, notes, currentNote, noteOperations)
               positionResults.set(posKey, result)
             }
           }
@@ -58,7 +62,7 @@ export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptio
         setIsExecuting(false)
       }
     },
-    [noteId, notes, currentNote],
+    [noteId, notes, currentNote, noteOperations],
   )
 
   /**
@@ -71,7 +75,14 @@ export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptio
       setIsExecuting(true)
       try {
         // Execute all directives
-        const newResults = executeAllDirectives(content, notes, currentNote)
+        const { results: newResults, mutations } = executeAllDirectives(
+          content, notes, currentNote, noteOperations,
+        )
+
+        // Propagate mutations to caller
+        if (mutations.length > 0 && onMutations) {
+          onMutations(mutations)
+        }
 
         // Preserve collapsed state from existing results
         const mergedResults = new Map<string, DirectiveResult>()
@@ -104,7 +115,7 @@ export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptio
         setIsExecuting(false)
       }
     },
-    [noteId, notes, currentNote],
+    [noteId, notes, currentNote, noteOperations, onMutations],
   )
 
   /**
@@ -112,14 +123,14 @@ export function useDirectives({ noteId, notes, currentNote }: UseDirectivesOptio
    */
   const refreshDirective = useCallback(
     (key: string, sourceText: string) => {
-      const result = executeDirective(sourceText, notes, currentNote)
+      const result = executeDirective(sourceText, notes, currentNote, noteOperations)
       setResults((prev) => {
         const next = new Map(prev)
         next.set(key, result)
         return next
       })
     },
-    [notes, currentNote],
+    [notes, currentNote, noteOperations],
   )
 
   return {
