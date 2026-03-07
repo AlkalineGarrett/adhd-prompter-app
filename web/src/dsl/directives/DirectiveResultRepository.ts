@@ -1,6 +1,7 @@
 import { collection, doc, getDocs, setDoc, updateDoc, serverTimestamp, writeBatch } from 'firebase/firestore'
 import { db } from '@/firebase/config'
 import type { DirectiveResult } from './DirectiveResult'
+import type { DirectiveWarningType } from './DirectiveResult'
 
 function resultsCollection(noteId: string) {
   return collection(db, 'notes', noteId, 'directiveResults')
@@ -19,6 +20,7 @@ export async function saveDirectiveResult(
     result: result.result,
     executedAt: serverTimestamp(),
     error: result.error,
+    warning: result.warning ?? null,
     collapsed: result.collapsed,
   })
 }
@@ -35,7 +37,7 @@ export async function getDirectiveResults(noteId: string): Promise<Map<string, D
       result: (data.result as Record<string, unknown>) ?? null,
       executedAt: data.executedAt ?? null,
       error: (data.error as string) ?? null,
-      warning: null,
+      warning: (data.warning as DirectiveWarningType) ?? null,
       collapsed: (data.collapsed as boolean) ?? true,
     })
   }

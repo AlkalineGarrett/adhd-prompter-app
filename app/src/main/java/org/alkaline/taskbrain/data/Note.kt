@@ -2,7 +2,7 @@ package org.alkaline.taskbrain.data
 
 import com.google.firebase.Timestamp
 
-/** IMPORTANT: Keep in sync with schema.md **/
+/** IMPORTANT: Keep in sync with docs/schema.md and web Note.ts **/
 data class Note(
     val id: String = "",
     val userId: String = "",

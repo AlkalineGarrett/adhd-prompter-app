@@ -20,6 +20,7 @@ export function getActionFunctions(): BuiltinFunction[] {
     weeklyConstant,
     dailyAtFunction,
     weeklyAtFunction,
+    atFunction,
   ]
 }
 
@@ -99,6 +100,20 @@ const weeklyAtFunction: BuiltinFunction = {
     const precise = (args.getNamed('precise') as BooleanVal | null)?.value ?? false
     const placeholder = lambdaVal([], { kind: 'StringLiteral', value: 'placeholder', position: 0 }, null)
     return scheduleVal(ScheduleFrequency.WEEKLY, placeholder, timeStr.value, precise)
+  },
+}
+
+const atFunction: BuiltinFunction = {
+  name: 'at',
+  call: (args) => {
+    const dtArg = args.require(0, 'datetime')
+    if (dtArg.kind !== 'DateTimeVal') {
+      throw new ExecutionException(
+        `at() requires a datetime argument, got ${dtArg.kind}. Use datetime(date, time) or parse_datetime() to create one.`,
+      )
+    }
+    const placeholder = lambdaVal([], { kind: 'StringLiteral', value: 'placeholder', position: 0 }, null)
+    return scheduleVal(ScheduleFrequency.ONCE, placeholder, dtArg.value)
   },
 }
 

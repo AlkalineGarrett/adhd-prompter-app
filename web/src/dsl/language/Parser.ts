@@ -239,6 +239,9 @@ export class Parser {
         if (name === 'pattern') {
           return this.parsePatternExpression(position)
         }
+        if (name === 'string') {
+          return this.parseFlatArgCall(name, position)
+        }
         return this.parseParenthesizedCall(name, position)
       }
       return { kind: 'CallExpr', name, args: [], namedArgs: [], position }
@@ -324,6 +327,23 @@ export class Parser {
 
     this.consume(TokenType.RPAREN, "Expected ')' after arguments")
     return { kind: 'CallExpr', name, args: positional, namedArgs: named, position }
+  }
+
+  /**
+   * Parse a call where args are flat (no right-to-left nesting from spaces).
+   * Each primary expression becomes a separate positional arg. Commas are optional separators.
+   */
+  private parseFlatArgCall(name: string, position: number): Expression {
+    const args: Expression[] = []
+
+    while (!this.check(TokenType.RPAREN) && !this.isAtEnd()) {
+      this.match(TokenType.COMMA) // skip optional commas
+      if (this.check(TokenType.RPAREN)) break
+      args.push(this.parsePostfix(this.parsePrimary()))
+    }
+
+    this.consume(TokenType.RPAREN, "Expected ')' after arguments")
+    return { kind: 'CallExpr', name, args, namedArgs: [], position }
   }
 
   private parseArgument(): ParsedArg {

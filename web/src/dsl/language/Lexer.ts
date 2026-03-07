@@ -38,6 +38,7 @@ export class Lexer {
       case '*': this.addToken(TokenType.STAR); break
       case '.': this.dotOrDotDot(); break
       case '"': this.string(); break
+      case '#': this.skipComment(); break
       case ' ': case '\t': case '\r': case '\n': break // skip whitespace
       default:
         if (isDigit(c)) {
@@ -85,6 +86,10 @@ export class Lexer {
     this.advance() // closing "
     const content = this.source.substring(this.start + 1, this.current - 1)
     this.addToken(TokenType.STRING, content)
+  }
+
+  private skipComment(): void {
+    while (!this.isAtEnd() && this.peek() !== '\n') this.advance()
   }
 
   private isAtEnd(): boolean { return this.current >= this.source.length }

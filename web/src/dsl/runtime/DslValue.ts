@@ -159,6 +159,7 @@ export enum ScheduleFrequency {
   DAILY = 'daily',
   HOURLY = 'hourly',
   WEEKLY = 'weekly',
+  ONCE = 'once',
 }
 
 export function scheduleFrequencyFromId(id: string): ScheduleFrequency | null {

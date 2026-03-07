@@ -4,11 +4,13 @@ import styles from './CommandBar.module.css'
 interface CommandBarProps {
   controller: EditorController
   onSave: () => void
+  onUndo?: () => void
+  onRedo?: () => void
   dirty: boolean
   saving: boolean
 }
 
-export function CommandBar({ controller, onSave, dirty, saving }: CommandBarProps) {
+export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }: CommandBarProps) {
   return (
     <div className={styles.bar}>
       <div className={styles.group}>
@@ -67,7 +69,7 @@ export function CommandBar({ controller, onSave, dirty, saving }: CommandBarProp
       <div className={styles.group}>
         <button
           className={styles.button}
-          onClick={() => controller.undo()}
+          onClick={onUndo ?? (() => controller.undo())}
           title="Undo (Ctrl+Z)"
           disabled={!controller.canUndo}
         >
@@ -75,7 +77,7 @@ export function CommandBar({ controller, onSave, dirty, saving }: CommandBarProp
         </button>
         <button
           className={styles.button}
-          onClick={() => controller.redo()}
+          onClick={onRedo ?? (() => controller.redo())}
           title="Redo (Ctrl+Y)"
           disabled={!controller.canRedo}
         >

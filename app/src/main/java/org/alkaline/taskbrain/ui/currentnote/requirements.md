@@ -268,6 +268,7 @@ All discrete editing operations (commands, clipboard, etc.) flow through `Editor
    - `CHECKBOX_TOGGLE`: Gutter checkbox tap (same as COMMAND_CHECKBOX)
    - `ALARM_SYMBOL`: Commits pending state, creates undo point
    - `MOVE_LINES`: Consecutive moves of same lines are grouped (uses separate tracking via `lastMoveLineRange`)
+   - `DIRECTIVE_EDIT`: Confirming directive edit row - always creates a separate undo step
 3. **Operation executor** (`executeOperation`) wraps operations with proper pre/post undo handling
 4. **EditorState internal methods**: Mutation methods on EditorState are `internal` to prevent direct access from UI code (must go through EditorController)
 

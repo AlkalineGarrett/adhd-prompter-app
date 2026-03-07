@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore'
 
-/** IMPORTANT: Keep in sync with Kotlin Note.kt and schema.md */
+/** IMPORTANT: Keep in sync with Kotlin Note.kt and docs/schema.md */
 export interface Note {
   id: string
   userId: string

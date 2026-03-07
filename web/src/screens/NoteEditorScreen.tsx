@@ -12,6 +12,7 @@ import { InlineEditor } from '@/components/InlineEditor'
 import { RecentTabsBar, addOrUpdateTab } from '@/components/RecentTabsBar'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
+import { findDirectives } from '@/dsl/directives/DirectiveFinder'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
@@ -154,6 +155,33 @@ export function NoteEditorScreen() {
     void executeAndSave(content)
   }, [save, editorState, executeAndSave])
 
+  // Directive edit callback
+  const handleDirectiveEdit = useCallback((key: string, newSourceText: string) => {
+    const parts = key.split(':')
+    const lineIndex = parseInt(parts[0]!)
+    const startOffset = parseInt(parts[1]!)
+    const lineContent = editorState.lines[lineIndex]?.text ?? ''
+    const directives = findDirectives(lineContent)
+    const directive = directives.find((d) => d.startOffset === startOffset)
+    if (!directive) return
+    controller.confirmDirectiveEdit(lineIndex, startOffset, directive.endOffset, newSourceText)
+    const content = editorState.lines.map((l) => l.text).join('\n')
+    void executeAndSave(content)
+  }, [editorState, controller, executeAndSave])
+
+  // Undo/redo with directive re-execution
+  const handleUndo = useCallback(() => {
+    controller.undo()
+    const content = editorState.lines.map((l) => l.text).join('\n')
+    void executeAndSave(content)
+  }, [controller, editorState, executeAndSave])
+
+  const handleRedo = useCallback(() => {
+    controller.redo()
+    const content = editorState.lines.map((l) => l.text).join('\n')
+    void executeAndSave(content)
+  }, [controller, editorState, executeAndSave])
+
   // Ctrl+S to save
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -225,6 +253,8 @@ export function NoteEditorScreen() {
       <CommandBar
         controller={controller}
         onSave={saveWithDirectives}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
         dirty={dirty}
         saving={saving}
       />
@@ -237,6 +267,7 @@ export function NoteEditorScreen() {
             controller={controller}
             editorState={editorState}
             directiveResults={directiveResults}
+            onDirectiveEdit={handleDirectiveEdit}
             onDirectiveRefresh={refreshDirective}
             onViewNoteClick={handleViewNoteClick}
           />

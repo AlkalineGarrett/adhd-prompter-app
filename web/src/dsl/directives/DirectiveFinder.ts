@@ -24,10 +24,17 @@ export function findDirectives(content: string): FoundDirective[] {
 
   while (i < content.length) {
     if (content[i] === '[') {
+      // Escaped bracket [[ at top level → literal [, skip both
+      if (i + 1 < content.length && content[i + 1] === '[') {
+        i += 2
+        continue
+      }
+
       const startOffset = i
       let depth = 1
       i++
 
+      // Inside a directive, brackets are tracked normally (no escaping)
       while (i < content.length && depth > 0) {
         if (content[i] === '[') depth++
         else if (content[i] === ']') depth--
@@ -41,6 +48,9 @@ export function findDirectives(content: string): FoundDirective[] {
           endOffset: i,
         })
       }
+    } else if (content[i] === ']' && i + 1 < content.length && content[i + 1] === ']') {
+      // Escaped bracket ]] outside directive → literal ], skip both
+      i += 2
     } else {
       i++
     }

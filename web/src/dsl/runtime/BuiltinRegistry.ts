@@ -10,6 +10,7 @@ import { getNoteFunctions } from '../builtins/NoteFunctions'
 import { getListFunctions } from '../builtins/ListFunctions'
 import { getSortConstants } from '../builtins/SortConstants'
 import { getActionFunctions } from '../builtins/ActionFunctions'
+import { getStringFunctions } from '../builtins/StringFunctions'
 
 export interface BuiltinFunction {
   name: string
@@ -34,6 +35,7 @@ function ensureInitialized(): void {
     ...getListFunctions(),
     ...getSortConstants(),
     ...getActionFunctions(),
+    ...getStringFunctions(),
   ]
 
   for (const fn of allFunctions) {
