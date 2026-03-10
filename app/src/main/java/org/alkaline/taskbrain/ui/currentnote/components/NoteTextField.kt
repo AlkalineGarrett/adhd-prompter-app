@@ -39,6 +39,7 @@ import org.alkaline.taskbrain.ui.currentnote.rememberHangingIndentEditorState
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
 import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 
 /**
  * Main text editing component for notes.
@@ -63,6 +64,7 @@ fun NoteTextField(
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
     buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
+    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -123,6 +125,7 @@ fun NoteTextField(
                             }
                         }
                     },
+                    symbolOverlaysProvider = symbolOverlaysProvider,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(

@@ -207,6 +207,8 @@ fun CurrentNoteScreen(
     var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
     var alarmDialogSymbolIndex by remember { mutableStateOf(0) }
     val lineAlarms by currentNoteViewModel.lineAlarms.observeAsState(emptyList())
+    // Observe noteAlarms to trigger recomposition when alarm overlay states change
+    val noteAlarmsForOverlay by currentNoteViewModel.noteAlarms.observeAsState(emptyMap())
     val alarmDialogExistingAlarm = lineAlarms
         .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
         .getOrNull(alarmDialogSymbolIndex)
@@ -927,6 +929,9 @@ fun CurrentNoteScreen(
                     executionStates = buttonExecutionStates,
                     errors = buttonErrors,
                 ),
+                symbolOverlaysProvider = { lineIndex ->
+                    currentNoteViewModel.getSymbolOverlays(lineIndex, noteAlarmsForOverlay)
+                },
                 modifier = Modifier.weight(1f)
             )
             }

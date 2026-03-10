@@ -112,6 +112,32 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error getting alarms for note", it) }
 
     /**
+     * Gets all alarms for multiple note IDs in a single query.
+     * Firestore whereIn supports up to 30 values; for larger sets,
+     * batches the queries automatically.
+     */
+    suspend fun getAlarmsForNotes(noteIds: List<String>): Result<List<Alarm>> = runCatching {
+        withContext(Dispatchers.IO) {
+            if (noteIds.isEmpty()) return@withContext emptyList()
+            val userId = requireUserId()
+            noteIds.chunked(30).flatMap { chunk ->
+                val result = alarmsCollection(userId)
+                    .whereIn("noteId", chunk)
+                    .get()
+                    .await()
+                result.documents.mapNotNull { doc ->
+                    try {
+                        mapToAlarm(doc.id, doc.data ?: emptyMap())
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error parsing alarm", e)
+                        null
+                    }
+                }
+            }
+        }
+    }.onFailure { Log.e(TAG, "Error getting alarms for notes", it) }
+
+    /**
      * Gets upcoming alarms (status=PENDING, upcomingTime != null, ordered by upcomingTime).
      */
     suspend fun getUpcomingAlarms(): Result<List<Alarm>> = runCatching {

@@ -11,6 +11,7 @@ import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LineState
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -84,6 +85,7 @@ internal fun ControlledLineView(
     directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
     buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlays: List<SymbolOverlay> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val prefix = lineState.prefix
@@ -210,6 +212,7 @@ internal fun ControlledLineView(
                 directiveCallbacks = directiveCallbacks,
                 buttonCallbacks = buttonCallbacks,
                 onSymbolTap = onSymbolTap,
+                symbolOverlays = symbolOverlays,
                 modifier = Modifier.fillMaxWidth()
             )
         }

@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.alkaline.taskbrain.data.Note
@@ -74,6 +75,9 @@ import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LocalInlineEditState
 import org.alkaline.taskbrain.ui.currentnote.InlineEditSession
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
+import org.alkaline.taskbrain.ui.currentnote.util.drawSymbolOverlays
+import org.alkaline.taskbrain.ui.currentnote.util.hasVisibleBadges
 import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 
 private const val TAG = "DirectiveAwareLineInput"
@@ -165,6 +169,7 @@ internal fun DirectiveAwareLineInput(
     directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
     buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlays: List<SymbolOverlay> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     // Unpack callback bundles for internal use
@@ -256,6 +261,8 @@ internal fun DirectiveAwareLineInput(
         if (displayResult.directiveDisplayRanges.isEmpty()) {
             // No directives - render as simple text
             val hasTappableSymbol = onSymbolTap != null && TappableSymbol.containsAny(content)
+            val hasOverlays = symbolOverlays.hasVisibleBadges()
+            val textMeasurer = if (hasOverlays) rememberTextMeasurer() else null
             BasicText(
                 text = content,
                 style = textStyle,
@@ -293,6 +300,18 @@ internal fun DirectiveAwareLineInput(
                         textLength = content.length,
                         textLayoutResult = textLayoutResultState,
                         cursorAlpha = cursorAlpha
+                    )
+                    .then(
+                        if (hasOverlays && textMeasurer != null) {
+                            Modifier.drawSymbolOverlays(
+                                content = content,
+                                textLayoutResult = textLayoutResultState,
+                                overlays = symbolOverlays,
+                                textMeasurer = textMeasurer
+                            )
+                        } else {
+                            Modifier
+                        }
                     )
             )
         } else if (viewDirectiveRange != null && viewVal != null && viewDirectiveRange.hasError.not()) {
@@ -360,7 +379,8 @@ internal fun DirectiveAwareLineInput(
                 onTapAtSourcePosition = { sourcePosition ->
                     controller.setContentCursor(lineIndex, sourcePosition)
                 },
-                onSymbolTap = onSymbolTap
+                onSymbolTap = onSymbolTap,
+                symbolOverlays = symbolOverlays
             )
         }
     }
@@ -384,9 +404,12 @@ private fun DirectiveOverlayText(
     onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
     onTextLayout: (TextLayoutResult) -> Unit,
     onTapAtSourcePosition: (Int) -> Unit,
-    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlays: List<SymbolOverlay> = emptyList()
 ) {
     var textLayoutResult: TextLayoutResult? by remember { mutableStateOf(null) }
+    val hasOverlays = symbolOverlays.hasVisibleBadges()
+    val overlayTextMeasurer = if (hasOverlays) rememberTextMeasurer() else null
 
     Box(modifier = Modifier.fillMaxWidth()) {
         // Render the full display text
@@ -494,6 +517,18 @@ private fun DirectiveOverlayText(
                         }
                     }
                 }
+                .then(
+                    if (hasOverlays && overlayTextMeasurer != null) {
+                        Modifier.drawSymbolOverlays(
+                            content = displayResult.displayText,
+                            textLayoutResult = textLayoutResult,
+                            overlays = symbolOverlays,
+                            textMeasurer = overlayTextMeasurer
+                        )
+                    } else {
+                        Modifier
+                    }
+                )
         )
 
         // Invisible tap targets for directives - wrapped in matchParentSize to not affect layout

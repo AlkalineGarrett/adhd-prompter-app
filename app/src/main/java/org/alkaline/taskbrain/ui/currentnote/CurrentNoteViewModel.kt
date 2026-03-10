@@ -59,6 +59,9 @@ import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 import org.alkaline.taskbrain.dsl.runtime.ViewVal
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
+import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 import org.alkaline.taskbrain.util.PermissionHelper
 
 class CurrentNoteViewModel @JvmOverloads constructor(
@@ -261,6 +264,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 repository.updateLastAccessed(currentNoteId)
                 loadDirectiveResults(fullContent)
             }
+            loadAlarmStates()
             return
         }
         Log.d(TAG, "loadContent: cache miss for $currentNoteId, fetching from Firebase")
@@ -294,6 +298,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
                     // Load cached directive results and execute any missing directives
                     loadDirectiveResults(fullContent)
+
+                    loadAlarmStates()
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error loading note", e)
@@ -426,6 +432,48 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
     }
 
+    // Per-noteId alarm list for rendering symbol overlays
+    private val _noteAlarms = MutableLiveData<Map<String, List<Alarm>>>(emptyMap())
+    val noteAlarms: LiveData<Map<String, List<Alarm>>> = _noteAlarms
+
+    /**
+     * Loads all alarms for every noteId referenced by the current note's lines.
+     * Called after note load and after alarm state changes.
+     */
+    fun loadAlarmStates() {
+        val noteIds = lineTracker.getTrackedLines()
+            .mapNotNull { it.noteId }
+            .distinct()
+        if (noteIds.isEmpty()) {
+            _noteAlarms.value = emptyMap()
+            return
+        }
+        viewModelScope.launch {
+            alarmRepository.getAlarmsForNotes(noteIds).fold(
+                onSuccess = { alarms ->
+                    _noteAlarms.value = alarms.groupBy { it.noteId }
+                },
+                onFailure = { e ->
+                    Log.e(TAG, "Error loading alarm states", e)
+                    _noteAlarms.value = emptyMap()
+                }
+            )
+        }
+    }
+
+    /**
+     * Returns [SymbolOverlay] list for each alarm symbol on the given line.
+     * The list is ordered by alarm creation time (matching symbol left-to-right order).
+     */
+    fun getSymbolOverlays(lineIndex: Int, noteAlarms: Map<String, List<Alarm>>): List<SymbolOverlay> {
+        val noteId = getNoteIdForLine(lineIndex)
+        val alarms = noteAlarms[noteId] ?: return emptyList()
+        val now = Timestamp.now()
+        return alarms
+            .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
+            .map { alarm -> alarmToOverlay(alarm, now) }
+    }
+
     // Scheduling failure warning
     private val _schedulingWarning = MutableLiveData<String?>()
     val schedulingWarning: LiveData<String?> = _schedulingWarning
@@ -548,6 +596,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 // Signal to insert alarm symbol (even if scheduling partially failed,
                 // the alarm exists in the DB)
                 _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent, alarmSnapshot)
+                loadAlarmStates()
             },
             onFailure = { e ->
                 _alarmError.value = e
@@ -1546,6 +1595,26 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             urgentTime: Timestamp?,
             alarmTime: Timestamp?
         ): Timestamp? = AlarmStateManager.resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
+
+        private val PAST_DUE_COLOR = androidx.compose.ui.graphics.Color(0xFFD32F2F)
+        private val COMPLETED_COLOR = androidx.compose.ui.graphics.Color(0xFF388E3C)
+        private val CANCELLED_COLOR = androidx.compose.ui.graphics.Color(0xFF757575)
+
+        /**
+         * Maps an alarm to its visual overlay badge based on status and thresholds.
+         */
+        internal fun alarmToOverlay(alarm: Alarm, now: Timestamp): SymbolOverlay {
+            val badge = when {
+                alarm.status == org.alkaline.taskbrain.data.AlarmStatus.DONE ->
+                    SymbolBadge.Corner(text = "✓", color = COMPLETED_COLOR)
+                alarm.status == org.alkaline.taskbrain.data.AlarmStatus.CANCELLED ->
+                    SymbolBadge.Corner(text = "✕", color = CANCELLED_COLOR)
+                alarm.latestThresholdTime != null && alarm.latestThresholdTime!! < now ->
+                    SymbolBadge.Centered(text = "!", color = PAST_DUE_COLOR)
+                else -> SymbolBadge.None
+            }
+            return SymbolOverlay(symbol = AlarmSymbolUtils.ALARM_SYMBOL, badge = badge)
+        }
     }
 
     /**
@@ -1564,6 +1633,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     if (!scheduleResult.success) {
                         _schedulingWarning.value = scheduleResult.message
                     }
+                    loadAlarmStates()
                 },
                 onFailure = { e ->
                     _alarmError.value = e
@@ -1577,9 +1647,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      */
     fun markAlarmDone(alarmId: String) {
         viewModelScope.launch {
-            alarmStateManager.markDone(alarmId).onFailure { e ->
-                _alarmError.value = e
-            }
+            alarmStateManager.markDone(alarmId).fold(
+                onSuccess = { loadAlarmStates() },
+                onFailure = { e -> _alarmError.value = e }
+            )
         }
     }
 
@@ -1588,9 +1659,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      */
     fun cancelAlarm(alarmId: String) {
         viewModelScope.launch {
-            alarmStateManager.markCancelled(alarmId).onFailure { e ->
-                _alarmError.value = e
-            }
+            alarmStateManager.markCancelled(alarmId).fold(
+                onSuccess = { loadAlarmStates() },
+                onFailure = { e -> _alarmError.value = e }
+            )
         }
     }
 
@@ -1610,7 +1682,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         _isAlarmOperationPending.value = true
         viewModelScope.launch {
             alarmStateManager.delete(alarmId).fold(
-                onSuccess = { onComplete?.invoke() },
+                onSuccess = {
+                    onComplete?.invoke()
+                    loadAlarmStates()
+                },
                 onFailure = { e -> _alarmError.value = e }
             )
             _isAlarmOperationPending.value = false

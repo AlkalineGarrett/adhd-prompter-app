@@ -56,6 +56,7 @@ import org.alkaline.taskbrain.ui.currentnote.rememberEditorState
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 
 // =============================================================================
 // Handle Position Calculation
@@ -124,6 +125,7 @@ fun HangingIndentEditor(
     directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
     buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -195,6 +197,7 @@ fun HangingIndentEditor(
         directiveCallbacks = directiveCallbacks,
         buttonCallbacks = buttonCallbacks,
         onSymbolTap = onSymbolTap,
+        symbolOverlaysProvider = symbolOverlaysProvider,
         modifier = modifier
     )
 }
@@ -225,6 +228,7 @@ private fun EditorLayout(
     directiveCallbacks: DirectiveCallbacks,
     buttonCallbacks: ButtonCallbacks,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)?,
+    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -245,7 +249,8 @@ private fun EditorLayout(
             directiveResults = directiveResults,
             directiveCallbacks = directiveCallbacks,
             buttonCallbacks = buttonCallbacks,
-            onSymbolTap = onSymbolTap
+            onSymbolTap = onSymbolTap,
+            symbolOverlaysProvider = symbolOverlaysProvider
         )
 
         // Selection overlay (handles + context menu)
@@ -280,7 +285,8 @@ private fun EditorRow(
     directiveResults: Map<String, DirectiveResult>,
     directiveCallbacks: DirectiveCallbacks,
     buttonCallbacks: ButtonCallbacks,
-    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null
 ) {
     // Track measured heights of directive edit rows (keyed by directive position key)
     val directiveEditHeights = remember { mutableStateMapOf<String, Int>() }
@@ -322,6 +328,7 @@ private fun EditorRow(
             buttonCallbacks = buttonCallbacks,
             onDirectiveEditHeightMeasured = { key, height -> directiveEditHeights[key] = height },
             onSymbolTap = onSymbolTap,
+            symbolOverlaysProvider = symbolOverlaysProvider,
             modifier = Modifier.weight(1f)
         )
     }
@@ -425,6 +432,7 @@ private fun EditorContent(
     buttonCallbacks: ButtonCallbacks,
     onDirectiveEditHeightMeasured: ((directiveKey: String, heightPx: Int) -> Unit)?,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -462,7 +470,8 @@ private fun EditorContent(
                     directiveResults = directiveResults,
                     directiveCallbacks = directiveCallbacks,
                     buttonCallbacks = buttonCallbacks,
-                    onSymbolTap = onSymbolTap
+                    onSymbolTap = onSymbolTap,
+                    symbolOverlays = symbolOverlaysProvider?.invoke(index) ?: emptyList()
                 )
 
                 // Render edit rows for expanded directives on this line
@@ -519,7 +528,8 @@ private fun ControlledLineViewWrapper(
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
     buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
-    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
+    symbolOverlays: List<SymbolOverlay> = emptyList()
 ) {
     val lineSelection = state.getLineSelection(index)
     val lineEndOffset = state.getLineStartOffset(index) + lineState.text.length
@@ -556,6 +566,7 @@ private fun ControlledLineViewWrapper(
         directiveCallbacks = directiveCallbacks,
         buttonCallbacks = buttonCallbacks,
         onSymbolTap = onSymbolTap,
+        symbolOverlays = symbolOverlays,
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
