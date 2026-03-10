@@ -59,8 +59,7 @@ import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 import org.alkaline.taskbrain.dsl.runtime.ViewVal
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
-import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
-import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
+import org.alkaline.taskbrain.ui.currentnote.util.AlarmOverlayMapping
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -471,7 +470,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val now = Timestamp.now()
         return alarms
             .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
-            .map { alarm -> alarmToOverlay(alarm, now) }
+            .map { alarm -> AlarmOverlayMapping.alarmToOverlay(alarm, now) }
     }
 
     // Scheduling failure warning
@@ -1596,25 +1595,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             alarmTime: Timestamp?
         ): Timestamp? = AlarmStateManager.resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
 
-        private val PAST_DUE_COLOR = androidx.compose.ui.graphics.Color(0xFFD32F2F)
-        private val COMPLETED_COLOR = androidx.compose.ui.graphics.Color(0xFF388E3C)
-        private val CANCELLED_COLOR = androidx.compose.ui.graphics.Color(0xFF757575)
-
-        /**
-         * Maps an alarm to its visual overlay badge based on status and thresholds.
-         */
-        internal fun alarmToOverlay(alarm: Alarm, now: Timestamp): SymbolOverlay {
-            val badge = when {
-                alarm.status == org.alkaline.taskbrain.data.AlarmStatus.DONE ->
-                    SymbolBadge.Corner(text = "✓", color = COMPLETED_COLOR)
-                alarm.status == org.alkaline.taskbrain.data.AlarmStatus.CANCELLED ->
-                    SymbolBadge.Corner(text = "✕", color = CANCELLED_COLOR)
-                alarm.latestThresholdTime != null && alarm.latestThresholdTime!! < now ->
-                    SymbolBadge.Centered(text = "!", color = PAST_DUE_COLOR)
-                else -> SymbolBadge.None
-            }
-            return SymbolOverlay(symbol = AlarmSymbolUtils.ALARM_SYMBOL, badge = badge)
-        }
     }
 
     /**

@@ -110,23 +110,13 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun markDone(alarmId: String) {
-        viewModelScope.launch {
-            alarmStateManager.markDone(alarmId).fold(
-                onSuccess = { loadAlarms() },
-                onFailure = { _error.value = it }
-            )
-        }
-    }
+    fun markDone(alarmId: String) = executeAlarmOperation { alarmStateManager.markDone(alarmId) }
 
-    fun markCancelled(alarmId: String) {
-        viewModelScope.launch {
-            alarmStateManager.markCancelled(alarmId).fold(
-                onSuccess = { loadAlarms() },
-                onFailure = { _error.value = it }
-            )
-        }
-    }
+    fun markCancelled(alarmId: String) = executeAlarmOperation { alarmStateManager.markCancelled(alarmId) }
+
+    fun deleteAlarm(alarmId: String) = executeAlarmOperation { alarmStateManager.delete(alarmId) }
+
+    fun reactivateAlarm(alarmId: String) = executeAlarmOperation { alarmStateManager.reactivate(alarmId) }
 
     fun updateAlarm(
         alarm: Alarm,
@@ -134,32 +124,19 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         notifyTime: com.google.firebase.Timestamp?,
         urgentTime: com.google.firebase.Timestamp?,
         alarmTime: com.google.firebase.Timestamp?
-    ) {
-        viewModelScope.launch {
-            alarmStateManager.update(alarm, upcomingTime, notifyTime, urgentTime, alarmTime).fold(
-                onSuccess = { scheduleResult ->
-                    if (!scheduleResult.success) {
-                        Log.w(TAG, "Alarm scheduling warning: ${scheduleResult.message}")
-                    }
-                    loadAlarms()
-                },
-                onFailure = { _error.value = it }
-            )
+    ) = executeAlarmOperation {
+        alarmStateManager.update(alarm, upcomingTime, notifyTime, urgentTime, alarmTime).also { result ->
+            result.getOrNull()?.let { scheduleResult ->
+                if (!scheduleResult.success) {
+                    Log.w(TAG, "Alarm scheduling warning: ${scheduleResult.message}")
+                }
+            }
         }
     }
 
-    fun deleteAlarm(alarmId: String) {
+    private fun executeAlarmOperation(operation: suspend () -> Result<*>) {
         viewModelScope.launch {
-            alarmStateManager.delete(alarmId).fold(
-                onSuccess = { loadAlarms() },
-                onFailure = { _error.value = it }
-            )
-        }
-    }
-
-    fun reactivateAlarm(alarmId: String) {
-        viewModelScope.launch {
-            alarmStateManager.reactivate(alarmId).fold(
+            operation().fold(
                 onSuccess = { loadAlarms() },
                 onFailure = { _error.value = it }
             )

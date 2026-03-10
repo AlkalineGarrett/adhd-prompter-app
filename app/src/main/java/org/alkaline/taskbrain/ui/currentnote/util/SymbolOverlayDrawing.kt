@@ -32,19 +32,22 @@ fun Modifier.drawSymbolOverlays(
     textLayoutResult: TextLayoutResult?,
     overlays: List<SymbolOverlay>,
     textMeasurer: TextMeasurer
-): Modifier = this.drawWithContent {
-    drawContent()
+): Modifier {
+    if (overlays.isEmpty()) return this
 
-    val layout = textLayoutResult ?: return@drawWithContent
-    if (overlays.isEmpty()) return@drawWithContent
-
-    // Group overlays by symbol character, preserving order within each group
+    // Pre-compute at composition time, not on every draw call
     val bySymbol = overlays.groupBy { it.symbol }
+    val symbolPositions = bySymbol.keys.associateWith { symbol -> findAllPositions(content, symbol) }
 
-    for ((symbol, symbolOverlays) in bySymbol) {
-        val positions = findAllPositions(content, symbol)
+    return this.drawWithContent {
+        drawContent()
 
-        for ((index, charOffset) in positions.withIndex()) {
+        val layout = textLayoutResult ?: return@drawWithContent
+
+        for ((symbol, symbolOverlays) in bySymbol) {
+            val positions = symbolPositions[symbol] ?: continue
+
+            for ((index, charOffset) in positions.withIndex()) {
             val badge = symbolOverlays.getOrNull(index)?.badge ?: SymbolBadge.None
             if (badge is SymbolBadge.None) continue
 
@@ -87,6 +90,7 @@ fun Modifier.drawSymbolOverlays(
             }
         }
     }
+}
 }
 
 /**

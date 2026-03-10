@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.ui.currentnote
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.ui.currentnote.util.AlarmOverlayMapping
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
 import org.junit.Assert.assertEquals
@@ -37,7 +38,7 @@ class AlarmToSymbolStateTest {
     @Test
     fun `DONE alarm returns Corner badge`() {
         val alarm = makeAlarm(status = AlarmStatus.DONE, alarmTime = pastTime)
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertEquals(AlarmSymbolUtils.ALARM_SYMBOL, overlay.symbol)
         assertTrue(overlay.badge is SymbolBadge.Corner)
         assertEquals("✓", (overlay.badge as SymbolBadge.Corner).text)
@@ -46,7 +47,7 @@ class AlarmToSymbolStateTest {
     @Test
     fun `CANCELLED alarm returns Corner badge`() {
         val alarm = makeAlarm(status = AlarmStatus.CANCELLED, alarmTime = pastTime)
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertEquals(AlarmSymbolUtils.ALARM_SYMBOL, overlay.symbol)
         assertTrue(overlay.badge is SymbolBadge.Corner)
         assertEquals("✕", (overlay.badge as SymbolBadge.Corner).text)
@@ -60,7 +61,7 @@ class AlarmToSymbolStateTest {
             notifyTime = pastTime,
             alarmTime = pastTime
         )
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertTrue(overlay.badge is SymbolBadge.Centered)
         assertEquals("!", (overlay.badge as SymbolBadge.Centered).text)
     }
@@ -72,14 +73,14 @@ class AlarmToSymbolStateTest {
             upcomingTime = pastTime,
             alarmTime = futureTime
         )
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertTrue(overlay.badge is SymbolBadge.None)
     }
 
     @Test
     fun `PENDING alarm with no thresholds returns None badge`() {
         val alarm = makeAlarm(status = AlarmStatus.PENDING)
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertTrue(overlay.badge is SymbolBadge.None)
     }
 
@@ -90,7 +91,7 @@ class AlarmToSymbolStateTest {
             upcomingTime = pastTime,
             alarmTime = pastTime
         )
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertTrue(overlay.badge is SymbolBadge.Corner)
         assertEquals("✓", (overlay.badge as SymbolBadge.Corner).text)
     }
@@ -102,7 +103,7 @@ class AlarmToSymbolStateTest {
             upcomingTime = pastTime,
             alarmTime = pastTime
         )
-        val overlay = CurrentNoteViewModel.alarmToOverlay(alarm, now)
+        val overlay = AlarmOverlayMapping.alarmToOverlay(alarm, now)
         assertTrue(overlay.badge is SymbolBadge.Corner)
         assertEquals("✕", (overlay.badge as SymbolBadge.Corner).text)
     }
@@ -116,7 +117,7 @@ class AlarmToSymbolStateTest {
             makeAlarm(status = AlarmStatus.PENDING)
         )
         alarms.forEach { alarm ->
-            assertEquals(AlarmSymbolUtils.ALARM_SYMBOL, CurrentNoteViewModel.alarmToOverlay(alarm, now).symbol)
+            assertEquals(AlarmSymbolUtils.ALARM_SYMBOL, AlarmOverlayMapping.alarmToOverlay(alarm, now).symbol)
         }
     }
 }
