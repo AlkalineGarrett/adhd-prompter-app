@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.ui.components.ErrorDialog
+import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
 import org.alkaline.taskbrain.util.PermissionHelper
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -61,6 +62,9 @@ fun AlarmsScreen(
     val cancelledAlarms by alarmsViewModel.cancelledAlarms.observeAsState(emptyList())
     val isLoading by alarmsViewModel.isLoading.observeAsState(false)
     val error by alarmsViewModel.error.observeAsState()
+
+    // Alarm edit dialog state
+    var selectedAlarm by remember { mutableStateOf<Alarm?>(null) }
 
     // Check permission status
     var permissionStatus by remember { mutableStateOf(PermissionHelper.getAlarmPermissionStatus(context)) }
@@ -87,6 +91,20 @@ fun AlarmsScreen(
             title = "Error",
             throwable = throwable,
             onDismiss = { alarmsViewModel.clearError() }
+        )
+    }
+
+    selectedAlarm?.let { alarm ->
+        AlarmConfigDialog(
+            lineContent = alarm.displayName.ifEmpty { "Untitled alarm" },
+            existingAlarm = alarm,
+            onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
+                alarmsViewModel.updateAlarm(alarm, upcomingTime, notifyTime, urgentTime, alarmTime)
+            },
+            onMarkDone = { alarmsViewModel.markDone(alarm.id) },
+            onCancel = { alarmsViewModel.markCancelled(alarm.id) },
+            onDelete = { alarmsViewModel.deleteAlarm(alarm.id) },
+            onDismiss = { selectedAlarm = null }
         )
     }
 
@@ -127,6 +145,7 @@ fun AlarmsScreen(
                         items(upcomingAlarms) { alarm ->
                             AlarmItem(
                                 alarm = alarm,
+                                onTap = { selectedAlarm = alarm },
                                 onMarkDone = { alarmsViewModel.markDone(alarm.id) },
                                 onCancel = { alarmsViewModel.markCancelled(alarm.id) }
                             )
@@ -142,6 +161,7 @@ fun AlarmsScreen(
                         items(laterAlarms) { alarm ->
                             AlarmItem(
                                 alarm = alarm,
+                                onTap = { selectedAlarm = alarm },
                                 onMarkDone = { alarmsViewModel.markDone(alarm.id) },
                                 onCancel = { alarmsViewModel.markCancelled(alarm.id) }
                             )
@@ -157,6 +177,7 @@ fun AlarmsScreen(
                         items(completedAlarms) { alarm ->
                             CompletedAlarmItem(
                                 alarm = alarm,
+                                onTap = { selectedAlarm = alarm },
                                 onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) }
                             )
                         }
@@ -171,6 +192,7 @@ fun AlarmsScreen(
                         items(cancelledAlarms) { alarm ->
                             CompletedAlarmItem(
                                 alarm = alarm,
+                                onTap = { selectedAlarm = alarm },
                                 onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) }
                             )
                         }
@@ -248,13 +270,15 @@ private fun SectionHeader(title: String) {
 @Composable
 private fun AlarmItem(
     alarm: Alarm,
+    onTap: () -> Unit,
     onMarkDone: () -> Unit,
     onCancel: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onTap),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
         )
@@ -319,12 +343,14 @@ private fun AlarmItem(
 @Composable
 private fun CompletedAlarmItem(
     alarm: Alarm,
+    onTap: () -> Unit,
     onReactivate: () -> Unit
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onTap),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         )

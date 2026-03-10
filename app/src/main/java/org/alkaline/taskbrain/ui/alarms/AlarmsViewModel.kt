@@ -150,6 +150,56 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
     }
 
+    fun updateAlarm(
+        alarm: Alarm,
+        upcomingTime: com.google.firebase.Timestamp?,
+        notifyTime: com.google.firebase.Timestamp?,
+        urgentTime: com.google.firebase.Timestamp?,
+        alarmTime: com.google.firebase.Timestamp?
+    ) {
+        viewModelScope.launch {
+            val effectiveUpcomingTime = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
+                .minByOrNull { it.toDate().time }
+
+            val updatedAlarm = alarm.copy(
+                upcomingTime = effectiveUpcomingTime,
+                notifyTime = notifyTime,
+                urgentTime = urgentTime,
+                alarmTime = alarmTime
+            )
+
+            repository.updateAlarm(updatedAlarm).fold(
+                onSuccess = {
+                    alarmScheduler.cancelAlarm(alarm.id)
+                    val scheduleResult = alarmScheduler.scheduleAlarm(updatedAlarm)
+                    if (!scheduleResult.success) {
+                        Log.w(TAG, "Alarm scheduling warning: ${scheduleResult.message}")
+                    }
+                    loadAlarms()
+                },
+                onFailure = {
+                    Log.e(TAG, "Error updating alarm", it)
+                    _error.value = it
+                }
+            )
+        }
+    }
+
+    fun deleteAlarm(alarmId: String) {
+        viewModelScope.launch {
+            alarmScheduler.cancelAlarm(alarmId)
+            lockScreenWallpaperManager.restoreWallpaper(alarmId)
+            dismissNotification(alarmId)
+            repository.deleteAlarm(alarmId).fold(
+                onSuccess = { loadAlarms() },
+                onFailure = {
+                    Log.e(TAG, "Error deleting alarm", it)
+                    _error.value = it
+                }
+            )
+        }
+    }
+
     fun reactivateAlarm(alarmId: String) {
         viewModelScope.launch {
             repository.reactivateAlarm(alarmId).fold(
