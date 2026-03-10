@@ -92,6 +92,7 @@ internal fun ControlledLineView(
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
     buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
     buttonErrors: Map<String, String> = emptyMap(),
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val prefix = lineState.prefix
@@ -230,6 +231,7 @@ internal fun ControlledLineView(
                 onButtonClick = onButtonClick,
                 buttonExecutionStates = buttonExecutionStates,
                 buttonErrors = buttonErrors,
+                onSymbolTap = onSymbolTap,
                 modifier = Modifier.fillMaxWidth()
             )
         }

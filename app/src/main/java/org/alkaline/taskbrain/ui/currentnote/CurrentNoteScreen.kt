@@ -3,6 +3,8 @@ package org.alkaline.taskbrain.ui.currentnote
 import android.util.Log
 import androidx.compose.foundation.background
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolTapInfo
+import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 import org.alkaline.taskbrain.ui.currentnote.util.ClipboardHtmlConverter
 import org.alkaline.taskbrain.ui.currentnote.undo.UndoStatePersistence
 import org.alkaline.taskbrain.ui.currentnote.util.TextLineUtils
@@ -201,6 +203,8 @@ fun CurrentNoteScreen(
     var showAlarmDialog by remember { mutableStateOf(false) }
     var alarmDialogLineContent by remember { mutableStateOf("") }
     var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
+    val lineAlarms by currentNoteViewModel.lineAlarms.observeAsState(emptyList())
+    val alarmDialogExistingAlarm = lineAlarms.firstOrNull()
 
     // Auto-save when navigating away or app goes to background
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -554,18 +558,39 @@ fun CurrentNoteScreen(
     if (showAlarmDialog) {
         AlarmConfigDialog(
             lineContent = alarmDialogLineContent,
-            existingAlarm = null,
+            existingAlarm = alarmDialogExistingAlarm,
             onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
-                // Auto-save before creating alarm to ensure correct note IDs
-                currentNoteViewModel.saveAndCreateAlarm(
-                    content = userContent,
-                    lineContent = alarmDialogLineContent,
-                    lineIndex = alarmDialogLineIndex,
-                    upcomingTime = upcomingTime,
-                    notifyTime = notifyTime,
-                    urgentTime = urgentTime,
-                    alarmTime = alarmTime
-                )
+                val existing = alarmDialogExistingAlarm
+                if (existing != null) {
+                    // Update existing alarm
+                    currentNoteViewModel.updateAlarm(
+                        alarm = existing,
+                        upcomingTime = upcomingTime,
+                        notifyTime = notifyTime,
+                        urgentTime = urgentTime,
+                        alarmTime = alarmTime
+                    )
+                } else {
+                    // Auto-save before creating alarm to ensure correct note IDs
+                    currentNoteViewModel.saveAndCreateAlarm(
+                        content = userContent,
+                        lineContent = alarmDialogLineContent,
+                        lineIndex = alarmDialogLineIndex,
+                        upcomingTime = upcomingTime,
+                        notifyTime = notifyTime,
+                        urgentTime = urgentTime,
+                        alarmTime = alarmTime
+                    )
+                }
+            },
+            onMarkDone = alarmDialogExistingAlarm?.let { alarm ->
+                { currentNoteViewModel.markAlarmDone(alarm.id) }
+            },
+            onCancel = alarmDialogExistingAlarm?.let { alarm ->
+                { currentNoteViewModel.cancelAlarm(alarm.id) }
+            },
+            onDelete = alarmDialogExistingAlarm?.let { alarm ->
+                { currentNoteViewModel.deleteAlarmPermanently(alarm.id) }
             },
             onDismiss = {
                 showAlarmDialog = false
@@ -721,12 +746,17 @@ fun CurrentNoteScreen(
                 editorState = editorState,
                 controller = controller,
                 isFingerDownFlow = isFingerDownFlow,
-                onAlarmSymbolTap = { symbolInfo ->
-                    // Get the line content for this line and show the alarm dialog
-                    val lineContent = editorState.lines.getOrNull(symbolInfo.lineIndex)?.text ?: ""
-                    alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
-                    alarmDialogLineIndex = symbolInfo.lineIndex
-                    showAlarmDialog = true
+                onSymbolTap = { tapInfo ->
+                    when (tapInfo.symbol) {
+                        TappableSymbol.ALARM -> {
+                            val lineContent = editorState.lines.getOrNull(tapInfo.lineIndex)?.text ?: ""
+                            alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
+                            alarmDialogLineIndex = tapInfo.lineIndex
+                            currentNoteViewModel.fetchAlarmsForLine(tapInfo.lineIndex) {
+                                showAlarmDialog = true
+                            }
+                        }
+                    }
                 },
                 textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
                 directiveResults = directiveResults,

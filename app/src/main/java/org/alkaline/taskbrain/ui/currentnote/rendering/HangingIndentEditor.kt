@@ -132,6 +132,7 @@ fun HangingIndentEditor(
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
     buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
     buttonErrors: Map<String, String> = emptyMap(),
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // Sync state with text prop
@@ -209,6 +210,7 @@ fun HangingIndentEditor(
         onButtonClick = onButtonClick,
         buttonExecutionStates = buttonExecutionStates,
         buttonErrors = buttonErrors,
+        onSymbolTap = onSymbolTap,
         modifier = modifier
     )
 }
@@ -245,6 +247,7 @@ private fun EditorLayout(
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
     buttonExecutionStates: Map<String, ButtonExecutionState>,
     buttonErrors: Map<String, String>,
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)?,
     modifier: Modifier
 ) {
     Box(modifier = modifier) {
@@ -271,7 +274,8 @@ private fun EditorLayout(
             onViewEditDirective = onViewEditDirective,
             onButtonClick = onButtonClick,
             buttonExecutionStates = buttonExecutionStates,
-            buttonErrors = buttonErrors
+            buttonErrors = buttonErrors,
+            onSymbolTap = onSymbolTap
         )
 
         // Selection overlay (handles + context menu)
@@ -312,7 +316,8 @@ private fun EditorRow(
     onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
     buttonExecutionStates: Map<String, ButtonExecutionState>,
-    buttonErrors: Map<String, String>
+    buttonErrors: Map<String, String>,
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
 ) {
     // Track measured heights of directive edit rows (keyed by directive position key)
     val directiveEditHeights = remember { mutableStateMapOf<String, Int>() }
@@ -360,6 +365,7 @@ private fun EditorRow(
             onButtonClick = onButtonClick,
             buttonExecutionStates = buttonExecutionStates,
             buttonErrors = buttonErrors,
+            onSymbolTap = onSymbolTap,
             modifier = Modifier.weight(1f)
         )
     }
@@ -469,6 +475,7 @@ private fun EditorContent(
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
     buttonExecutionStates: Map<String, ButtonExecutionState>,
     buttonErrors: Map<String, String>,
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -512,7 +519,8 @@ private fun EditorContent(
                     onViewDirectiveCancel = onDirectiveEditCancel,
                     onButtonClick = onButtonClick,
                     buttonExecutionStates = buttonExecutionStates,
-                    buttonErrors = buttonErrors
+                    buttonErrors = buttonErrors,
+                    onSymbolTap = onSymbolTap
                 )
 
                 // Render edit rows for expanded directives on this line
@@ -575,7 +583,8 @@ private fun ControlledLineViewWrapper(
     onViewDirectiveCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
     buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap()
+    buttonErrors: Map<String, String> = emptyMap(),
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
 ) {
     val lineSelection = state.getLineSelection(index)
     val lineEndOffset = state.getLineStartOffset(index) + lineState.text.length
@@ -618,6 +627,7 @@ private fun ControlledLineViewWrapper(
         onButtonClick = onButtonClick,
         buttonExecutionStates = buttonExecutionStates,
         buttonErrors = buttonErrors,
+        onSymbolTap = onSymbolTap,
         modifier = Modifier
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->

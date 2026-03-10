@@ -62,27 +62,6 @@ object AlarmSymbolUtils {
     }
 
     /**
-     * Gets the line index and symbol index within the line for a tapped alarm symbol.
-     * Returns a pair of (lineIndex, symbolIndexOnLine) or null if not on a symbol.
-     */
-    fun getAlarmSymbolInfo(text: String, charOffset: Int): AlarmSymbolInfo? {
-        if (!isAlarmSymbol(text, charOffset)) return null
-
-        val lineIndex = TextLineUtils.getLineIndex(text, charOffset)
-        val lineStart = TextLineUtils.findLineStart(text, charOffset)
-
-        // Count which alarm symbol this is on the line (0-indexed)
-        val textBeforeOnLine = text.substring(lineStart, charOffset)
-        val symbolIndexOnLine = textBeforeOnLine.count { it.toString() == ALARM_SYMBOL }
-
-        return AlarmSymbolInfo(
-            charOffset = charOffset,
-            lineIndex = lineIndex,
-            symbolIndexOnLine = symbolIndexOnLine
-        )
-    }
-
-    /**
      * Removes an alarm symbol at the specified position.
      * Also removes the preceding space if present.
      */
@@ -112,11 +91,3 @@ object AlarmSymbolUtils {
     }
 }
 
-/**
- * Information about a tapped alarm symbol.
- */
-data class AlarmSymbolInfo(
-    val charOffset: Int,
-    val lineIndex: Int,
-    val symbolIndexOnLine: Int  // Which alarm symbol on this line (0-indexed)
-)

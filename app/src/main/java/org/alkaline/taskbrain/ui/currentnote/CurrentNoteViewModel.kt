@@ -407,7 +407,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private val _lineAlarms = MutableLiveData<List<Alarm>>()
     val lineAlarms: LiveData<List<Alarm>> = _lineAlarms
 
-    fun fetchAlarmsForLine(lineIndex: Int) {
+    fun fetchAlarmsForLine(lineIndex: Int, onComplete: (() -> Unit)? = null) {
         val noteId = getNoteIdForLine(lineIndex)
         viewModelScope.launch {
             val result = alarmRepository.getAlarmsForNote(noteId)
@@ -420,6 +420,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     _lineAlarms.value = emptyList()
                 }
             )
+            onComplete?.invoke()
         }
     }
 
@@ -1535,6 +1536,71 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "CurrentNoteViewModel"
+    }
+
+    /**
+     * Updates an existing alarm's times and reschedules it.
+     */
+    fun updateAlarm(
+        alarm: Alarm,
+        upcomingTime: Timestamp?,
+        notifyTime: Timestamp?,
+        urgentTime: Timestamp?,
+        alarmTime: Timestamp?
+    ) {
+        viewModelScope.launch {
+            val effectiveUpcomingTime = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
+                .minByOrNull { it.toDate().time }
+
+            val updatedAlarm = alarm.copy(
+                upcomingTime = effectiveUpcomingTime,
+                notifyTime = notifyTime,
+                urgentTime = urgentTime,
+                alarmTime = alarmTime
+            )
+
+            val result = alarmRepository.updateAlarm(updatedAlarm)
+            result.fold(
+                onSuccess = {
+                    // Cancel old schedule and reschedule
+                    alarmScheduler.cancelAlarm(alarm.id)
+                    val scheduleResult = alarmScheduler.scheduleAlarm(updatedAlarm)
+                    if (!scheduleResult.success) {
+                        _schedulingWarning.value = scheduleResult.message
+                    }
+                },
+                onFailure = { e ->
+                    Log.e("CurrentNoteViewModel", "Error updating alarm: ${alarm.id}", e)
+                    _alarmError.value = e
+                }
+            )
+        }
+    }
+
+    /**
+     * Marks an existing alarm as done.
+     */
+    fun markAlarmDone(alarmId: String) {
+        viewModelScope.launch {
+            alarmScheduler.cancelAlarm(alarmId)
+            alarmRepository.markDone(alarmId).onFailure { e ->
+                Log.e("CurrentNoteViewModel", "Error marking alarm done: $alarmId", e)
+                _alarmError.value = e
+            }
+        }
+    }
+
+    /**
+     * Cancels an existing alarm (sets status to CANCELLED).
+     */
+    fun cancelAlarm(alarmId: String) {
+        viewModelScope.launch {
+            alarmScheduler.cancelAlarm(alarmId)
+            alarmRepository.markCancelled(alarmId).onFailure { e ->
+                Log.e("CurrentNoteViewModel", "Error cancelling alarm: $alarmId", e)
+                _alarmError.value = e
+            }
+        }
     }
 
     /**

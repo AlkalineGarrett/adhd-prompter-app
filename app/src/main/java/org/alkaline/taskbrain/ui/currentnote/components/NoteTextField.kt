@@ -5,7 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolInfo
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolTapInfo
+import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,7 +58,7 @@ fun NoteTextField(
     editorState: HangingIndentEditorState = rememberHangingIndentEditorState(),
     controller: EditorController,
     isFingerDownFlow: StateFlow<Boolean>? = null,
-    onAlarmSymbolTap: ((AlarmSymbolInfo) -> Unit)? = null,
+    onSymbolTap: ((SymbolTapInfo) -> Unit)? = null,
     textColor: Color = Color.Black,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
@@ -121,6 +122,21 @@ fun NoteTextField(
                     onButtonClick = onButtonClick,
                     buttonExecutionStates = buttonExecutionStates,
                     buttonErrors = buttonErrors,
+                    onSymbolTap = onSymbolTap?.let { callback ->
+                        { lineIndex: Int, charOffsetInLine: Int ->
+                            val content = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                            val symbol = TappableSymbol.at(content, charOffsetInLine)
+                            if (symbol != null) {
+                                val textBefore = content.substring(0, charOffsetInLine.coerceAtMost(content.length))
+                                callback(SymbolTapInfo(
+                                    symbol = symbol,
+                                    charOffset = charOffsetInLine,
+                                    lineIndex = lineIndex,
+                                    symbolIndexOnLine = textBefore.count { it.toString() == symbol.char }
+                                ))
+                            }
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(

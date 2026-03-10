@@ -128,57 +128,6 @@ class AlarmSymbolUtilsTest {
 
     // endregion
 
-    // region getAlarmSymbolInfo tests
-
-    @Test
-    fun `getAlarmSymbolInfo returns null for non-symbol position`() {
-        val text = "Test ⏰ line"
-
-        val result = AlarmSymbolUtils.getAlarmSymbolInfo(text, 0)
-
-        assertNull(result)
-    }
-
-    @Test
-    fun `getAlarmSymbolInfo returns correct info for symbol on first line`() {
-        val text = "Test ⏰ line"
-
-        val result = AlarmSymbolUtils.getAlarmSymbolInfo(text, 5)
-
-        assertNotNull(result)
-        assertEquals(5, result!!.charOffset)
-        assertEquals(0, result.lineIndex)
-        assertEquals(0, result.symbolIndexOnLine)
-    }
-
-    @Test
-    fun `getAlarmSymbolInfo returns correct info for symbol on second line`() {
-        val text = "First line\nSecond ⏰ line"
-
-        val result = AlarmSymbolUtils.getAlarmSymbolInfo(text, 18)
-
-        assertNotNull(result)
-        assertEquals(18, result!!.charOffset)
-        assertEquals(1, result.lineIndex)
-        assertEquals(0, result.symbolIndexOnLine)
-    }
-
-    @Test
-    fun `getAlarmSymbolInfo returns correct symbol index for multiple symbols on same line`() {
-        val text = "First ⏰ Second ⏰"
-
-        val result1 = AlarmSymbolUtils.getAlarmSymbolInfo(text, 6)
-        val result2 = AlarmSymbolUtils.getAlarmSymbolInfo(text, 15)
-
-        assertNotNull(result1)
-        assertEquals(0, result1!!.symbolIndexOnLine)
-
-        assertNotNull(result2)
-        assertEquals(1, result2!!.symbolIndexOnLine)
-    }
-
-    // endregion
-
     // region removeAlarmSymbol tests
 
     @Test

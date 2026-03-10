@@ -72,6 +72,7 @@ import org.alkaline.taskbrain.dsl.ui.DirectiveTextInput
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LocalInlineEditState
 import org.alkaline.taskbrain.ui.currentnote.InlineEditSession
+import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 
 private const val TAG = "DirectiveAwareLineInput"
 
@@ -146,6 +147,7 @@ internal fun DirectiveAwareLineInput(
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
     buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
     buttonErrors: Map<String, String> = emptyMap(),
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val hostView = LocalView.current
@@ -225,6 +227,7 @@ internal fun DirectiveAwareLineInput(
     ) {
         if (displayResult.directiveDisplayRanges.isEmpty()) {
             // No directives - render as simple text
+            val hasAlarmSymbol = onSymbolTap != null && TappableSymbol.containsAny(content)
             BasicText(
                 text = content,
                 style = textStyle,
@@ -234,6 +237,33 @@ internal fun DirectiveAwareLineInput(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .then(
+                        if (hasAlarmSymbol) {
+                            Modifier.pointerInput(content, onSymbolTap) {
+                                detectTapGestures { offset ->
+                                    textLayoutResultState?.let { layout ->
+                                        val position = layout.getOffsetForPosition(offset)
+                                        val alarmCharIndex = when {
+                                            TappableSymbol.at(content, position) != null -> position
+                                            // Emoji renders wider than its layout slot, so
+                                            // tapping it may resolve past it; check previous
+                                            // char but only if tap is within its bounding box
+                                            position > 0 && TappableSymbol.at(content, position - 1) != null
+                                                && offset.x <= layout.getBoundingBox(position - 1).right -> position - 1
+                                            else -> null
+                                        }
+                                        if (alarmCharIndex != null) {
+                                            onSymbolTap?.invoke(lineIndex, alarmCharIndex)
+                                        } else {
+                                            controller.setContentCursor(lineIndex, position)
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .drawCursor(
                         isFocused = isFocused,
                         hasExternalSelection = hasExternalSelection,
@@ -292,6 +322,8 @@ internal fun DirectiveAwareLineInput(
             // Has directives (non-view) - render with overlay boxes
             DirectiveOverlayText(
                 displayResult = displayResult,
+                content = content,
+                lineIndex = lineIndex,
                 textStyle = textStyle,
                 isFocused = isFocused,
                 hasExternalSelection = hasExternalSelection,
@@ -304,8 +336,9 @@ internal fun DirectiveAwareLineInput(
                     onTextLayoutResult(layoutResult)
                 },
                 onTapAtSourcePosition = { sourcePosition ->
-                    controller.setCursor(lineIndex, sourcePosition)
-                }
+                    controller.setContentCursor(lineIndex, sourcePosition)
+                },
+                onSymbolTap = onSymbolTap
             )
         }
     }
@@ -318,6 +351,8 @@ internal fun DirectiveAwareLineInput(
 @Composable
 private fun DirectiveOverlayText(
     displayResult: DisplayTextResult,
+    content: String,
+    lineIndex: Int,
     textStyle: TextStyle,
     isFocused: Boolean,
     hasExternalSelection: Boolean,
@@ -326,7 +361,8 @@ private fun DirectiveOverlayText(
     cursorAlpha: Float,
     onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
     onTextLayout: (TextLayoutResult) -> Unit,
-    onTapAtSourcePosition: (Int) -> Unit
+    onTapAtSourcePosition: (Int) -> Unit,
+    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
 ) {
     var textLayoutResult: TextLayoutResult? by remember { mutableStateOf(null) }
 
@@ -341,14 +377,24 @@ private fun DirectiveOverlayText(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .pointerInput(displayResult) {
+                .pointerInput(displayResult, onSymbolTap) {
                     detectTapGestures { offset ->
                         textLayoutResult?.let { layout ->
-                            // Get the display position from tap coordinates
                             val displayPosition = layout.getOffsetForPosition(offset)
-                            // Map to source position and notify
                             val sourcePosition = mapDisplayToSourceCursor(displayPosition, displayResult)
-                            onTapAtSourcePosition(sourcePosition)
+                            val alarmCharIndex = when {
+                                TappableSymbol.at(content, sourcePosition) != null -> sourcePosition
+                                sourcePosition > 0 && TappableSymbol.at(content, sourcePosition - 1) != null && run {
+                                    val dispIdx = mapSourceToDisplayCursor(sourcePosition - 1, displayResult)
+                                    dispIdx < layout.layoutInput.text.length && offset.x <= layout.getBoundingBox(dispIdx).right
+                                } -> sourcePosition - 1
+                                else -> null
+                            }
+                            if (alarmCharIndex != null && onSymbolTap != null) {
+                                onSymbolTap(lineIndex, alarmCharIndex)
+                            } else {
+                                onTapAtSourcePosition(sourcePosition)
+                            }
                         }
                     }
                 }
@@ -1281,7 +1327,7 @@ private fun InlineEditorLine(
                                 onTapStarting?.invoke()
                                 textLayoutResult?.let { layout ->
                                     val charPos = layout.getOffsetForPosition(offset)
-                                    controller.setCursor(lineIndex, charPos)
+                                    controller.setContentCursor(lineIndex, charPos)
                                 }
                                 onContentTap?.invoke()
                             }
@@ -1364,7 +1410,7 @@ private fun InlineDirectiveOverlayText(
                         textLayoutResult?.let { layout ->
                             val displayPosition = layout.getOffsetForPosition(offset)
                             val sourcePosition = mapDisplayToSourceCursor(displayPosition, displayResult)
-                            controller.setCursor(lineIndex, sourcePosition)
+                            controller.setContentCursor(lineIndex, sourcePosition)
                         }
                         onContentTap?.invoke()
                     }

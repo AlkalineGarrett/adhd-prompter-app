@@ -688,6 +688,16 @@ class EditorController(
     }
 
     /**
+     * Set cursor position within a line's content (excluding prefix).
+     * Use this when the position comes from content-space (e.g., tap on rendered text).
+     */
+    fun setContentCursor(lineIndex: Int, contentPosition: Int) {
+        val line = state.lines.getOrNull(lineIndex) ?: return
+        val fullPosition = line.prefix.length + contentPosition
+        setCursor(lineIndex, fullPosition)
+    }
+
+    /**
      * Set cursor from global character offset.
      * Properly handles undo state when focus changes.
      */
