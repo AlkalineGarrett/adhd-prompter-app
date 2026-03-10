@@ -2,6 +2,8 @@ package org.alkaline.taskbrain.ui.currentnote
 
 import android.util.Log
 import androidx.compose.foundation.background
+import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
+import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolTapInfo
 import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
@@ -203,8 +205,11 @@ fun CurrentNoteScreen(
     var showAlarmDialog by remember { mutableStateOf(false) }
     var alarmDialogLineContent by remember { mutableStateOf("") }
     var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
+    var alarmDialogSymbolIndex by remember { mutableStateOf(0) }
     val lineAlarms by currentNoteViewModel.lineAlarms.observeAsState(emptyList())
-    val alarmDialogExistingAlarm = lineAlarms.firstOrNull()
+    val alarmDialogExistingAlarm = lineAlarms
+        .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
+        .getOrNull(alarmDialogSymbolIndex)
 
     // Auto-save when navigating away or app goes to background
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -752,6 +757,7 @@ fun CurrentNoteScreen(
                             val lineContent = editorState.lines.getOrNull(tapInfo.lineIndex)?.text ?: ""
                             alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
                             alarmDialogLineIndex = tapInfo.lineIndex
+                            alarmDialogSymbolIndex = tapInfo.symbolIndexOnLine
                             currentNoteViewModel.fetchAlarmsForLine(tapInfo.lineIndex) {
                                 showAlarmDialog = true
                             }
@@ -760,163 +766,167 @@ fun CurrentNoteScreen(
                 },
                 textColor = if (isNoteDeleted) deletedNoteTextColor else Color.Black,
                 directiveResults = directiveResults,
-                onDirectiveTap = { positionKey, sourceText ->
-                    // Parse position key (lineIndex:startOffset) to get UUID
-                    val parts = positionKey.split(":")
-                    val lineIndex = parts.getOrNull(0)?.toIntOrNull()
-                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
-                    val uuid = if (lineIndex != null && startOffset != null) {
-                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
-                    } else null
-                    if (uuid != null) {
-                        currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
-                    }
-                },
-                onDirectiveEditConfirm = { lineIndex, positionKey, sourceText, newText ->
-                    // Find directive position in line content before any modifications
-                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                    val startOffset = lineContent.indexOf(sourceText)
-
-                    // Get UUID before any modifications (position may change after edit)
-                    val uuid = if (startOffset >= 0) {
-                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
-                    } else null
-
-                    if (sourceText != newText && startOffset >= 0) {
-                        val endOffset = startOffset + sourceText.length
-
-                        // Use controller for proper undo handling
-                        controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
-
-                        // Sync userContent with EditorState
-                        userContent = editorState.text
-                        isSaved = false
-
-                        // Re-execute directives (this will assign UUIDs to the new content)
-                        currentNoteViewModel.executeDirectivesLive(userContent)
-
-                        // Position cursor at end of the new directive text
-                        val cursorPos = startOffset + newText.length
-                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
-                        controller.setCursor(lineIndex, prefixLength + cursorPos)
-
-                        // Confirm the new directive (re-execute and collapse)
-                        val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
-                        if (newUuid != null) {
-                            currentNoteViewModel.confirmDirective(newUuid, newText)
-                        }
-                    } else if (startOffset >= 0 && uuid != null) {
-                        // No text change - position cursor at end of directive
-                        val cursorPos = startOffset + sourceText.length
-                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
-                        controller.setCursor(lineIndex, prefixLength + cursorPos)
-
-                        // Re-execute and collapse (important for dynamic directives like [now])
-                        currentNoteViewModel.confirmDirective(uuid, sourceText)
-                    }
-                },
-                onDirectiveEditCancel = { lineIndex, positionKey, sourceText ->
-                    // Parse position key to get UUID
-                    val parts = positionKey.split(":")
-                    val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
-                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
-                    val uuid = if (lineIndexFromKey != null && startOffset != null) {
-                        currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffset)
-                    } else null
-                    if (uuid != null) {
-                        currentNoteViewModel.toggleDirectiveCollapsed(uuid)
-                    }
-
-                    // Position cursor at end of the directive
-                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                    val foundStartOffset = lineContent.indexOf(sourceText)
-                    if (foundStartOffset >= 0) {
-                        val cursorPos = foundStartOffset + sourceText.length
-                        val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
-                        controller.setCursor(lineIndex, prefixLength + cursorPos)
-                    }
-                },
-                onDirectiveRefresh = { lineIndex, positionKey, sourceText, newText ->
-                    // Refresh updates the text and re-executes without closing the editor
-                    val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                    val startOffset = lineContent.indexOf(sourceText)
-
-                    if (sourceText != newText && startOffset >= 0) {
-                        val endOffset = startOffset + sourceText.length
-
-                        // Use controller for proper undo handling
-                        controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
-
-                        // Sync userContent with EditorState
-                        userContent = editorState.text
-                        isSaved = false
-
-                        // Re-execute directives (this will assign UUIDs to the new content)
-                        currentNoteViewModel.executeDirectivesLive(userContent)
-
-                        // Keep the directive expanded by refreshing with the new UUID
-                        val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
-                        if (newUuid != null) {
-                            currentNoteViewModel.refreshDirective(newUuid, newText)
-                        }
-                    } else {
-                        // No text change - just re-execute to refresh dynamic values like [now]
-                        // Get current UUID and refresh to keep expanded
+                directiveCallbacks = DirectiveCallbacks(
+                    onDirectiveTap = { positionKey, sourceText ->
+                        // Parse position key (lineIndex:startOffset) to get UUID
                         val parts = positionKey.split(":")
-                        val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
-                        val startOffsetFromKey = parts.getOrNull(1)?.toIntOrNull()
-                        val uuid = if (lineIndexFromKey != null && startOffsetFromKey != null) {
-                            currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffsetFromKey)
+                        val lineIndex = parts.getOrNull(0)?.toIntOrNull()
+                        val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                        val uuid = if (lineIndex != null && startOffset != null) {
+                            currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                        } else null
+                        if (uuid != null) {
+                            currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
+                        }
+                    },
+                    onViewDirectiveConfirm = { lineIndex, positionKey, sourceText, newText ->
+                        // Find directive position in line content before any modifications
+                        val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                        val startOffset = lineContent.indexOf(sourceText)
+
+                        // Get UUID before any modifications (position may change after edit)
+                        val uuid = if (startOffset >= 0) {
+                            currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
                         } else null
 
-                        if (uuid != null) {
-                            currentNoteViewModel.refreshDirective(uuid, sourceText)
-                        } else {
+                        if (sourceText != newText && startOffset >= 0) {
+                            val endOffset = startOffset + sourceText.length
+
+                            // Use controller for proper undo handling
+                            controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
+
+                            // Sync userContent with EditorState
+                            userContent = editorState.text
+                            isSaved = false
+
+                            // Re-execute directives (this will assign UUIDs to the new content)
                             currentNoteViewModel.executeDirectivesLive(userContent)
-                        }
-                    }
-                },
-                onViewNoteTap = { directiveKey, noteId, noteContent ->
-                    // Save inline-edited note content
-                    android.util.Log.d("CurrentNoteScreen", "onViewNoteTap: saving noteId=$noteId, content preview='${noteContent.take(40)}...'")
-                    currentNoteViewModel.saveInlineNoteContent(
-                        noteId = noteId,
-                        newContent = noteContent,
-                        onSuccess = {
-                            android.util.Log.d("InlineEditCache", ">>> onViewNoteTap onSuccess CALLBACK ENTERED for noteId=$noteId")
-                            // Invalidate the tab cache for this note so switching tabs shows fresh content
-                            recentTabsViewModel.invalidateCache(noteId)
-                            // Force re-execute ALL directives with fresh data from Firestore
-                            // End session in the callback to ensure results are updated first
-                            android.util.Log.d("InlineEditCache", ">>> onViewNoteTap: calling forceRefreshAllDirectives NOW")
-                            currentNoteViewModel.forceRefreshAllDirectives(userContent) {
-                                android.util.Log.d("InlineEditCache", ">>> forceRefreshAllDirectives COMPLETE, ending sessions NOW")
-                                // End BOTH sessions: ViewModel session AND UI session
-                                currentNoteViewModel.endInlineEditSession()
-                                inlineEditState.endSession()
+
+                            // Position cursor at end of the new directive text
+                            val cursorPos = startOffset + newText.length
+                            val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                            controller.setCursor(lineIndex, prefixLength + cursorPos)
+
+                            // Confirm the new directive (re-execute and collapse)
+                            val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                            if (newUuid != null) {
+                                currentNoteViewModel.confirmDirective(newUuid, newText)
                             }
-                            android.util.Log.d("InlineEditCache", ">>> onViewNoteTap: forceRefreshAllDirectives call RETURNED (async)")
+                        } else if (startOffset >= 0 && uuid != null) {
+                            // No text change - position cursor at end of directive
+                            val cursorPos = startOffset + sourceText.length
+                            val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                            controller.setCursor(lineIndex, prefixLength + cursorPos)
+
+                            // Re-execute and collapse (important for dynamic directives like [now])
+                            currentNoteViewModel.confirmDirective(uuid, sourceText)
                         }
-                    )
-                },
-                onViewEditDirective = { directiveKey, sourceText ->
-                    // Open directive editor overlay for the view
-                    // Use same logic as onDirectiveTap to toggle expanded state
-                    val parts = directiveKey.split(":")
-                    val lineIndex = parts.getOrNull(0)?.toIntOrNull()
-                    val startOffset = parts.getOrNull(1)?.toIntOrNull()
-                    val uuid = if (lineIndex != null && startOffset != null) {
-                        currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
-                    } else null
-                    if (uuid != null) {
-                        currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
-                    }
-                },
-                onButtonClick = { directiveKey, buttonVal, sourceText ->
-                    currentNoteViewModel.executeButton(directiveKey, buttonVal, sourceText)
-                },
-                buttonExecutionStates = buttonExecutionStates,
-                buttonErrors = buttonErrors,
+                    },
+                    onViewDirectiveCancel = { lineIndex, positionKey, sourceText ->
+                        // Parse position key to get UUID
+                        val parts = positionKey.split(":")
+                        val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
+                        val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                        val uuid = if (lineIndexFromKey != null && startOffset != null) {
+                            currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffset)
+                        } else null
+                        if (uuid != null) {
+                            currentNoteViewModel.toggleDirectiveCollapsed(uuid)
+                        }
+
+                        // Position cursor at end of the directive
+                        val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                        val foundStartOffset = lineContent.indexOf(sourceText)
+                        if (foundStartOffset >= 0) {
+                            val cursorPos = foundStartOffset + sourceText.length
+                            val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
+                            controller.setCursor(lineIndex, prefixLength + cursorPos)
+                        }
+                    },
+                    onViewDirectiveRefresh = { lineIndex, positionKey, sourceText, newText ->
+                        // Refresh updates the text and re-executes without closing the editor
+                        val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                        val startOffset = lineContent.indexOf(sourceText)
+
+                        if (sourceText != newText && startOffset >= 0) {
+                            val endOffset = startOffset + sourceText.length
+
+                            // Use controller for proper undo handling
+                            controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
+
+                            // Sync userContent with EditorState
+                            userContent = editorState.text
+                            isSaved = false
+
+                            // Re-execute directives (this will assign UUIDs to the new content)
+                            currentNoteViewModel.executeDirectivesLive(userContent)
+
+                            // Keep the directive expanded by refreshing with the new UUID
+                            val newUuid = currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                            if (newUuid != null) {
+                                currentNoteViewModel.refreshDirective(newUuid, newText)
+                            }
+                        } else {
+                            // No text change - just re-execute to refresh dynamic values like [now]
+                            // Get current UUID and refresh to keep expanded
+                            val parts = positionKey.split(":")
+                            val lineIndexFromKey = parts.getOrNull(0)?.toIntOrNull()
+                            val startOffsetFromKey = parts.getOrNull(1)?.toIntOrNull()
+                            val uuid = if (lineIndexFromKey != null && startOffsetFromKey != null) {
+                                currentNoteViewModel.getDirectiveUuid(lineIndexFromKey, startOffsetFromKey)
+                            } else null
+
+                            if (uuid != null) {
+                                currentNoteViewModel.refreshDirective(uuid, sourceText)
+                            } else {
+                                currentNoteViewModel.executeDirectivesLive(userContent)
+                            }
+                        }
+                    },
+                    onViewNoteTap = { directiveKey, noteId, noteContent ->
+                        // Save inline-edited note content
+                        android.util.Log.d("CurrentNoteScreen", "onViewNoteTap: saving noteId=$noteId, content preview='${noteContent.take(40)}...'")
+                        currentNoteViewModel.saveInlineNoteContent(
+                            noteId = noteId,
+                            newContent = noteContent,
+                            onSuccess = {
+                                android.util.Log.d("InlineEditCache", ">>> onViewNoteTap onSuccess CALLBACK ENTERED for noteId=$noteId")
+                                // Invalidate the tab cache for this note so switching tabs shows fresh content
+                                recentTabsViewModel.invalidateCache(noteId)
+                                // Force re-execute ALL directives with fresh data from Firestore
+                                // End session in the callback to ensure results are updated first
+                                android.util.Log.d("InlineEditCache", ">>> onViewNoteTap: calling forceRefreshAllDirectives NOW")
+                                currentNoteViewModel.forceRefreshAllDirectives(userContent) {
+                                    android.util.Log.d("InlineEditCache", ">>> forceRefreshAllDirectives COMPLETE, ending sessions NOW")
+                                    // End BOTH sessions: ViewModel session AND UI session
+                                    currentNoteViewModel.endInlineEditSession()
+                                    inlineEditState.endSession()
+                                }
+                                android.util.Log.d("InlineEditCache", ">>> onViewNoteTap: forceRefreshAllDirectives call RETURNED (async)")
+                            }
+                        )
+                    },
+                    onViewEditDirective = { directiveKey, sourceText ->
+                        // Open directive editor overlay for the view
+                        // Use same logic as onDirectiveTap to toggle expanded state
+                        val parts = directiveKey.split(":")
+                        val lineIndex = parts.getOrNull(0)?.toIntOrNull()
+                        val startOffset = parts.getOrNull(1)?.toIntOrNull()
+                        val uuid = if (lineIndex != null && startOffset != null) {
+                            currentNoteViewModel.getDirectiveUuid(lineIndex, startOffset)
+                        } else null
+                        if (uuid != null) {
+                            currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
+                        }
+                    },
+                ),
+                buttonCallbacks = ButtonCallbacks(
+                    onClick = { directiveKey, buttonVal, sourceText ->
+                        currentNoteViewModel.executeButton(directiveKey, buttonVal, sourceText)
+                    },
+                    executionStates = buttonExecutionStates,
+                    errors = buttonErrors,
+                ),
                 modifier = Modifier.weight(1f)
             )
             }

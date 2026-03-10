@@ -7,8 +7,6 @@ import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToContentSel
 import org.alkaline.taskbrain.ui.currentnote.ime.DirectiveAwareLineInput
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
-import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
-import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
@@ -83,15 +81,8 @@ internal fun ControlledLineView(
     onTextLayoutResult: (TextLayoutResult) -> Unit,
     onPrefixWidthMeasured: (Float) -> Unit = {},
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onViewDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
-    buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap(),
+    directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
+    buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -216,21 +207,8 @@ internal fun ControlledLineView(
                     contentTextLayout = layout
                     onTextLayoutResult(layout)
                 },
-                onDirectiveTap = { key, sourceText ->
-                    onDirectiveTap?.invoke(key, sourceText)
-                },
-                onViewNoteTap = { key, noteId, noteContent ->
-                    onViewNoteTap?.invoke(key, noteId, noteContent)
-                },
-                onViewEditDirective = { key, sourceText ->
-                    onViewEditDirective?.invoke(key, sourceText)
-                },
-                onViewDirectiveRefresh = onViewDirectiveRefresh,
-                onViewDirectiveConfirm = onViewDirectiveConfirm,
-                onViewDirectiveCancel = onViewDirectiveCancel,
-                onButtonClick = onButtonClick,
-                buttonExecutionStates = buttonExecutionStates,
-                buttonErrors = buttonErrors,
+                directiveCallbacks = directiveCallbacks,
+                buttonCallbacks = buttonCallbacks,
                 onSymbolTap = onSymbolTap,
                 modifier = Modifier.fillMaxWidth()
             )

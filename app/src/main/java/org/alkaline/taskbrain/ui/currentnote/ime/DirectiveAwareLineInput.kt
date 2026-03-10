@@ -69,6 +69,8 @@ import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
 import org.alkaline.taskbrain.dsl.ui.DirectiveTextInput
+import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
+import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LocalInlineEditState
 import org.alkaline.taskbrain.ui.currentnote.InlineEditSession
@@ -160,18 +162,22 @@ internal fun DirectiveAwareLineInput(
     directiveResults: Map<String, DirectiveResult>,
     onFocusChanged: (Boolean) -> Unit,
     onTextLayoutResult: (TextLayoutResult) -> Unit,
-    onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onViewDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
-    buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap(),
+    directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
+    buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
+    // Unpack callback bundles for internal use
+    val onDirectiveTap = directiveCallbacks.onDirectiveTap
+    val onViewNoteTap = directiveCallbacks.onViewNoteTap
+    val onViewEditDirective = directiveCallbacks.onViewEditDirective
+    val onViewDirectiveRefresh = directiveCallbacks.onViewDirectiveRefresh
+    val onViewDirectiveConfirm = directiveCallbacks.onViewDirectiveConfirm
+    val onViewDirectiveCancel = directiveCallbacks.onViewDirectiveCancel
+    val onButtonClick = buttonCallbacks.onClick
+    val buttonExecutionStates = buttonCallbacks.executionStates
+    val buttonErrors = buttonCallbacks.errors
+
     val hostView = LocalView.current
     val imeState = remember(lineIndex, controller) {
         LineImeState(lineIndex, controller)
@@ -307,7 +313,7 @@ internal fun DirectiveAwareLineInput(
                 },
                 onEditDirective = {
                     onViewEditDirective?.invoke(viewDirectiveRange.key, viewDirectiveRange.sourceText)
-                        ?: onDirectiveTap(viewDirectiveRange.key, viewDirectiveRange.sourceText)
+                        ?: onDirectiveTap?.invoke(viewDirectiveRange.key, viewDirectiveRange.sourceText)
                 },
                 onDirectiveRefresh = { newText ->
                     onViewDirectiveRefresh?.invoke(lineIndex, viewDirectiveRange.key, viewDirectiveRange.sourceText, newText)
@@ -331,7 +337,7 @@ internal fun DirectiveAwareLineInput(
                     onButtonClick?.invoke(buttonDirectiveRange.key, buttonVal, buttonDirectiveRange.sourceText)
                 },
                 onEditDirective = {
-                    onDirectiveTap(buttonDirectiveRange.key, buttonDirectiveRange.sourceText)
+                    onDirectiveTap?.invoke(buttonDirectiveRange.key, buttonDirectiveRange.sourceText)
                 }
             )
         } else {
@@ -375,7 +381,7 @@ private fun DirectiveOverlayText(
     displayCursor: Int,
     cursorInDirective: Boolean,
     cursorAlpha: Float,
-    onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
+    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
     onTextLayout: (TextLayoutResult) -> Unit,
     onTapAtSourcePosition: (Int) -> Unit,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
@@ -517,7 +523,7 @@ private fun DirectiveOverlayText(
                                 height = with(LocalDensity.current) { (bounds.height + padding.toPx() * 2).toDp() }
                             )
                             .clickable {
-                                onDirectiveTap(range.key, range.sourceText)
+                                onDirectiveTap?.invoke(range.key, range.sourceText)
                             }
                     )
                 } else if (range.displayText.isEmpty()) {
@@ -539,7 +545,7 @@ private fun DirectiveOverlayText(
                                 height = with(LocalDensity.current) { (cursorRect.bottom - cursorRect.top).toDp() }
                             )
                             .clickable {
-                                onDirectiveTap(range.key, range.sourceText)
+                                onDirectiveTap?.invoke(range.key, range.sourceText)
                             }
                     )
                 }
@@ -1531,7 +1537,7 @@ private fun InlineDirectiveOverlayText(
                                     height = with(LocalDensity.current) { (bounds.height + padding.toPx() * 2).toDp() }
                                 )
                                 .clickable {
-                                    onDirectiveTap(range.key, range.sourceText)
+                                    onDirectiveTap?.invoke(range.key, range.sourceText)
                                     onContentTap?.invoke()
                                 }
                         )
@@ -1553,7 +1559,7 @@ private fun InlineDirectiveOverlayText(
                                     height = with(LocalDensity.current) { (cursorRect.bottom - cursorRect.top).toDp() }
                                 )
                                 .clickable {
-                                    onDirectiveTap(range.key, range.sourceText)
+                                    onDirectiveTap?.invoke(range.key, range.sourceText)
                                     onContentTap?.invoke()
                                 }
                         )

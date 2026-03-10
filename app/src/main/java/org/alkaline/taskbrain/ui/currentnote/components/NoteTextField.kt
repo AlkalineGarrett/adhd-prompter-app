@@ -37,8 +37,8 @@ import org.alkaline.taskbrain.ui.currentnote.rendering.HangingIndentEditor
 import org.alkaline.taskbrain.ui.currentnote.HangingIndentEditorState
 import org.alkaline.taskbrain.ui.currentnote.rememberHangingIndentEditorState
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
-import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
-import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
+import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
+import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
 
 /**
  * Main text editing component for notes.
@@ -61,15 +61,8 @@ fun NoteTextField(
     onSymbolTap: ((SymbolTapInfo) -> Unit)? = null,
     textColor: Color = Color.Black,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveHash: String, sourceText: String) -> Unit)? = null,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveHash: String, sourceText: String, newText: String) -> Unit)? = null,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveHash: String, sourceText: String) -> Unit)? = null,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
-    buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap(),
+    directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
+    buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -113,15 +106,8 @@ fun NoteTextField(
                     scrollState = scrollState,
                     showGutter = true,
                     directiveResults = directiveResults,
-                    onDirectiveTap = onDirectiveTap,
-                    onDirectiveEditConfirm = onDirectiveEditConfirm,
-                    onDirectiveEditCancel = onDirectiveEditCancel,
-                    onDirectiveRefresh = onDirectiveRefresh,
-                    onViewNoteTap = onViewNoteTap,
-                    onViewEditDirective = onViewEditDirective,
-                    onButtonClick = onButtonClick,
-                    buttonExecutionStates = buttonExecutionStates,
-                    buttonErrors = buttonErrors,
+                    directiveCallbacks = directiveCallbacks,
+                    buttonCallbacks = buttonCallbacks,
                     onSymbolTap = onSymbolTap?.let { callback ->
                         { lineIndex: Int, charOffsetInLine: Int ->
                             val content = editorState.lines.getOrNull(lineIndex)?.content ?: ""

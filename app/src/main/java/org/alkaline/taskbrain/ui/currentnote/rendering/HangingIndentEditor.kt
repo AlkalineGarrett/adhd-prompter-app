@@ -55,8 +55,6 @@ import org.alkaline.taskbrain.ui.currentnote.LineState
 import org.alkaline.taskbrain.ui.currentnote.rememberEditorState
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
-import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
-import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
 
 // =============================================================================
@@ -123,15 +121,8 @@ fun HangingIndentEditor(
     scrollState: ScrollState? = null,
     showGutter: Boolean = false,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
-    buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap(),
+    directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
+    buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -201,15 +192,8 @@ fun HangingIndentEditor(
         onEditorFocusChanged = onEditorFocusChanged,
         onSelectionCompleted = onSelectionCompleted,
         directiveResults = directiveResults,
-        onDirectiveTap = onDirectiveTap,
-        onDirectiveEditConfirm = onDirectiveEditConfirm,
-        onDirectiveEditCancel = onDirectiveEditCancel,
-        onDirectiveRefresh = onDirectiveRefresh,
-        onViewNoteTap = onViewNoteTap,
-        onViewEditDirective = onViewEditDirective,
-        onButtonClick = onButtonClick,
-        buttonExecutionStates = buttonExecutionStates,
-        buttonErrors = buttonErrors,
+        directiveCallbacks = directiveCallbacks,
+        buttonCallbacks = buttonCallbacks,
         onSymbolTap = onSymbolTap,
         modifier = modifier
     )
@@ -238,15 +222,8 @@ private fun EditorLayout(
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     onSelectionCompleted: () -> Unit,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
-    buttonExecutionStates: Map<String, ButtonExecutionState>,
-    buttonErrors: Map<String, String>,
+    directiveCallbacks: DirectiveCallbacks,
+    buttonCallbacks: ButtonCallbacks,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)?,
     modifier: Modifier
 ) {
@@ -266,15 +243,8 @@ private fun EditorLayout(
             onEditorFocusChanged = onEditorFocusChanged,
             onSelectionCompleted = onSelectionCompleted,
             directiveResults = directiveResults,
-            onDirectiveTap = onDirectiveTap,
-            onDirectiveEditConfirm = onDirectiveEditConfirm,
-            onDirectiveEditCancel = onDirectiveEditCancel,
-            onDirectiveRefresh = onDirectiveRefresh,
-            onViewNoteTap = onViewNoteTap,
-            onViewEditDirective = onViewEditDirective,
-            onButtonClick = onButtonClick,
-            buttonExecutionStates = buttonExecutionStates,
-            buttonErrors = buttonErrors,
+            directiveCallbacks = directiveCallbacks,
+            buttonCallbacks = buttonCallbacks,
             onSymbolTap = onSymbolTap
         )
 
@@ -308,15 +278,8 @@ private fun EditorRow(
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     onSelectionCompleted: () -> Unit,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
-    buttonExecutionStates: Map<String, ButtonExecutionState>,
-    buttonErrors: Map<String, String>,
+    directiveCallbacks: DirectiveCallbacks,
+    buttonCallbacks: ButtonCallbacks,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
 ) {
     // Track measured heights of directive edit rows (keyed by directive position key)
@@ -355,16 +318,9 @@ private fun EditorRow(
             onSelectionCompleted = { onSelectionCompleted() },
             onEditorFocusChanged = onEditorFocusChanged,
             directiveResults = directiveResults,
-            onDirectiveTap = onDirectiveTap,
-            onDirectiveEditConfirm = onDirectiveEditConfirm,
-            onDirectiveEditCancel = onDirectiveEditCancel,
-            onDirectiveRefresh = onDirectiveRefresh,
+            directiveCallbacks = directiveCallbacks,
+            buttonCallbacks = buttonCallbacks,
             onDirectiveEditHeightMeasured = { key, height -> directiveEditHeights[key] = height },
-            onViewNoteTap = onViewNoteTap,
-            onViewEditDirective = onViewEditDirective,
-            onButtonClick = onButtonClick,
-            buttonExecutionStates = buttonExecutionStates,
-            buttonErrors = buttonErrors,
             onSymbolTap = onSymbolTap,
             modifier = Modifier.weight(1f)
         )
@@ -465,16 +421,9 @@ private fun EditorContent(
     onSelectionCompleted: () -> Unit,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     directiveResults: Map<String, DirectiveResult>,
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveEditConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
-    onDirectiveEditCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)?,
-    onDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)?,
+    directiveCallbacks: DirectiveCallbacks,
+    buttonCallbacks: ButtonCallbacks,
     onDirectiveEditHeightMeasured: ((directiveKey: String, heightPx: Int) -> Unit)?,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)?,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)?,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)?,
-    buttonExecutionStates: Map<String, ButtonExecutionState>,
-    buttonErrors: Map<String, String>,
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -511,15 +460,8 @@ private fun EditorContent(
                     lineLayouts = lineLayouts,
                     onEditorFocusChanged = onEditorFocusChanged,
                     directiveResults = directiveResults,
-                    onDirectiveTap = { key, sourceText -> onDirectiveTap?.invoke(key, sourceText) },
-                    onViewNoteTap = onViewNoteTap,
-                    onViewEditDirective = onViewEditDirective,
-                    onViewDirectiveRefresh = onDirectiveRefresh,
-                    onViewDirectiveConfirm = onDirectiveEditConfirm,
-                    onViewDirectiveCancel = onDirectiveEditCancel,
-                    onButtonClick = onButtonClick,
-                    buttonExecutionStates = buttonExecutionStates,
-                    buttonErrors = buttonErrors,
+                    directiveCallbacks = directiveCallbacks,
+                    buttonCallbacks = buttonCallbacks,
                     onSymbolTap = onSymbolTap
                 )
 
@@ -541,13 +483,13 @@ private fun EditorContent(
                                 errorMessage = result.error,
                                 warningMessage = result.warning?.displayMessage,
                                 onRefresh = { newText ->
-                                    onDirectiveRefresh?.invoke(index, key, found.sourceText, newText)
+                                    directiveCallbacks.onViewDirectiveRefresh?.invoke(index, key, found.sourceText, newText)
                                 },
                                 onConfirm = { newText ->
-                                    onDirectiveEditConfirm?.invoke(index, key, found.sourceText, newText)
+                                    directiveCallbacks.onViewDirectiveConfirm?.invoke(index, key, found.sourceText, newText)
                                 },
                                 onCancel = {
-                                    onDirectiveEditCancel?.invoke(index, key, found.sourceText)
+                                    directiveCallbacks.onViewDirectiveCancel?.invoke(index, key, found.sourceText)
                                 },
                                 onHeightMeasured = { height ->
                                     onDirectiveEditHeightMeasured?.invoke(key, height)
@@ -575,15 +517,8 @@ private fun ControlledLineViewWrapper(
     lineLayouts: MutableList<LineLayoutInfo>,
     onEditorFocusChanged: ((Boolean) -> Unit)?,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
-    onDirectiveTap: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onViewNoteTap: ((directiveKey: String, noteId: String, noteContent: String) -> Unit)? = null,
-    onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
-    onViewDirectiveRefresh: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveConfirm: ((lineIndex: Int, directiveKey: String, sourceText: String, newText: String) -> Unit)? = null,
-    onViewDirectiveCancel: ((lineIndex: Int, directiveKey: String, sourceText: String) -> Unit)? = null,
-    onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
-    buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
-    buttonErrors: Map<String, String> = emptyMap(),
+    directiveCallbacks: DirectiveCallbacks = DirectiveCallbacks(),
+    buttonCallbacks: ButtonCallbacks = ButtonCallbacks(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null
 ) {
     val lineSelection = state.getLineSelection(index)
@@ -618,15 +553,8 @@ private fun ControlledLineViewWrapper(
             }
         },
         directiveResults = directiveResults,
-        onDirectiveTap = onDirectiveTap,
-        onViewNoteTap = onViewNoteTap,
-        onViewEditDirective = onViewEditDirective,
-        onViewDirectiveRefresh = onViewDirectiveRefresh,
-        onViewDirectiveConfirm = onViewDirectiveConfirm,
-        onViewDirectiveCancel = onViewDirectiveCancel,
-        onButtonClick = onButtonClick,
-        buttonExecutionStates = buttonExecutionStates,
-        buttonErrors = buttonErrors,
+        directiveCallbacks = directiveCallbacks,
+        buttonCallbacks = buttonCallbacks,
         onSymbolTap = onSymbolTap,
         modifier = Modifier
             .fillMaxWidth()
