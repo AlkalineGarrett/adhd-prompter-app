@@ -11,6 +11,8 @@ import org.alkaline.taskbrain.ui.currentnote.util.SymbolTapInfo
 import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 import org.alkaline.taskbrain.ui.currentnote.util.ClipboardHtmlConverter
 import org.alkaline.taskbrain.ui.currentnote.undo.UndoStatePersistence
+import androidx.compose.ui.res.stringResource
+import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.ui.currentnote.util.TextLineUtils
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -436,7 +438,7 @@ fun CurrentNoteScreen(
     // Show error dialogs
     if (saveStatus is SaveStatus.Error) {
         ErrorDialog(
-            title = "Save Error",
+            title = stringResource(R.string.error_save),
             throwable = (saveStatus as SaveStatus.Error).throwable,
             onDismiss = { currentNoteViewModel.clearSaveError() }
         )
@@ -444,7 +446,7 @@ fun CurrentNoteScreen(
 
     if (loadStatus is LoadStatus.Error) {
         ErrorDialog(
-            title = "Load Error",
+            title = stringResource(R.string.error_load),
             throwable = (loadStatus as LoadStatus.Error).throwable,
             onDismiss = { currentNoteViewModel.clearLoadError() }
         )
@@ -452,7 +454,7 @@ fun CurrentNoteScreen(
 
     tabsError?.let { error ->
         ErrorDialog(
-            title = "Tabs Error",
+            title = stringResource(R.string.error_tabs),
             throwable = error.cause,
             onDismiss = { recentTabsViewModel.clearError() }
         )
@@ -460,7 +462,7 @@ fun CurrentNoteScreen(
 
     alarmError?.let { throwable ->
         ErrorDialog(
-            title = "Alarm Error",
+            title = stringResource(R.string.error_alarm),
             throwable = throwable,
             onDismiss = { currentNoteViewModel.clearAlarmError() }
         )
@@ -470,18 +472,15 @@ fun CurrentNoteScreen(
     if (alarmPermissionWarning) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { currentNoteViewModel.clearAlarmPermissionWarning() },
-            title = { androidx.compose.material3.Text("Exact Alarms Disabled") },
+            title = { androidx.compose.material3.Text(stringResource(R.string.dialog_exact_alarms_title)) },
             text = {
-                androidx.compose.material3.Text(
-                    "Exact alarm permission is not granted. Your alarm may not trigger at the exact time.\n\n" +
-                    "To enable: Settings → Apps → TaskBrain → Alarms & reminders → Allow"
-                )
+                androidx.compose.material3.Text(stringResource(R.string.dialog_exact_alarms_message))
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = { currentNoteViewModel.clearAlarmPermissionWarning() }
                 ) {
-                    androidx.compose.material3.Text("OK")
+                    androidx.compose.material3.Text(stringResource(R.string.action_ok))
                 }
             }
         )
@@ -491,18 +490,15 @@ fun CurrentNoteScreen(
     if (notificationPermissionWarning) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { currentNoteViewModel.clearNotificationPermissionWarning() },
-            title = { androidx.compose.material3.Text("Notifications Disabled") },
+            title = { androidx.compose.material3.Text(stringResource(R.string.dialog_notifications_title)) },
             text = {
-                androidx.compose.material3.Text(
-                    "Notification permission is not granted. Your alarms will not show notifications.\n\n" +
-                    "To enable: Settings → Apps → TaskBrain → Notifications → Allow"
-                )
+                androidx.compose.material3.Text(stringResource(R.string.dialog_notifications_message))
             },
             confirmButton = {
                 androidx.compose.material3.TextButton(
                     onClick = { currentNoteViewModel.clearNotificationPermissionWarning() }
                 ) {
-                    androidx.compose.material3.Text("OK")
+                    androidx.compose.material3.Text(stringResource(R.string.action_ok))
                 }
             }
         )
@@ -512,11 +508,11 @@ fun CurrentNoteScreen(
     schedulingWarning?.let { warning ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { currentNoteViewModel.clearSchedulingWarning() },
-            title = { androidx.compose.material3.Text("Alarm Scheduling Issue") },
+            title = { androidx.compose.material3.Text(stringResource(R.string.dialog_scheduling_title)) },
             text = {
                 androidx.compose.foundation.text.selection.SelectionContainer {
                     androidx.compose.material3.Text(
-                        "$warning\n\nThe alarm was saved but may not trigger at the expected time."
+                        "$warning\n\n${stringResource(R.string.dialog_scheduling_message)}"
                     )
                 }
             },
@@ -524,7 +520,7 @@ fun CurrentNoteScreen(
                 androidx.compose.material3.TextButton(
                     onClick = { currentNoteViewModel.clearSchedulingWarning() }
                 ) {
-                    androidx.compose.material3.Text("OK")
+                    androidx.compose.material3.Text(stringResource(R.string.action_ok))
                 }
             }
         )
@@ -536,20 +532,18 @@ fun CurrentNoteScreen(
             onDismissRequest = { currentNoteViewModel.clearRedoRollbackWarning() },
             title = {
                 androidx.compose.material3.Text(
-                    if (warning.rollbackSucceeded) "Redo Failed" else "Redo Error"
+                    if (warning.rollbackSucceeded) stringResource(R.string.redo_failed) else stringResource(R.string.redo_error)
                 )
             },
             text = {
                 androidx.compose.foundation.text.selection.SelectionContainer {
                     androidx.compose.material3.Text(
                         if (warning.rollbackSucceeded) {
-                            "Could not recreate the alarm: ${warning.errorMessage}\n\n" +
-                            "The document has been automatically rolled back to its previous state."
+                            stringResource(R.string.redo_alarm_error_prefix) + warning.errorMessage + "\n\n" +
+                            stringResource(R.string.redo_rollback_message)
                         } else {
-                            "Could not recreate the alarm: ${warning.errorMessage}\n\n" +
-                            "Warning: The document may be in an inconsistent state. " +
-                            "The alarm symbol may be visible but no alarm exists. " +
-                            "Consider saving and reloading the note."
+                            stringResource(R.string.redo_alarm_error_prefix) + warning.errorMessage + "\n\n" +
+                            stringResource(R.string.redo_inconsistent_warning)
                         }
                     )
                 }
@@ -558,7 +552,7 @@ fun CurrentNoteScreen(
                 androidx.compose.material3.TextButton(
                     onClick = { currentNoteViewModel.clearRedoRollbackWarning() }
                 ) {
-                    androidx.compose.material3.Text("OK")
+                    androidx.compose.material3.Text(stringResource(R.string.action_ok))
                 }
             }
         )

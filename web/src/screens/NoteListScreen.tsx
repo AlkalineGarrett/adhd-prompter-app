@@ -1,10 +1,12 @@
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '@/hooks/useAuth'
 import { useNotes } from '@/hooks/useNotes'
+import {
+  ADD_NOTE, DELETE_NOTE, RESTORE_NOTE, SHOW_DELETED,
+  NO_NOTES_FOUND, NO_DELETED_NOTES, EMPTY_NOTE, REFRESH, LOADING,
+} from '@/strings'
 import styles from './NoteListScreen.module.css'
 
 export function NoteListScreen() {
-  const { user, signOut } = useAuth()
   const {
     notes,
     loading,
@@ -25,19 +27,9 @@ export function NoteListScreen() {
 
   return (
     <div className={styles.container}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>TaskBrain</h1>
-        <div className={styles.userInfo}>
-          <span>{user?.displayName}</span>
-          <button className={styles.signOutButton} onClick={signOut}>
-            Sign out
-          </button>
-        </div>
-      </header>
-
       <div className={styles.toolbar}>
         <button className={styles.createButton} onClick={handleCreateNote}>
-          + New Note
+          + {ADD_NOTE}
         </button>
         <div className={styles.toolbarRight}>
           <label className={styles.toggleLabel}>
@@ -46,20 +38,20 @@ export function NoteListScreen() {
               checked={showDeleted}
               onChange={(e) => setShowDeleted(e.target.checked)}
             />
-            Show deleted
+            {SHOW_DELETED}
           </label>
           <button className={styles.refreshButton} onClick={refresh}>
-            Refresh
+            {REFRESH}
           </button>
         </div>
       </div>
 
       <main className={styles.main}>
-        {loading && <p className={styles.status}>Loading...</p>}
+        {loading && <p className={styles.status}>{LOADING}</p>}
         {error && <p className={styles.error}>{error}</p>}
         {!loading && notes.length === 0 && (
           <p className={styles.status}>
-            {showDeleted ? 'No deleted notes' : 'No notes yet. Create one!'}
+            {showDeleted ? NO_DELETED_NOTES : NO_NOTES_FOUND}
           </p>
         )}
 
@@ -71,7 +63,7 @@ export function NoteListScreen() {
                 onClick={() => navigate(`/note/${note.id}`)}
               >
                 <span className={styles.noteContent}>
-                  {note.content || '(empty)'}
+                  {note.content || EMPTY_NOTE}
                 </span>
                 <span className={styles.noteDate}>
                   {formatDate(note.lastAccessedAt ?? note.updatedAt)}
@@ -81,17 +73,17 @@ export function NoteListScreen() {
                 <button
                   className={styles.actionButton}
                   onClick={() => undeleteNote(note.id)}
-                  title="Restore"
+                  title={RESTORE_NOTE}
                 >
-                  Restore
+                  {RESTORE_NOTE}
                 </button>
               ) : (
                 <button
                   className={styles.actionButton}
                   onClick={() => deleteNote(note.id)}
-                  title="Delete"
+                  title={DELETE_NOTE}
                 >
-                  Delete
+                  {DELETE_NOTE}
                 </button>
               )}
             </li>

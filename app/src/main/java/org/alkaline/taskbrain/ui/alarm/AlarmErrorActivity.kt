@@ -13,7 +13,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import org.alkaline.taskbrain.R
 
 /**
  * Transparent activity that shows an error dialog.
@@ -24,8 +26,8 @@ class AlarmErrorActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: "Error"
-        val message = intent.getStringExtra(EXTRA_MESSAGE) ?: "An unknown error occurred"
+        val title = intent.getStringExtra(EXTRA_TITLE) ?: getString(R.string.error_title)
+        val message = intent.getStringExtra(EXTRA_MESSAGE) ?: getString(R.string.error_unknown)
 
         setContent {
             MaterialTheme {
@@ -81,7 +83,7 @@ private fun ErrorDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("OK")
+                Text(stringResource(R.string.action_ok))
             }
         }
     )

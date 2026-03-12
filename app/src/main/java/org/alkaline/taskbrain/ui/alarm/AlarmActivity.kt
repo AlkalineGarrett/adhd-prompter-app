@@ -36,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -180,9 +181,9 @@ fun AlarmScreen(
             // Alarm type label
             Text(
                 text = when (alarmType) {
-                    AlarmType.ALARM -> "Alarm"
-                    AlarmType.URGENT -> "Urgent"
-                    AlarmType.NOTIFY -> "Reminder"
+                    AlarmType.ALARM -> stringResource(R.string.alarm_type_alarm)
+                    AlarmType.URGENT -> stringResource(R.string.alarm_type_urgent)
+                    AlarmType.NOTIFY -> stringResource(R.string.alarm_type_reminder)
                 },
                 style = MaterialTheme.typography.titleLarge,
                 color = contentColor.copy(alpha = 0.7f)
@@ -192,7 +193,7 @@ fun AlarmScreen(
 
             // Line content
             Text(
-                text = alarm?.displayName ?: "Loading...",
+                text = alarm?.displayName ?: stringResource(R.string.action_loading),
                 style = MaterialTheme.typography.headlineMedium,
                 color = contentColor,
                 textAlign = TextAlign.Center
@@ -203,15 +204,15 @@ fun AlarmScreen(
             // Snooze buttons (only for ALARM type)
             if (alarmType == AlarmType.ALARM) {
                 Text(
-                    text = "Snooze for:",
+                    text = stringResource(R.string.alarm_snooze_for),
                     color = contentColor.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    SnoozeButton("2 min", contentColor) { onSnooze(SnoozeDuration.TWO_MINUTES) }
-                    SnoozeButton("10 min", contentColor) { onSnooze(SnoozeDuration.TEN_MINUTES) }
-                    SnoozeButton("1 hour", contentColor) { onSnooze(SnoozeDuration.ONE_HOUR) }
+                    SnoozeButton(stringResource(R.string.alarm_snooze_2_min), contentColor) { onSnooze(SnoozeDuration.TWO_MINUTES) }
+                    SnoozeButton(stringResource(R.string.alarm_snooze_10_min), contentColor) { onSnooze(SnoozeDuration.TEN_MINUTES) }
+                    SnoozeButton(stringResource(R.string.alarm_snooze_1_hour), contentColor) { onSnooze(SnoozeDuration.ONE_HOUR) }
                 }
                 Spacer(Modifier.height(24.dp))
             }
@@ -224,7 +225,7 @@ fun AlarmScreen(
                         contentColor = contentColor
                     )
                 ) {
-                    Text("Dismiss")
+                    Text(stringResource(R.string.action_dismiss))
                 }
                 Button(
                     onClick = onMarkDone,
@@ -233,7 +234,7 @@ fun AlarmScreen(
                         contentColor = backgroundColor
                     )
                 ) {
-                    Text("Mark Done")
+                    Text(stringResource(R.string.alarm_mark_done))
                 }
             }
         }

@@ -1,3 +1,72 @@
+/**
+ * Theme colors as CSS custom properties.
+ * Keep in sync with Android: app/src/main/res/values/colors.xml
+ * and app/src/main/res/values/themes.xml
+ */
+:root {
+  /* Brand (Android: brand_color, brand_text_color) */
+  --color-brand: #AED581;
+  --color-brand-border: #c5e1a5;
+  --color-brand-text: #000000;
+
+  /* Primary / Action (Android: action_button_background = purple_500) */
+  --color-primary: #6200EE;
+  --color-primary-hover: #3700B3;
+  --color-primary-light: #EDE7F6;
+  --color-primary-light-hover: #D1C4E9;
+  --color-primary-border: #B39DDB;
+  --color-primary-text: #4A148C;
+  --color-on-primary: #ffffff;
+
+  /* Status: success */
+  --color-success: #4CAF50;
+  --color-success-hover: #388E3C;
+  --color-success-bg: #E8F5E9;
+  --color-success-text: #2E7D32;
+
+  /* Status: error */
+  --color-error: #F44336;
+  --color-error-hover: #D32F2F;
+  --color-error-bg: #FFEBEE;
+  --color-error-text: #C62828;
+
+  /* Status: warning */
+  --color-warning: #FF9800;
+  --color-warning-bg: #FFF3E0;
+  --color-warning-bg-hover: #ffe0b2;
+  --color-warning-text: #E65100;
+
+  /* Status: pending / disabled */
+  --color-pending: #9E9E9E;
+  --color-pending-bg: #F5F5F5;
+  --color-pending-text: #757575;
+
+  /* Surfaces */
+  --color-bg: #fafafa;
+  --color-text: #1a1a1a;
+  --color-text-secondary: #666666;
+  --color-text-tertiary: #999999;
+  --color-text-disabled: #9E9E9E;
+  --color-border: #e0e0e0;
+  --color-border-light: #e8e8e8;
+  --color-border-input: #ddd;
+  --color-border-medium: #BDBDBD;
+  --color-surface-hover: #f0f0f0;
+  --color-surface-alt: #f5f5f5;
+  --color-surface-focus: #f8f9ff;
+
+  /* Directive view */
+  --color-view-border: #B0BEC5;
+  --color-view-divider: #E0E0E0;
+
+  /* Disabled surface */
+  --color-disabled-bg: #E0E0E0;
+  --color-disabled-text: #9E9E9E;
+
+  /* Deleted note */
+  --color-deleted-bg: #f5f5f5;
+}
+
 *,
 *::before,
 *::after {
@@ -9,8 +78,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #1a1a1a;
-  background: #fafafa;
+  color: var(--color-text);
+  background: var(--color-bg);
 }
 
 .loading {
@@ -18,5 +87,5 @@ body {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  color: #666;
+  color: var(--color-text-secondary);
 }

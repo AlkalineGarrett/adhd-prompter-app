@@ -127,7 +127,7 @@ private fun AgentSectionHeader(
         if (isExpanded) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = "Collapse",
+                contentDescription = stringResource(R.string.action_collapse),
                 tint = colorResource(R.color.brand_text_color),
                 modifier = Modifier
                     .size(24.dp)
@@ -178,7 +178,7 @@ private fun AgentCommandTextField(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
+                    contentDescription = stringResource(R.string.action_send),
                     tint = if (isProcessing || command.isBlank()) Color.Gray else colorResource(R.color.brand_color)
                 )
             }

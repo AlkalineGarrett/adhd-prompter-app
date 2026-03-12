@@ -1,20 +1,20 @@
 .viewContainer {
   display: block;
   width: 100%;
-  border-left: 3px solid #B0BEC5;
+  border-left: 3px solid var(--color-view-border);
   padding-left: 12px;
   margin: 4px 0;
 }
 
 .emptyView {
-  color: #9E9E9E;
+  color: var(--color-text-disabled);
   font-style: italic;
   padding: 4px 0;
 }
 
 .separator {
   border: none;
-  border-top: 1px solid #E0E0E0;
+  border-top: 1px solid var(--color-view-divider);
   margin: 4px 0;
 }
 
@@ -26,7 +26,7 @@
 }
 
 .noteSection:hover {
-  background-color: #F5F5F5;
+  background-color: var(--color-surface-alt);
 }
 
 .noteLine {

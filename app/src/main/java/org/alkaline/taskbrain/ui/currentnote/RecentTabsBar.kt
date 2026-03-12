@@ -31,9 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.RecentTab
 
 /**
@@ -114,7 +116,7 @@ private fun TabItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = tab.displayText.ifEmpty { "New Note" },
+                text = tab.displayText.ifEmpty { stringResource(R.string.new_note) },
                 color = textColor,
                 fontSize = TabTextSize,
                 maxLines = 1,
@@ -124,7 +126,7 @@ private fun TabItem(
             Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
-                    contentDescription = "Tab menu",
+                    contentDescription = stringResource(R.string.tab_menu),
                     tint = textColor.copy(alpha = 0.7f),
                     modifier = Modifier
                         .size(MenuIconSize)
@@ -136,7 +138,7 @@ private fun TabItem(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Close tab") },
+                            text = { Text(stringResource(R.string.close_tab)) },
                             onClick = {
                                 showMenu = false
                                 onClose()

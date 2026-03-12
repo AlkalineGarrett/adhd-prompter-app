@@ -16,8 +16,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import org.alkaline.taskbrain.R
 import java.io.PrintWriter
 import java.io.StringWriter
 
@@ -26,14 +28,15 @@ import java.io.StringWriter
  */
 @Composable
 fun ErrorDialog(
-    title: String = "Error",
+    title: String? = null,
     message: String,
     onDismiss: () -> Unit
 ) {
+    val resolvedTitle = title ?: stringResource(R.string.error_title)
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = title)
+            Text(text = resolvedTitle)
         },
         text = {
             Text(
@@ -44,7 +47,7 @@ fun ErrorDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss")
+                Text(stringResource(R.string.action_dismiss))
             }
         }
     )
@@ -55,24 +58,26 @@ fun ErrorDialog(
  */
 @Composable
 fun ErrorDialog(
-    title: String = "Error",
+    title: String? = null,
     throwable: Throwable,
     onDismiss: () -> Unit
 ) {
+    val resolvedTitle = title ?: stringResource(R.string.error_title)
     val stackTrace = StringWriter().also { sw ->
         throwable.printStackTrace(PrintWriter(sw))
     }.toString()
+    val unknownError = stringResource(R.string.error_unknown)
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = title)
+            Text(text = resolvedTitle)
         },
         text = {
             SelectionContainer {
                 Column {
                     Text(
-                        text = throwable.message ?: "Unknown error",
+                        text = throwable.message ?: unknownError,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -99,7 +104,7 @@ fun ErrorDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss")
+                Text(stringResource(R.string.action_dismiss))
             }
         }
     )

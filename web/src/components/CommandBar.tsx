@@ -1,4 +1,10 @@
 import type { EditorController } from '@/editor/EditorController'
+import {
+  SAVE, SAVING, SAVED,
+  COMMAND_TOGGLE_BULLET, COMMAND_TOGGLE_CHECKBOX,
+  COMMAND_INDENT, COMMAND_UNINDENT,
+  COMMAND_MOVE_UP, COMMAND_MOVE_DOWN,
+} from '@/strings'
 import styles from './CommandBar.module.css'
 
 interface CommandBarProps {
@@ -17,14 +23,14 @@ export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }
         <button
           className={styles.button}
           onClick={() => controller.toggleBullet()}
-          title="Toggle bullet (•)"
+          title={COMMAND_TOGGLE_BULLET}
         >
           •
         </button>
         <button
           className={styles.button}
           onClick={() => controller.toggleCheckbox()}
-          title="Toggle checkbox (☐/☑)"
+          title={COMMAND_TOGGLE_CHECKBOX}
         >
           ☐
         </button>
@@ -34,14 +40,14 @@ export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }
         <button
           className={styles.button}
           onClick={() => controller.indent()}
-          title="Indent (Tab)"
+          title={COMMAND_INDENT}
         >
           →
         </button>
         <button
           className={styles.button}
           onClick={() => controller.unindent()}
-          title="Unindent (Shift+Tab)"
+          title={COMMAND_UNINDENT}
         >
           ←
         </button>
@@ -51,7 +57,7 @@ export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }
         <button
           className={`${styles.button} ${controller.getMoveUpState().isWarning ? styles.warning : ''}`}
           onClick={() => controller.moveUp()}
-          title="Move up"
+          title={COMMAND_MOVE_UP}
           disabled={!controller.getMoveUpState().isEnabled}
         >
           ↑
@@ -59,7 +65,7 @@ export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }
         <button
           className={`${styles.button} ${controller.getMoveDownState().isWarning ? styles.warning : ''}`}
           onClick={() => controller.moveDown()}
-          title="Move down"
+          title={COMMAND_MOVE_DOWN}
           disabled={!controller.getMoveDownState().isEnabled}
         >
           ↓
@@ -91,9 +97,9 @@ export function CommandBar({ controller, onSave, onUndo, onRedo, dirty, saving }
         className={`${styles.button} ${styles.saveButton}`}
         onClick={onSave}
         disabled={!dirty || saving}
-        title="Save (Ctrl+S)"
+        title={`${SAVE} (Ctrl+S)`}
       >
-        {saving ? 'Saving...' : dirty ? 'Save' : 'Saved'}
+        {saving ? SAVING : dirty ? SAVE : SAVED}
       </button>
     </div>
   )

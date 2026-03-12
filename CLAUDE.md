@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TaskBrain is a native Android app (Kotlin) for ADHD task management with Firebase backend and Gemini AI integration.
+TaskBrain is a cross-platform ADHD task management app with a Firebase backend and Gemini AI integration. It has two clients:
+- **Android** (Kotlin, Jetpack Compose) — the primary app in `app/`
+- **Web** (TypeScript, React) — in `web/`
 
 ## Build Commands
 
@@ -115,6 +117,30 @@ This principle applies especially to:
 - Failed async operations (Firebase, alarms, etc.)
 - Automatic rollbacks or cleanup after failures
 - Permission issues that affect functionality
+
+### Cross-Platform Consistency (Android ↔ Web)
+
+The Android and web apps share the same Firebase backend and should present a consistent UI. Two pairs of files are the source of truth for keeping them in sync:
+
+**Colors:**
+- Android: `app/src/main/res/values/colors.xml` (defines brand, action, and theme colors)
+- Web: `web/src/index.css` `:root` block (CSS custom properties with comments mapping to Android names)
+- All web CSS modules use `var(--color-*)` — never hardcode hex colors in `.module.css` files
+
+**Strings:**
+- Android: `app/src/main/res/values/strings.xml` (all user-facing text)
+- Web: `web/src/strings.ts` (all user-facing text, with comments mapping to Android resource names)
+- Android composables use `stringResource(R.string.*)` — never hardcode user-facing text in Kotlin UI code
+- Web components import from `@/strings` — never hardcode user-facing text in TSX files
+
+**When adding new UI text or colors:**
+1. Add the string/color to the Android resource file first (it's the canonical source)
+2. Add the corresponding entry to the web file (`strings.ts` or `index.css`)
+3. Reference via `stringResource()` / `var(--color-*)` / imported constant — never inline
+
+**When modifying existing text or colors:**
+1. Update both the Android resource file and the web counterpart
+2. Search for any remaining hardcoded instances on both platforms
 
 ### Refactoring
 

@@ -1,4 +1,4 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useEffect, useCallback, useState, useRef, useMemo } from 'react'
 import type { Note } from '@/data/Note'
 import { NoteRepository } from '@/data/NoteRepository'
@@ -11,6 +11,7 @@ import { EditorLine } from '@/components/EditorLine'
 import { InlineEditor } from '@/components/InlineEditor'
 import { RecentTabsBar, addOrUpdateTab, updateTabDisplayText } from '@/components/RecentTabsBar'
 import { extractDisplayText } from '@/data/TabState'
+import { LOADING_NOTE } from '@/strings'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
@@ -20,7 +21,6 @@ const noteRepo = new NoteRepository(db, auth)
 
 export function NoteEditorScreen() {
   const { noteId } = useParams<{ noteId: string }>()
-  const navigate = useNavigate()
   const { controller, editorState, loading, showLoading, saving, error, dirty, save } = useEditor(noteId)
 
   // Load all notes for DSL context
@@ -142,9 +142,10 @@ export function NoteEditorScreen() {
     void loadAndExecute(content)
   }, [loading, noteId, allNotes.length])
 
-  // Add/move tab to front when note first opens
+  // Add/move tab to front when note first opens, and remember for nav
   useEffect(() => {
     if (!noteId || loading) return
+    localStorage.setItem('lastNoteId', noteId)
     const displayText = extractDisplayText(editorState.lines[0]?.text ?? '')
     void addOrUpdateTab(noteId, displayText)
   }, [noteId, loading])
@@ -234,32 +235,20 @@ export function NoteEditorScreen() {
     }
   }, [noteId])
 
-  const handleBack = useCallback(() => {
-    // Auto-save triggers on unmount, so just navigate
-    navigate('/')
-  }, [navigate])
-
   if (showLoading) {
-    return <div className="loading">Loading note...</div>
+    return <div className="loading">{LOADING_NOTE}</div>
   }
 
   if (error) {
     return (
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '1rem' }}>
-        <button onClick={handleBack}>Back</button>
-        <p style={{ color: '#d32f2f' }}>{error}</p>
+        <p style={{ color: 'var(--color-error-hover)' }}>{error}</p>
       </div>
     )
   }
 
   return (
     <div className={styles.container}>
-      <header className={styles.header}>
-        <button className={styles.backButton} onClick={handleBack}>
-          ← Back
-        </button>
-      </header>
-
       <RecentTabsBar />
 
       <CommandBar

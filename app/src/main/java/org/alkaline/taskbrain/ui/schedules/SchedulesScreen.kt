@@ -95,7 +95,7 @@ fun SchedulesScreen(
     // Error dialog
     uiState.error?.let { error ->
         ErrorDialog(
-            title = "Error",
+            title = stringResource(R.string.error_title),
             message = error,
             onDismiss = { schedulesViewModel.clearError() }
         )
@@ -334,7 +334,7 @@ private fun ExecutionHistoryItem(execution: EnrichedExecution) {
             // Status icon
             Icon(
                 imageVector = if (execution.success) Icons.Default.Check else Icons.Default.Close,
-                contentDescription = if (execution.success) "Success" else "Failed",
+                contentDescription = if (execution.success) stringResource(R.string.schedule_success) else stringResource(R.string.schedule_failed),
                 tint = if (execution.success) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -347,7 +347,7 @@ private fun ExecutionHistoryItem(execution: EnrichedExecution) {
             Column(modifier = Modifier.weight(1f)) {
                 // Note name (primary identifier)
                 Text(
-                    text = execution.noteName.ifEmpty { "Unknown note" },
+                    text = execution.noteName.ifEmpty { stringResource(R.string.schedule_unknown_note) },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -386,7 +386,7 @@ private fun ExecutionHistoryItem(execution: EnrichedExecution) {
 
                 if (execution.manualRun) {
                     Text(
-                        text = "Manual run",
+                        text = stringResource(R.string.schedule_manual_run),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -432,7 +432,7 @@ private fun UpcomingScheduleItem(schedule: Schedule) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = schedule.notePath.ifEmpty { "Unknown" },
+                    text = schedule.notePath.ifEmpty { stringResource(R.string.schedule_unknown) },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -451,7 +451,7 @@ private fun UpcomingScheduleItem(schedule: Schedule) {
 
                     val countdown = formatCountdown(diffMs)
                     Text(
-                        text = "In $countdown",
+                        text = stringResource(R.string.schedule_in_fmt, countdown),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -491,7 +491,7 @@ private fun MissedExecutionItem(
             Column(modifier = Modifier.weight(1f)) {
                 // Note name (primary identifier)
                 Text(
-                    text = execution.noteName.ifEmpty { "Unknown note" },
+                    text = execution.noteName.ifEmpty { stringResource(R.string.schedule_unknown_note) },
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -522,7 +522,7 @@ private fun MissedExecutionItem(
                 execution.scheduledFor?.let { timestamp ->
                     val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
                     Text(
-                        text = "Was due: ${dateFormat.format(timestamp.toDate())}",
+                        text = stringResource(R.string.schedule_was_due_fmt, dateFormat.format(timestamp.toDate())),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -531,7 +531,7 @@ private fun MissedExecutionItem(
                     val missedTime = timestamp.toDate().time
                     val missedAgo = formatCountdown(now - missedTime)
                     Text(
-                        text = "Missed $missedAgo ago",
+                        text = stringResource(R.string.schedule_missed_fmt, missedAgo),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error
                     )

@@ -22,7 +22,7 @@
     <string name="action_save">Save</string>
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
-    
+
     <!-- Menu Strings -->
     <string name="action_settings">Settings</string>
     <string name="action_sign_out">Sign out</string>
@@ -30,8 +30,123 @@
     <string name="action_delete_note">Delete note</string>
     <string name="action_restore_note">Restore note</string>
 
+    <!-- Common Actions -->
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_close">Close</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_update">Update</string>
+    <string name="action_next">Next</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_copy">Copy</string>
+    <string name="action_cut">Cut</string>
+    <string name="action_select_all">Select All</string>
+    <string name="action_unselect">Unselect</string>
+    <string name="action_paste">Paste</string>
+    <string name="action_send">Send</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_loading">Loading…</string>
+
+    <!-- Error Strings -->
+    <string name="error_title">Error</string>
+    <string name="error_unknown">Unknown error</string>
+    <string name="error_an_error_occurred">An error occurred</string>
+    <string name="error_load">Load Error</string>
+    <string name="error_save">Save Error</string>
+    <string name="error_create_note">Create Note Error</string>
+    <string name="error_tabs">Tabs Error</string>
+    <string name="error_alarm">Alarm Error</string>
+
     <!-- Note List Strings -->
     <string name="section_deleted_notes">Deleted notes</string>
+    <string name="no_notes_found">No notes found</string>
+    <string name="empty_note">Empty Note</string>
+
+    <!-- Note Editor Strings -->
+    <string name="new_note">New Note</string>
+    <string name="close_tab">Close tab</string>
+    <string name="tab_menu">Tab menu</string>
+    <string name="empty_line">(empty line)</string>
+
+    <!-- Command Bar Strings -->
+    <string name="command_toggle_bullet">Toggle bullet</string>
+    <string name="command_toggle_checkbox">Toggle checkbox</string>
+    <string name="command_indent">Indent</string>
+    <string name="command_unindent">Unindent</string>
+    <string name="command_move_up">Move lines up</string>
+    <string name="command_move_down">Move lines down</string>
+    <string name="command_add_alarm">Add alarm</string>
+
+    <!-- Alarm Config Dialog Strings -->
+    <string name="alarm_show_upcoming">Show in Upcoming list</string>
+    <string name="alarm_lock_screen">Lock screen notification</string>
+    <string name="alarm_urgent">Urgent (red tint)</string>
+    <string name="alarm_sound">Sound alarm</string>
+    <string name="alarm_done">Done</string>
+    <string name="alarm_cancel">Cancel Alarm</string>
+
+    <!-- Alarm Activity Strings -->
+    <string name="alarm_type_alarm">Alarm</string>
+    <string name="alarm_type_urgent">Urgent</string>
+    <string name="alarm_type_reminder">Reminder</string>
+    <string name="alarm_snooze_for">Snooze for:</string>
+    <string name="alarm_snooze_2_min">2 min</string>
+    <string name="alarm_snooze_10_min">10 min</string>
+    <string name="alarm_snooze_1_hour">1 hour</string>
+    <string name="alarm_mark_done">Mark Done</string>
+
+    <!-- Alarms Screen Strings -->
+    <string name="no_alarms">No alarms</string>
+    <string name="section_past_due">Past Due</string>
+    <string name="section_upcoming">Upcoming</string>
+    <string name="section_later">Later</string>
+    <string name="section_completed">Completed</string>
+    <string name="section_cancelled">Cancelled</string>
+    <string name="alarm_mark_done_desc">Mark done</string>
+    <string name="alarm_cancel_desc">Cancel</string>
+    <string name="alarm_reactivate">Reactivate</string>
+    <string name="alarm_untitled">Untitled alarm</string>
+    <string name="alarm_completed_fmt">Completed: %s</string>
+    <string name="alarm_urgent_fmt">Urgent: %s</string>
+
+    <!-- Permission Warnings -->
+    <string name="permission_issues">Permission Issues</string>
+    <string name="permission_notifications_disabled">• Notifications disabled: Go to Settings → Apps → TaskBrain → Notifications</string>
+    <string name="permission_exact_alarms_disabled">• Exact alarms disabled: Go to Settings → Apps → TaskBrain → Alarms &amp; reminders</string>
+    <string name="permission_fullscreen_disabled">• Full-screen alarms disabled: Go to Settings → Apps → TaskBrain → App info → Allow display over other apps</string>
+    <string name="dialog_exact_alarms_title">Exact Alarms Disabled</string>
+    <string name="dialog_exact_alarms_message">Exact alarm permission is not granted. Your alarm may not trigger at the exact time.\n\nTo enable: Settings → Apps → TaskBrain → Alarms &amp; reminders → Allow</string>
+    <string name="dialog_notifications_title">Notifications Disabled</string>
+    <string name="dialog_notifications_message">Notification permission is not granted. Your alarms will not show notifications.\n\nTo enable: Settings → Apps → TaskBrain → Notifications → Allow</string>
+    <string name="dialog_scheduling_title">Alarm Scheduling Issue</string>
+    <string name="dialog_scheduling_message">The alarm was saved but may not trigger at the expected time.</string>
+
+    <!-- Redo Error Dialog -->
+    <string name="redo_failed">Redo Failed</string>
+    <string name="redo_error">Redo Error</string>
+    <string name="redo_alarm_error_prefix">Could not recreate the alarm: </string>
+    <string name="redo_rollback_message">The document has been automatically rolled back to its previous state.</string>
+    <string name="redo_inconsistent_warning">Warning: The document may be in an inconsistent state. The alarm symbol may be visible but no alarm exists. Consider saving and reloading the note.</string>
+
+    <!-- Recurrence Config Strings -->
+    <string name="recurrence_repeat">Repeat</string>
+    <string name="recurrence_fixed_schedule">Fixed schedule</string>
+    <string name="recurrence_after_completion">After completion</string>
+    <string name="recurrence_presets">Presets</string>
+    <string name="recurrence_custom_interval">Custom interval</string>
+    <string name="recurrence_every">Every</string>
+    <string name="recurrence_on_days">On days</string>
+    <string name="recurrence_interval_after_completion">Repeat interval after completion</string>
+    <string name="recurrence_ends">Ends</string>
+    <string name="recurrence_after">After</string>
+    <string name="recurrence_times">times</string>
+
+    <!-- Date/Time Picker Strings -->
+    <string name="datetime_not_set">Not set</string>
+    <string name="datetime_select_time">Select time</string>
 
     <!-- Schedules Screen Strings -->
     <string name="title_schedules">Schedules</string>
@@ -44,4 +159,12 @@
     <string name="no_history">No executions in the last 24 hours</string>
     <string name="no_upcoming">No schedules in the next 24 hours</string>
     <string name="no_missed">No missed schedules</string>
+    <string name="schedule_unknown_note">Unknown note</string>
+    <string name="schedule_unknown">Unknown</string>
+    <string name="schedule_manual_run">Manual run</string>
+    <string name="schedule_in_fmt">In %s</string>
+    <string name="schedule_was_due_fmt">Was due: %s</string>
+    <string name="schedule_missed_fmt">Missed %s ago</string>
+    <string name="schedule_success">Success</string>
+    <string name="schedule_failed">Failed</string>
 </resources>

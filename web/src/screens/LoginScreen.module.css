@@ -13,12 +13,12 @@
 }
 
 .subtitle {
-  color: #666;
+  color: var(--color-text-secondary);
   margin: 0;
 }
 
 .error {
-  color: #d32f2f;
+  color: var(--color-error-hover);
   margin: 0;
   font-size: 0.875rem;
 }
@@ -27,7 +27,7 @@
   margin-top: 2rem;
   padding: 0.75rem 2rem;
   font-size: 1rem;
-  border: 1px solid #ddd;
+  border: 1px solid var(--color-border-input);
   border-radius: 8px;
   background: white;
   cursor: pointer;
@@ -35,7 +35,7 @@
 }
 
 .signInButton:hover:not(:disabled) {
-  background: #f5f5f5;
+  background: var(--color-surface-alt);
 }
 
 .signInButton:disabled {

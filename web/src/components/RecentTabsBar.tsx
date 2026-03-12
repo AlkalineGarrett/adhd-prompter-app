@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { RecentTabsRepository, type RecentTab } from '@/data/RecentTabsRepository'
 import { addOrUpdateTabState, updateDisplayTextState, removeTabState } from '@/data/TabState'
 import { db, auth } from '@/firebase/config'
+import { EMPTY_TAB } from '@/strings'
 import styles from './RecentTabsBar.module.css'
 
 const repo = new RecentTabsRepository(db, auth)
@@ -135,7 +136,7 @@ export function RecentTabsBar() {
           onClick={() => handleTabClick(tab.noteId)}
         >
           <span className={styles.tabText}>
-            {tab.displayText || '(empty)'}
+            {tab.displayText || EMPTY_TAB}
           </span>
           <span
             className={styles.closeButton}

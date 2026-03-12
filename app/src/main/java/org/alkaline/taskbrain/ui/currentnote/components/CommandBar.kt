@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.ui.currentnote.MoveButtonState
@@ -57,7 +58,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_list_bulleted),
-                contentDescription = "Toggle bullet",
+                contentDescription = stringResource(R.string.command_toggle_bullet),
                 tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
@@ -70,7 +71,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_check_box_outline),
-                contentDescription = "Toggle checkbox",
+                contentDescription = stringResource(R.string.command_toggle_checkbox),
                 tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
@@ -83,7 +84,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_indent_decrease),
-                contentDescription = "Unindent",
+                contentDescription = stringResource(R.string.command_unindent),
                 tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
@@ -96,7 +97,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_format_indent_increase),
-                contentDescription = "Indent",
+                contentDescription = stringResource(R.string.command_indent),
                 tint = EnabledTint,
                 modifier = Modifier.size(24.dp)
             )
@@ -110,7 +111,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_arrow_up),
-                contentDescription = "Move lines up",
+                contentDescription = stringResource(R.string.command_move_up),
                 tint = when {
                     !moveUpState.isEnabled -> DisabledTint
                     moveUpState.isWarning -> WarningTint
@@ -128,7 +129,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_arrow_down),
-                contentDescription = "Move lines down",
+                contentDescription = stringResource(R.string.command_move_down),
                 tint = when {
                     !moveDownState.isEnabled -> DisabledTint
                     moveDownState.isWarning -> WarningTint
@@ -151,7 +152,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_paste),
-                contentDescription = "Paste",
+                contentDescription = stringResource(R.string.action_paste),
                 tint = if (isPasteEnabled) EnabledTint else DisabledTint,
                 modifier = Modifier.size(24.dp)
             )
@@ -165,7 +166,7 @@ fun CommandBar(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_alarm),
-                contentDescription = "Add alarm",
+                contentDescription = stringResource(R.string.command_add_alarm),
                 tint = if (isAlarmEnabled) EnabledTint else DisabledTint,
                 modifier = Modifier.size(24.dp)
             )

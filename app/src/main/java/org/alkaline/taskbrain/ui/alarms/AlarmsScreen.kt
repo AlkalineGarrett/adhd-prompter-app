@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.stringResource
+import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.ui.components.ErrorDialog
 import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
@@ -89,7 +91,7 @@ fun AlarmsScreen(
 
     error?.let { throwable ->
         ErrorDialog(
-            title = "Error",
+            title = stringResource(R.string.error_title),
             throwable = throwable,
             onDismiss = { alarmsViewModel.clearError() }
         )
@@ -97,7 +99,7 @@ fun AlarmsScreen(
 
     selectedAlarm?.let { alarm ->
         AlarmConfigDialog(
-            lineContent = alarm.displayName.ifEmpty { "Untitled alarm" },
+            lineContent = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
             existingAlarm = alarm,
             onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
                 alarmsViewModel.updateAlarm(alarm, upcomingTime, notifyTime, urgentTime, alarmTime)
@@ -128,7 +130,7 @@ fun AlarmsScreen(
 
             if (hasNoAlarms) {
                 Text(
-                    text = "No alarms",
+                    text = stringResource(R.string.no_alarms),
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -142,7 +144,7 @@ fun AlarmsScreen(
                     if (pastDueAlarms.isNotEmpty()) {
                         item {
                             SectionHeader(
-                                title = "Past Due",
+                                title = stringResource(R.string.section_past_due),
                                 color = MaterialTheme.colorScheme.error
                             )
                         }
@@ -160,7 +162,7 @@ fun AlarmsScreen(
                     // Upcoming section
                     if (upcomingAlarms.isNotEmpty()) {
                         item {
-                            SectionHeader("Upcoming")
+                            SectionHeader(stringResource(R.string.section_upcoming))
                         }
                         items(upcomingAlarms) { alarm ->
                             AlarmItem(
@@ -176,7 +178,7 @@ fun AlarmsScreen(
                     // Later section
                     if (laterAlarms.isNotEmpty()) {
                         item {
-                            SectionHeader("Later")
+                            SectionHeader(stringResource(R.string.section_later))
                         }
                         items(laterAlarms) { alarm ->
                             AlarmItem(
@@ -192,7 +194,7 @@ fun AlarmsScreen(
                     // Completed section
                     if (completedAlarms.isNotEmpty()) {
                         item {
-                            SectionHeader("Completed")
+                            SectionHeader(stringResource(R.string.section_completed))
                         }
                         items(completedAlarms) { alarm ->
                             CompletedAlarmItem(
@@ -207,7 +209,7 @@ fun AlarmsScreen(
                     // Cancelled section
                     if (cancelledAlarms.isNotEmpty()) {
                         item {
-                            SectionHeader("Cancelled")
+                            SectionHeader(stringResource(R.string.section_cancelled))
                         }
                         items(cancelledAlarms) { alarm ->
                             CompletedAlarmItem(
@@ -243,7 +245,7 @@ private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPerm
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Permission Issues",
+                text = stringResource(R.string.permission_issues),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -252,7 +254,7 @@ private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPerm
 
         if (!permissionStatus.hasNotificationPermission) {
             Text(
-                text = "• Notifications disabled: Go to Settings → Apps → TaskBrain → Notifications",
+                text = stringResource(R.string.permission_notifications_disabled),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -260,7 +262,7 @@ private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPerm
 
         if (!permissionStatus.canScheduleExactAlarms) {
             Text(
-                text = "• Exact alarms disabled: Go to Settings → Apps → TaskBrain → Alarms & reminders",
+                text = stringResource(R.string.permission_exact_alarms_disabled),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -268,7 +270,7 @@ private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPerm
 
         if (!permissionStatus.canUseFullScreenIntent) {
             Text(
-                text = "• Full-screen alarms disabled: Go to Settings → Apps → TaskBrain → App info → Allow display over other apps",
+                text = stringResource(R.string.permission_fullscreen_disabled),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onErrorContainer
             )
@@ -314,7 +316,7 @@ private fun AlarmItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = alarm.displayName.ifEmpty { "Untitled alarm" },
+                    text = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -330,9 +332,10 @@ private fun AlarmItem(
                 }
 
                 // Show threshold times if set
+                val urgentFmt = stringResource(R.string.alarm_urgent_fmt)
                 val thresholds = buildList {
                     alarm.notifyTime?.let { add("Notify: ${formatTime(it)}") }
-                    alarm.urgentTime?.let { add("Urgent: ${formatTime(it)}") }
+                    alarm.urgentTime?.let { add(urgentFmt.format(formatTime(it))) }
                     alarm.alarmTime?.let { add("Alarm: ${formatTime(it)}") }
                 }
                 if (thresholds.isNotEmpty()) {
@@ -347,7 +350,7 @@ private fun AlarmItem(
             IconButton(onClick = onMarkDone) {
                 Icon(
                     imageVector = Icons.Default.Check,
-                    contentDescription = "Mark done",
+                    contentDescription = stringResource(R.string.alarm_mark_done_desc),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -355,7 +358,7 @@ private fun AlarmItem(
             IconButton(onClick = onCancel) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Cancel",
+                    contentDescription = stringResource(R.string.alarm_cancel_desc),
                     tint = MaterialTheme.colorScheme.error
                 )
             }
@@ -386,7 +389,7 @@ private fun CompletedAlarmItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = alarm.displayName.ifEmpty { "Untitled alarm" },
+                    text = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
                     style = MaterialTheme.typography.bodyLarge,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -396,7 +399,7 @@ private fun CompletedAlarmItem(
                 alarm.updatedAt?.let { timestamp ->
                     val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
                     Text(
-                        text = "Completed: ${dateFormat.format(timestamp.toDate())}",
+                        text = stringResource(R.string.alarm_completed_fmt, dateFormat.format(timestamp.toDate())),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
@@ -406,7 +409,7 @@ private fun CompletedAlarmItem(
             IconButton(onClick = onReactivate) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Reactivate",
+                    contentDescription = stringResource(R.string.alarm_reactivate),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }

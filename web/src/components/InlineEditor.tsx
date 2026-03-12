@@ -1,6 +1,10 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { NoteRepository } from '@/data/NoteRepository'
 import { db, auth } from '@/firebase/config'
+import {
+  EDITING_NOTE, MODIFIED, SAVING, SAVE_AND_CLOSE, CANCEL, DISCARD_UNSAVED,
+  ERROR_SAVE, ERROR_UNKNOWN,
+} from '@/strings'
 import styles from './InlineEditor.module.css'
 
 const repo = new NoteRepository(db, auth)
@@ -38,7 +42,7 @@ export function InlineEditor({ noteId, initialContent, onClose, onSaved }: Inlin
       onClose()
     } catch (e) {
       console.error('Failed to save inline edit:', e)
-      alert(`Failed to save: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      alert(`${ERROR_SAVE}: ${e instanceof Error ? e.message : ERROR_UNKNOWN}`)
     } finally {
       setSaving(false)
     }
@@ -49,7 +53,7 @@ export function InlineEditor({ noteId, initialContent, onClose, onSaved }: Inlin
       if (e.key === 'Escape') {
         e.preventDefault()
         if (isDirty) {
-          if (confirm('Discard unsaved changes?')) onClose()
+          if (confirm(DISCARD_UNSAVED)) onClose()
         } else {
           onClose()
         }
@@ -68,13 +72,13 @@ export function InlineEditor({ noteId, initialContent, onClose, onSaved }: Inlin
   return (
     <div className={styles.inlineEditor}>
       <div className={styles.header}>
-        <span className={styles.label}>Editing note</span>
-        {isDirty && <span className={styles.dirtyIndicator}>Modified</span>}
+        <span className={styles.label}>{EDITING_NOTE}</span>
+        {isDirty && <span className={styles.dirtyIndicator}>{MODIFIED}</span>}
         <button className={styles.saveButton} onClick={() => void handleSave()} disabled={saving}>
-          {saving ? 'Saving...' : 'Save & Close'}
+          {saving ? SAVING : SAVE_AND_CLOSE}
         </button>
         <button className={styles.cancelButton} onClick={onClose}>
-          Cancel
+          {CANCEL}
         </button>
       </div>
       <textarea

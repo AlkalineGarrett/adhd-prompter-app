@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth'
+import { APP_NAME, LOGIN_SUBTITLE, SIGNING_IN, SIGN_IN_WITH_GOOGLE } from '@/strings'
 import styles from './LoginScreen.module.css'
 
 export function LoginScreen() {
@@ -6,15 +7,15 @@ export function LoginScreen() {
 
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>TaskBrain</h1>
-      <p className={styles.subtitle}>ADHD-friendly task management</p>
+      <h1 className={styles.title}>{APP_NAME}</h1>
+      <p className={styles.subtitle}>{LOGIN_SUBTITLE}</p>
       {error && <p className={styles.error}>{error}</p>}
       <button
         className={styles.signInButton}
         onClick={signIn}
         disabled={signingIn}
       >
-        {signingIn ? 'Signing in...' : 'Sign in with Google'}
+        {signingIn ? SIGNING_IN : SIGN_IN_WITH_GOOGLE}
       </button>
     </div>
   )

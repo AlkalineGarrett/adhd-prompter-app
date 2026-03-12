@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, type KeyboardEvent } from 'react'
+import { DIRECTIVE_PLACEHOLDER, REFRESH, CANCEL, CONFIRM } from '@/strings'
 import styles from './DirectiveEditRow.module.css'
 
 interface DirectiveEditRowProps {
@@ -56,15 +57,15 @@ export function DirectiveEditRow({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Directive source..."
+          placeholder={DIRECTIVE_PLACEHOLDER}
         />
-        <button className={`${styles.editButton}`} onClick={handleRefresh} title="Refresh">
+        <button className={`${styles.editButton}`} onClick={handleRefresh} title={REFRESH}>
           ↻
         </button>
-        <button className={`${styles.editButton} ${styles.confirmButton}`} onClick={handleConfirm} title="Confirm">
+        <button className={`${styles.editButton} ${styles.confirmButton}`} onClick={handleConfirm} title={CONFIRM}>
           ✓
         </button>
-        <button className={`${styles.editButton} ${styles.cancelButton}`} onClick={onCancel} title="Cancel">
+        <button className={`${styles.editButton} ${styles.cancelButton}`} onClick={onCancel} title={CANCEL}>
           ✗
         </button>
       </div>

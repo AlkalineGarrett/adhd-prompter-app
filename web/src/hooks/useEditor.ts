@@ -6,6 +6,7 @@ import { LineState } from '@/editor/LineState'
 import type { NoteLine } from '@/data/Note'
 import { NoteRepository, matchLinesToIds } from '@/data/NoteRepository'
 import { db, auth } from '@/firebase/config'
+import { ERROR_LOAD, ERROR_SAVE } from '@/strings'
 
 const repo = new NoteRepository(db, auth)
 
@@ -141,7 +142,7 @@ export function useEditor(noteId: string | undefined) {
         void repo.updateLastAccessed(noteId)
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Failed to load note')
+          setError(e instanceof Error ? e.message : ERROR_LOAD)
           setLoading(false)
         }
       }
@@ -181,7 +182,7 @@ export function useEditor(noteId: string | undefined) {
 
       setDirty(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save')
+      setError(e instanceof Error ? e.message : ERROR_SAVE)
     } finally {
       setSaving(false)
     }

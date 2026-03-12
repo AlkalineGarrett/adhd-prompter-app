@@ -2,6 +2,7 @@ import type { Note } from '@/data/Note'
 import type { ViewVal } from '@/dsl/runtime/DslValue'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
 import { directiveResultToValue } from '@/dsl/directives/DirectiveResult'
+import { EMPTY_VIEW } from '@/strings'
 import { DirectiveLineContent } from './DirectiveLineContent'
 import styles from './ViewDirectiveRenderer.module.css'
 
@@ -27,7 +28,7 @@ export function ViewDirectiveRenderer({
   const { notes, renderedContents } = viewVal
 
   if (notes.length === 0) {
-    return <div className={styles.emptyView}>[empty view]</div>
+    return <div className={styles.emptyView}>{EMPTY_VIEW}</div>
   }
 
   return (

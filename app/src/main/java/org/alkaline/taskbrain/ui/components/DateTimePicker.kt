@@ -27,9 +27,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.util.DateTimeUtils
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -61,7 +63,7 @@ fun DateTimePickerRow(
         val date = value.toDate()
         "${dateFormatter.format(date)} at ${timeFormatter.format(date)}"
     } else {
-        "Not set"
+        stringResource(R.string.datetime_not_set)
     }
 
     Row(
@@ -89,7 +91,7 @@ fun DateTimePickerRow(
             IconButton(onClick = { onValueChange(null) }) {
                 Icon(
                     imageVector = Icons.Default.Clear,
-                    contentDescription = "Clear",
+                    contentDescription = stringResource(R.string.action_clear),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -111,12 +113,12 @@ fun DateTimePickerRow(
                         showTimePicker = true
                     }
                 ) {
-                    Text("Next")
+                    Text(stringResource(R.string.action_next))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDatePicker = false }) {
-                    Text("Cancel")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         ) {
@@ -145,7 +147,7 @@ fun DateTimePickerRow(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Select time",
+                        text = stringResource(R.string.datetime_select_time),
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -161,7 +163,7 @@ fun DateTimePickerRow(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = { showTimePicker = false }) {
-                            Text("Cancel")
+                            Text(stringResource(R.string.action_cancel))
                         }
                         TextButton(
                             onClick = {
@@ -175,7 +177,7 @@ fun DateTimePickerRow(
                                 showTimePicker = false
                             }
                         ) {
-                            Text("OK")
+                            Text(stringResource(R.string.action_ok))
                         }
                     }
                 }

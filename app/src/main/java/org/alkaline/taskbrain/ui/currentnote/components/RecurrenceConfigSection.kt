@@ -23,8 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import org.alkaline.taskbrain.R
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.RecurrencePreset
 import org.alkaline.taskbrain.data.RecurrenceType
@@ -100,7 +102,7 @@ fun RecurrenceConfigSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Repeat",
+                text = stringResource(R.string.recurrence_repeat),
                 style = MaterialTheme.typography.bodyLarge
             )
             Switch(
@@ -119,12 +121,12 @@ fun RecurrenceConfigSection(
                 selected = config.recurrenceType == RecurrenceType.FIXED,
                 onClick = { onConfigChange(config.copy(recurrenceType = RecurrenceType.FIXED)) },
                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-            ) { Text("Fixed schedule") }
+            ) { Text(stringResource(R.string.recurrence_fixed_schedule)) }
             SegmentedButton(
                 selected = config.recurrenceType == RecurrenceType.RELATIVE,
                 onClick = { onConfigChange(config.copy(recurrenceType = RecurrenceType.RELATIVE)) },
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-            ) { Text("After completion") }
+            ) { Text(stringResource(R.string.recurrence_after_completion)) }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -149,7 +151,7 @@ private fun FixedRecurrenceConfig(
 ) {
     // Preset chips
     Text(
-        text = "Presets",
+        text = stringResource(R.string.recurrence_presets),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -176,7 +178,7 @@ private fun FixedRecurrenceConfig(
     if (config.selectedPreset == null) {
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "Custom interval",
+            text = stringResource(R.string.recurrence_custom_interval),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -186,7 +188,7 @@ private fun FixedRecurrenceConfig(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Every")
+            Text(stringResource(R.string.recurrence_every))
             OutlinedTextField(
                 value = config.customInterval.toString(),
                 onValueChange = { text ->
@@ -230,7 +232,7 @@ private fun DayOfWeekPicker(
     onDaysChange: (Set<Int>) -> Unit
 ) {
     Text(
-        text = "On days",
+        text = stringResource(R.string.recurrence_on_days),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -262,7 +264,7 @@ private fun RelativeRecurrenceConfig(
     onConfigChange: (RecurrenceConfig) -> Unit
 ) {
     Text(
-        text = "Repeat interval after completion",
+        text = stringResource(R.string.recurrence_interval_after_completion),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -306,7 +308,7 @@ private fun EndConditionConfig(
     onConfigChange: (RecurrenceConfig) -> Unit
 ) {
     Text(
-        text = "Ends",
+        text = stringResource(R.string.recurrence_ends),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -341,7 +343,7 @@ private fun EndConditionConfig(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("After")
+                Text(stringResource(R.string.recurrence_after))
                 OutlinedTextField(
                     value = config.repeatCount.toString(),
                     onValueChange = { text ->
@@ -354,7 +356,7 @@ private fun EndConditionConfig(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true
                 )
-                Text("times")
+                Text(stringResource(R.string.recurrence_times))
             }
         }
     }

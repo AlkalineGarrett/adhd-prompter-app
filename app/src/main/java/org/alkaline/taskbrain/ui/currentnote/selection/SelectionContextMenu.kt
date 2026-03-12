@@ -12,6 +12,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.PopupProperties
@@ -125,7 +126,7 @@ fun SelectionContextMenu(
             properties = PopupProperties(focusable = false)
         ) {
         DropdownMenuItem(
-            text = { Text("Copy") },
+            text = { Text(stringResource(R.string.action_copy)) },
             leadingIcon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_copy),
@@ -136,7 +137,7 @@ fun SelectionContextMenu(
             onClick = actions.onCopy
         )
         DropdownMenuItem(
-            text = { Text("Cut") },
+            text = { Text(stringResource(R.string.action_cut)) },
             leadingIcon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_cut),
@@ -147,7 +148,7 @@ fun SelectionContextMenu(
             onClick = actions.onCut
         )
         DropdownMenuItem(
-            text = { Text("Select All") },
+            text = { Text(stringResource(R.string.action_select_all)) },
             leadingIcon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_select_all),
@@ -158,7 +159,7 @@ fun SelectionContextMenu(
             onClick = actions.onSelectAll
         )
         DropdownMenuItem(
-            text = { Text("Unselect") },
+            text = { Text(stringResource(R.string.action_unselect)) },
             leadingIcon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_deselect),
@@ -169,7 +170,7 @@ fun SelectionContextMenu(
             onClick = actions.onUnselect
         )
         DropdownMenuItem(
-            text = { Text("Delete") },
+            text = { Text(stringResource(R.string.action_delete)) },
             leadingIcon = {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_delete),

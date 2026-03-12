@@ -24,10 +24,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.ui.components.DateTimePickerRow
 
@@ -71,7 +73,7 @@ fun AlarmConfigDialog(
             ) {
                 // Line content preview
                 Text(
-                    text = lineContent.ifEmpty { "(empty line)" },
+                    text = lineContent.ifEmpty { stringResource(R.string.empty_line) },
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -84,25 +86,25 @@ fun AlarmConfigDialog(
 
                 // Four date/time pickers
                 DateTimePickerRow(
-                    label = "Show in Upcoming list",
+                    label = stringResource(R.string.alarm_show_upcoming),
                     value = upcomingTime,
                     onValueChange = { upcomingTime = it }
                 )
 
                 DateTimePickerRow(
-                    label = "Lock screen notification",
+                    label = stringResource(R.string.alarm_lock_screen),
                     value = notifyTime,
                     onValueChange = { notifyTime = it }
                 )
 
                 DateTimePickerRow(
-                    label = "Urgent (red tint)",
+                    label = stringResource(R.string.alarm_urgent),
                     value = urgentTime,
                     onValueChange = { urgentTime = it }
                 )
 
                 DateTimePickerRow(
-                    label = "Sound alarm",
+                    label = stringResource(R.string.alarm_sound),
                     value = alarmTime,
                     onValueChange = { alarmTime = it }
                 )
@@ -139,7 +141,7 @@ fun AlarmConfigDialog(
                                     },
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text("Done")
+                                    Text(stringResource(R.string.alarm_done))
                                 }
                             }
                             if (onCancel != null) {
@@ -153,7 +155,7 @@ fun AlarmConfigDialog(
                                         contentColor = Color(0xFFB71C1C)
                                     )
                                 ) {
-                                    Text("Cancel Alarm")
+                                    Text(stringResource(R.string.alarm_cancel))
                                 }
                             }
                         }
@@ -175,13 +177,13 @@ fun AlarmConfigDialog(
                                     contentColor = Color(0xFFB71C1C)
                                 )
                             ) {
-                                Text("Delete")
+                                Text(stringResource(R.string.action_delete))
                             }
                             Spacer(modifier = Modifier.weight(1f))
                         }
 
                         TextButton(onClick = onDismiss) {
-                            Text("Close")
+                            Text(stringResource(R.string.action_close))
                         }
 
                         Button(
@@ -195,7 +197,7 @@ fun AlarmConfigDialog(
                             },
                             enabled = hasAnyThreshold
                         ) {
-                            Text(if (existingAlarm != null) "Update" else "Save")
+                            Text(stringResource(if (existingAlarm != null) R.string.action_update else R.string.action_save))
                         }
                     }
                 }

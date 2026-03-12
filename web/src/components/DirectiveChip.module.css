@@ -12,38 +12,38 @@
 }
 
 .computed {
-  background-color: #E8F5E9;
-  border-color: #4CAF50;
-  color: #2E7D32;
+  background-color: var(--color-success-bg);
+  border-color: var(--color-success);
+  color: var(--color-success-text);
 }
 
 .error {
-  background-color: #FFEBEE;
-  border-color: #F44336;
-  color: #C62828;
+  background-color: var(--color-error-bg);
+  border-color: var(--color-error);
+  color: var(--color-error-text);
 }
 
 .warning {
-  background-color: #FFF3E0;
-  border-color: #FF9800;
-  color: #E65100;
+  background-color: var(--color-warning-bg);
+  border-color: var(--color-warning);
+  color: var(--color-warning-text);
 }
 
 .pending {
-  background-color: #F5F5F5;
-  border-color: #9E9E9E;
-  color: #757575;
+  background-color: var(--color-pending-bg);
+  border-color: var(--color-pending);
+  color: var(--color-pending-text);
 }
 
 .button {
-  background-color: #E3F2FD;
-  border-color: #1976D2;
-  color: #1565C0;
+  background-color: var(--color-primary-light);
+  border-color: var(--color-primary);
+  color: var(--color-primary-text);
   cursor: pointer;
 }
 
 .button:hover {
-  background-color: #BBDEFB;
+  background-color: var(--color-primary-light-hover);
 }
 
 .buttonLoading {
@@ -52,11 +52,11 @@
 }
 
 .buttonSuccess {
-  background-color: #E8F5E9;
-  border-color: #4CAF50;
+  background-color: var(--color-success-bg);
+  border-color: var(--color-success);
 }
 
 .buttonError {
-  background-color: #FFEBEE;
-  border-color: #F44336;
+  background-color: var(--color-error-bg);
+  border-color: var(--color-error);
 }

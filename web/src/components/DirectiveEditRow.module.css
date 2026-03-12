@@ -3,15 +3,15 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  background-color: #F5F5F5;
-  border: 1px solid #E0E0E0;
+  background-color: var(--color-surface-alt);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   margin: 4px 0;
 }
 
 .editInput {
   flex: 1;
-  border: 1px solid #BDBDBD;
+  border: 1px solid var(--color-border-medium);
   border-radius: 3px;
   padding: 4px 8px;
   font-family: monospace;
@@ -20,7 +20,7 @@
 }
 
 .editInput:focus {
-  border-color: #1976D2;
+  border-color: var(--color-primary);
 }
 
 .editButton {
@@ -29,35 +29,35 @@
   border-radius: 3px;
   cursor: pointer;
   font-size: 0.85rem;
-  background-color: #E0E0E0;
+  background-color: var(--color-disabled-bg);
   color: #424242;
 }
 
 .editButton:hover {
-  background-color: #BDBDBD;
+  background-color: var(--color-border-medium);
 }
 
 .confirmButton {
-  background-color: #4CAF50;
+  background-color: var(--color-success);
   color: white;
 }
 
 .confirmButton:hover {
-  background-color: #388E3C;
+  background-color: var(--color-success-hover);
 }
 
 .cancelButton {
-  background-color: #F44336;
+  background-color: var(--color-error);
   color: white;
 }
 
 .cancelButton:hover {
-  background-color: #D32F2F;
+  background-color: var(--color-error-hover);
 }
 
 .errorMessage {
   font-size: 0.8rem;
-  color: #C62828;
+  color: var(--color-error-text);
   margin-top: 2px;
   padding: 2px 8px;
 }

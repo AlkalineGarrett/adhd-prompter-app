@@ -6,6 +6,7 @@ import {
   filterAndSortDeletedNotes,
 } from '@/data/NoteFilteringUtils'
 import { db, auth } from '@/firebase/config'
+import { ERROR_LOAD } from '@/strings'
 
 const repo = new NoteRepository(db, auth)
 
@@ -22,7 +23,7 @@ export function useNotes() {
       const allNotes = await repo.loadAllUserNotes()
       setNotes(allNotes)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load notes')
+      setError(e instanceof Error ? e.message : ERROR_LOAD)
     } finally {
       setLoading(false)
     }

@@ -60,7 +60,7 @@ fun NoteListScreen(
     // Show error dialogs
     if (loadStatus is LoadStatus.Error) {
         ErrorDialog(
-            title = "Load Error",
+            title = stringResource(R.string.error_load),
             throwable = (loadStatus as LoadStatus.Error).throwable,
             onDismiss = { noteListViewModel.clearLoadError() }
         )
@@ -68,7 +68,7 @@ fun NoteListScreen(
 
     if (createNoteStatus is CreateNoteStatus.Error) {
         ErrorDialog(
-            title = "Create Note Error",
+            title = stringResource(R.string.error_create_note),
             throwable = (createNoteStatus as CreateNoteStatus.Error).throwable,
             onDismiss = { noteListViewModel.clearCreateNoteError() }
         )
@@ -97,7 +97,7 @@ fun NoteListScreen(
                 is LoadStatus.Error -> {
                     // Error dialog is shown above, just show a simple message here
                     Text(
-                        text = "An error occurred",
+                        text = stringResource(R.string.error_an_error_occurred),
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.align(Alignment.Center)
                     )
@@ -105,7 +105,7 @@ fun NoteListScreen(
                 else -> {
                     if (notes.isEmpty() && deletedNotes.isEmpty() && loadStatus is LoadStatus.Success) {
                         Text(
-                            text = "No notes found",
+                            text = stringResource(R.string.no_notes_found),
                             modifier = Modifier.align(Alignment.Center)
                         )
                     } else {
@@ -170,7 +170,7 @@ fun NoteItem(note: Note, onClick: () -> Unit, isDeleted: Boolean = false) {
         val firstLine = note.content.lines().firstOrNull() ?: ""
 
         Text(
-            text = firstLine.ifEmpty { "Empty Note" },
+            text = firstLine.ifEmpty { stringResource(R.string.empty_note) },
             style = MaterialTheme.typography.bodyLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
