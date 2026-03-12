@@ -327,7 +327,8 @@ export class EditorState {
     if (this.lines.length <= 1) return
     const [lineIndex] = this.getLineAndLocalOffset(cursorPosition)
     if (lineIndex >= this.lines.length - 1) return
-    if (this.lines[lineIndex]!.text === '') {
+    const line = this.lines[lineIndex]!
+    if (line.text === '' || line.content === '') {
       this.lines.splice(lineIndex, 1)
     }
   }
