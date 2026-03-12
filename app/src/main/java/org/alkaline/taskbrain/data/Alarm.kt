@@ -58,6 +58,14 @@ data class Alarm(
     }
 
     /**
+     * The earliest configured threshold time across all four thresholds.
+     * Used to determine when an alarm first becomes relevant.
+     */
+    val earliestThresholdTime: Timestamp?
+        get() = listOfNotNull(upcomingTime, notifyTime, urgentTime, alarmTime)
+            .minByOrNull { it.toDate().time }
+
+    /**
      * The latest configured threshold time across all four thresholds.
      * An alarm is past due when this time is in the past.
      */

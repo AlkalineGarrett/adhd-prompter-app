@@ -27,7 +27,13 @@ sealed class SymbolBadge {
         val color: Color,
         /** Font size as a fraction of the symbol height. */
         val sizeFraction: Float = 0.65f,
-        val dimSymbol: Boolean = true
+        val dimSymbol: Boolean = true,
+        /** If true, only dims the corner quadrant instead of the whole symbol. */
+        val dimCornerOnly: Boolean = false,
+        /** Vertical offset as a fraction of symbol height (negative = higher). */
+        val verticalOffsetFraction: Float = 0f,
+        /** Draw the text multiple times with slight offsets to simulate boldness. */
+        val thicken: Boolean = false
     ) : SymbolBadge()
 }
 

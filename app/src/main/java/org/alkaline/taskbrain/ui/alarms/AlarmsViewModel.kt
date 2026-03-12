@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import com.google.firebase.Timestamp
+import java.util.Calendar
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
@@ -55,34 +56,37 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         _error.value = null
 
         viewModelScope.launch {
-            // Load all alarm categories in parallel
-            val upcomingResult = repository.getUpcomingAlarms()
-            val laterResult = repository.getLaterAlarms()
+            // Load all alarm categories
+            val pendingResult = repository.getPendingAlarms()
             val completedResult = repository.getCompletedAlarms()
             val cancelledResult = repository.getCancelledAlarms()
 
-            // Track first error encountered to show to user
             var firstError: Throwable? = null
 
-            upcomingResult.fold(
+            pendingResult.fold(
                 onSuccess = { alarms ->
                     val now = Timestamp.now()
-                    val (pastDue, upcoming) = alarms.partition { alarm ->
-                        isPastDue(alarm, now)
+                    val endOfToday = endOfDay(now)
+
+                    val pastDue = mutableListOf<Alarm>()
+                    val upcoming = mutableListOf<Alarm>()
+                    val later = mutableListOf<Alarm>()
+
+                    for (alarm in alarms) {
+                        val earliest = alarm.earliestThresholdTime
+                        when {
+                            isPastDue(alarm, now) -> pastDue.add(alarm)
+                            earliest != null && earliest <= endOfToday -> upcoming.add(alarm)
+                            else -> later.add(alarm)
+                        }
                     }
-                    _pastDueAlarms.value = pastDue
-                    _upcomingAlarms.value = upcoming
+
+                    _pastDueAlarms.value = pastDue.sortedBy { it.latestThresholdTime?.toDate()?.time }
+                    _upcomingAlarms.value = upcoming.sortedBy { it.earliestThresholdTime?.toDate()?.time }
+                    _laterAlarms.value = later.sortedBy { it.earliestThresholdTime?.toDate()?.time }
                 },
                 onFailure = {
-                    Log.e(TAG, "Error loading upcoming alarms", it)
-                    if (firstError == null) firstError = it
-                }
-            )
-
-            laterResult.fold(
-                onSuccess = { _laterAlarms.value = it },
-                onFailure = {
-                    Log.e(TAG, "Error loading later alarms", it)
+                    Log.e(TAG, "Error loading pending alarms", it)
                     if (firstError == null) firstError = it
                 }
             )
@@ -103,9 +107,7 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
                 }
             )
 
-            // Show error dialog if any load failed
             firstError?.let { _error.value = it }
-
             _isLoading.value = false
         }
     }
@@ -156,6 +158,20 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         internal fun isPastDue(alarm: Alarm, now: Timestamp): Boolean {
             val latest = alarm.latestThresholdTime ?: return false
             return latest < now
+        }
+
+        /**
+         * Returns a Timestamp for the end of the day (23:59:59.999) of the given timestamp.
+         */
+        internal fun endOfDay(timestamp: Timestamp): Timestamp {
+            val cal = Calendar.getInstance().apply {
+                time = timestamp.toDate()
+                set(Calendar.HOUR_OF_DAY, 23)
+                set(Calendar.MINUTE, 59)
+                set(Calendar.SECOND, 59)
+                set(Calendar.MILLISECOND, 999)
+            }
+            return Timestamp(cal.time)
         }
     }
 }

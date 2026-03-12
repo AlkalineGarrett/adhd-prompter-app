@@ -20,6 +20,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.service.AlarmScheduleResult
@@ -492,9 +493,35 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val noteId = getNoteIdForLine(lineIndex)
         val alarms = noteAlarms[noteId] ?: return emptyList()
         val now = Timestamp.now()
-        return alarms
+
+        // For recurring alarms, only show the most recent instance per recurringAlarmId
+        // (old DONE/CANCELLED instances should not produce separate overlays)
+        val filtered = filterToActiveRecurringInstances(alarms)
+
+        return filtered
             .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
             .map { alarm -> AlarmOverlayMapping.alarmToOverlay(alarm, now) }
+    }
+
+    /**
+     * For recurring alarms, keeps only the most recent instance per recurringAlarmId.
+     * Non-recurring alarms are kept as-is.
+     */
+    private fun filterToActiveRecurringInstances(alarms: List<Alarm>): List<Alarm> {
+        val nonRecurring = alarms.filter { it.recurringAlarmId == null }
+        val recurring = alarms.filter { it.recurringAlarmId != null }
+
+        // Group by recurringAlarmId, keep the most recent instance from each group
+        val latestPerRecurring = recurring
+            .groupBy { it.recurringAlarmId }
+            .values
+            .mapNotNull { instances ->
+                // Prefer PENDING instance; if none, take the most recently updated
+                instances.firstOrNull { it.status == AlarmStatus.PENDING }
+                    ?: instances.maxByOrNull { it.updatedAt?.toDate()?.time ?: 0L }
+            }
+
+        return nonRecurring + latestPerRecurring
     }
 
     // Scheduling failure warning

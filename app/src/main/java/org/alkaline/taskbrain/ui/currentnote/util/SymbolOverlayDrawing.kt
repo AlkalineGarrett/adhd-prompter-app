@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 private val DIM_OVERLAY_COLOR = Color(0x99FFFFFF)
+private val DIM_CORNER_OVERLAY_COLOR = Color(0xCCFFFFFF)
 
 /**
  * Draws badge overlays on symbol characters in rendered text.
@@ -59,7 +60,7 @@ fun Modifier.drawSymbolOverlays(
 
             val dimSymbol = when (badge) {
                 is SymbolBadge.Centered -> badge.dimSymbol
-                is SymbolBadge.Corner -> badge.dimSymbol
+                is SymbolBadge.Corner -> badge.dimSymbol && !badge.dimCornerOnly
                 is SymbolBadge.None -> false
             }
             if (dimSymbol) {
@@ -67,6 +68,16 @@ fun Modifier.drawSymbolOverlays(
                     color = DIM_OVERLAY_COLOR,
                     topLeft = Offset(symbolRect.left, symbolRect.top),
                     size = Size(symbolRect.width, symbolRect.height)
+                )
+            }
+
+            // Dim only the corner area if requested, with slight bleed into adjacent quadrants
+            if (badge is SymbolBadge.Corner && badge.dimCornerOnly) {
+                val bleed = symbolRect.width * 0.15f
+                drawRect(
+                    color = DIM_CORNER_OVERLAY_COLOR,
+                    topLeft = Offset(symbolRect.center.x - bleed, symbolRect.top),
+                    size = Size(symbolRect.width / 2f + bleed, symbolRect.height / 2f + bleed)
                 )
             }
 
@@ -81,8 +92,7 @@ fun Modifier.drawSymbolOverlays(
                 )
                 is SymbolBadge.Corner -> drawCornerBadge(
                     textMeasurer = textMeasurer,
-                    text = badge.text,
-                    color = badge.color,
+                    badge = badge,
                     symbolRect = symbolRect,
                     fontSizePx = symbolRect.height * badge.sizeFraction
                 )
@@ -144,25 +154,25 @@ private fun DrawScope.drawCenteredBadge(
  */
 private fun DrawScope.drawCornerBadge(
     textMeasurer: TextMeasurer,
-    text: String,
-    color: Color,
+    badge: SymbolBadge.Corner,
     symbolRect: Rect,
     fontSizePx: Float
 ) {
     val style = TextStyle(
         fontSize = (fontSizePx / density).sp,
         fontWeight = FontWeight.Black,
-        color = color
+        color = badge.color
     )
-    val measured = textMeasurer.measure(text, style)
+    val measured = textMeasurer.measure(badge.text, style)
     val topLeft = Offset(
         x = symbolRect.center.x + (symbolRect.width / 2f - measured.size.width) / 2f,
-        y = symbolRect.top - measured.size.height * 0.15f
+        y = symbolRect.top - measured.size.height * 0.15f +
+                symbolRect.height * badge.verticalOffsetFraction
     )
 
     // Draw white outline behind badge for contrast
     val outlineStyle = style.copy(color = Color.White)
-    val outlineMeasured = textMeasurer.measure(text, outlineStyle)
+    val outlineMeasured = textMeasurer.measure(badge.text, outlineStyle)
     val outlineOffsets = listOf(
         Offset(-1f, -1f), Offset(1f, -1f),
         Offset(-1f, 1f), Offset(1f, 1f),
@@ -174,6 +184,20 @@ private fun DrawScope.drawCornerBadge(
             textLayoutResult = outlineMeasured,
             topLeft = topLeft + offset
         )
+    }
+
+    // Thicken by drawing the colored text at slight offsets too
+    if (badge.thicken) {
+        val thickenOffsets = listOf(
+            Offset(-0.5f, 0f), Offset(0.5f, 0f),
+            Offset(0f, -0.5f), Offset(0f, 0.5f)
+        )
+        for (offset in thickenOffsets) {
+            drawText(
+                textLayoutResult = measured,
+                topLeft = topLeft + offset
+            )
+        }
     }
 
     drawText(
