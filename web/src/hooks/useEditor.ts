@@ -41,8 +41,12 @@ export function useEditor(noteId: string | undefined) {
       setDirty(true)
       setRenderVersion((v) => v + 1)
     }
+    editorState.onSelectionChange = () => {
+      setRenderVersion((v) => v + 1)
+    }
     return () => {
       editorState.onTextChange = null
+      editorState.onSelectionChange = null
     }
   }, [editorState])
 
@@ -195,10 +199,8 @@ export function useEditor(noteId: string | undefined) {
     return unsubscribe
   }, [noteId, editorState])
 
-  // Save
-  const save = useCallback(async () => {
-    if (!noteId || !dirty) return
-
+  // Core save logic — accepts noteId as parameter to avoid stale closure bugs
+  const saveNoteById = useCallback(async (targetNoteId: string) => {
     try {
       setSaving(true)
       suppressSnapshotRef.current = true
@@ -210,12 +212,12 @@ export function useEditor(noteId: string | undefined) {
 
       // Re-match lines to IDs using the same algorithm as Android
       const newTracked = matchLinesToIds(
-        noteId,
+        targetNoteId,
         existingTracked,
         currentLines,
       )
 
-      const createdIds = await repo.saveNoteWithChildren(noteId, newTracked)
+      const createdIds = await repo.saveNoteWithChildren(targetNoteId, newTracked)
 
       // Update tracked lines with newly created IDs
       const updatedTracked = newTracked.map((line, index) => {
@@ -230,7 +232,42 @@ export function useEditor(noteId: string | undefined) {
     } finally {
       setSaving(false)
     }
-  }, [noteId, dirty, editorState, controller])
+  }, [editorState, controller])
+
+  // Save — convenience wrapper using current noteId
+  const save = useCallback(async () => {
+    if (!noteId || !dirty) return
+    await saveNoteById(noteId)
+  }, [noteId, dirty, saveNoteById])
+
+  // Ref for beforeunload — must always point to the latest noteId
+  const noteIdRef = useRef(noteId)
+  noteIdRef.current = noteId
+
+  // Auto-save on beforeunload (tab close/refresh)
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (dirtyRef.current && noteIdRef.current) {
+        void saveNoteById(noteIdRef.current)
+        e.preventDefault()
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [saveNoteById])
+
+  // Auto-save on note switch — captures noteId in closure so cleanup
+  // saves to the CORRECT note, not the one we're switching TO.
+  // (Using saveRef.current here would be a bug: the ref gets updated
+  // to the new noteId during render, before this cleanup runs.)
+  useEffect(() => {
+    const capturedNoteId = noteId
+    return () => {
+      if (dirtyRef.current && capturedNoteId) {
+        void saveNoteById(capturedNoteId)
+      }
+    }
+  }, [noteId, saveNoteById])
 
   return {
     controller,

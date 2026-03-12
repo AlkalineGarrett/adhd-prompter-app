@@ -15,6 +15,7 @@ import { LOADING_NOTE } from '@/strings'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
+import { getCharIndexAtX, getComputedFont } from '@/editor/TextMeasure'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
@@ -235,6 +236,79 @@ export function NoteEditorScreen() {
     }
   }, [noteId])
 
+  // --- Drag selection across lines ---
+  const editorRef = useRef<HTMLDivElement>(null)
+  const isDraggingRef = useRef(false)
+
+  const handleDragStart = useCallback((anchorGlobalOffset: number) => {
+    isDraggingRef.current = true
+    editorState.selectionAnchor = anchorGlobalOffset
+  }, [editorState])
+
+  const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
+    const editorEl = editorRef.current
+    if (!editorEl) return null
+
+    // Find which line the Y falls in
+    const lineElements = editorEl.querySelectorAll('[data-line-index]')
+    let targetLineIndex = -1
+    for (let i = 0; i < lineElements.length; i++) {
+      const rect = lineElements[i]!.getBoundingClientRect()
+      if (clientY >= rect.top && clientY < rect.bottom) {
+        targetLineIndex = parseInt(lineElements[i]!.getAttribute('data-line-index')!)
+        break
+      }
+    }
+    // Clamp to first/last line if mouse is above/below
+    if (targetLineIndex < 0) {
+      if (clientY < (lineElements[0]?.getBoundingClientRect().top ?? 0)) {
+        targetLineIndex = 0
+      } else {
+        targetLineIndex = editorState.lines.length - 1
+      }
+    }
+
+    const targetLine = editorState.lines[targetLineIndex]
+    if (!targetLine) return null
+
+    // Find the input or selectedContent element within this line for char measurement
+    const lineEl = lineElements[targetLineIndex]
+    const inputEl = lineEl?.querySelector('input') ?? lineEl?.querySelector('[class*="selectedContent"]')
+    if (!inputEl) {
+      // Fallback: use line start or end based on horizontal position
+      const lineStart = editorState.getLineStartOffset(targetLineIndex)
+      return clientX < (lineEl?.getBoundingClientRect().left ?? 0 + 100)
+        ? lineStart
+        : lineStart + targetLine.text.length
+    }
+
+    const rect = inputEl.getBoundingClientRect()
+    const clickX = clientX - rect.left - parseFloat(getComputedStyle(inputEl).paddingLeft)
+    const content = targetLine.content
+    const font = getComputedFont(inputEl as HTMLElement)
+    const charIdx = getCharIndexAtX(content, clickX, font)
+    return editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
+  }, [editorState])
+
+  useEffect(() => {
+    const handleMouseMove = (e: globalThis.MouseEvent) => {
+      if (!isDraggingRef.current) return
+      const globalOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
+      if (globalOffset != null) {
+        editorState.extendSelectionTo(globalOffset)
+      }
+    }
+    const handleMouseUp = () => {
+      isDraggingRef.current = false
+    }
+    document.addEventListener('mousemove', handleMouseMove)
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove)
+      document.removeEventListener('mouseup', handleMouseUp)
+    }
+  }, [editorState, getGlobalOffsetFromPoint])
+
   if (showLoading) {
     return <div className="loading">{LOADING_NOTE}</div>
   }
@@ -260,18 +334,23 @@ export function NoteEditorScreen() {
         saving={saving}
       />
 
-      <div className={`${styles.editor} ${currentNote?.state === 'deleted' ? styles.deletedEditor : ''}`}>
+      <div
+        ref={editorRef}
+        className={`${styles.editor} ${currentNote?.state === 'deleted' ? styles.deletedEditor : ''}`}
+      >
         {editorState.lines.map((_, index) => (
-          <EditorLine
-            key={index}
-            lineIndex={index}
-            controller={controller}
-            editorState={editorState}
-            directiveResults={directiveResults}
-            onDirectiveEdit={handleDirectiveEdit}
-            onDirectiveRefresh={refreshDirective}
-            onViewNoteClick={handleViewNoteClick}
-          />
+          <div key={index} data-line-index={index}>
+            <EditorLine
+              lineIndex={index}
+              controller={controller}
+              editorState={editorState}
+              directiveResults={directiveResults}
+              onDirectiveEdit={handleDirectiveEdit}
+              onDirectiveRefresh={refreshDirective}
+              onViewNoteClick={handleViewNoteClick}
+              onDragStart={handleDragStart}
+            />
+          </div>
         ))}
       </div>
 

@@ -17,8 +17,12 @@ export class EditorState {
   lines: LineState[] = [new LineState('')]
   focusedLineIndex = 0
   selection: EditorSelection = SELECTION_NONE
+  /** Anchor point for shift+click/arrow selection. Global character offset. */
+  selectionAnchor = -1
 
   onTextChange: ((text: string) => void) | null = null
+  /** Called when selection changes (without text changing). Triggers re-render without marking dirty. */
+  onSelectionChange: (() => void) | null = null
 
   private lastSpaceIndentTime = 0
   private _stateVersion = 0
@@ -29,6 +33,7 @@ export class EditorState {
 
   requestFocusUpdate(): void {
     this._stateVersion++
+    this.onSelectionChange?.()
   }
 
   get text(): string {
@@ -61,10 +66,13 @@ export class EditorState {
     const [lineIndex, localOffset] = this.getLineAndLocalOffset(cursorPos)
     this.focusedLineIndex = lineIndex
     this.lines[lineIndex]?.updateFull(this.lines[lineIndex]!.text, localOffset)
+    this.notifySelectionChange()
   }
 
   clearSelection(): void {
+    const hadSelection = hasSel(this.selection)
     this.selection = SELECTION_NONE
+    if (hadSelection) this.notifySelectionChange()
   }
 
   private getEffectiveSelectionRange(fullText: string): [number, number] {
@@ -128,6 +136,29 @@ export class EditorState {
     this.requestFocusUpdate()
     this.notifyChange()
     return newCursorPos
+  }
+
+  /** Extends selection from anchor to the given global offset. Sets anchor from cursor if not yet set. */
+  extendSelectionTo(globalOffset: number): void {
+    if (this.selectionAnchor < 0) {
+      this.selectionAnchor = this.getLineStartOffset(this.focusedLineIndex) +
+        (this.lines[this.focusedLineIndex]?.cursorPosition ?? 0)
+    }
+    if (this.selectionAnchor === globalOffset) {
+      this.clearSelection()
+    } else {
+      this.selection = { start: this.selectionAnchor, end: globalOffset }
+    }
+    const [lineIndex, localOffset] = this.getLineAndLocalOffset(globalOffset)
+    this.focusedLineIndex = lineIndex
+    this.lines[lineIndex]?.updateFull(this.lines[lineIndex]!.text, localOffset)
+    this.requestFocusUpdate()
+  }
+
+  /** Gets the current cursor position as a global character offset. */
+  getCursorGlobalOffset(): number {
+    return this.getLineStartOffset(this.focusedLineIndex) +
+      (this.lines[this.focusedLineIndex]?.cursorPosition ?? 0)
   }
 
   selectAll(): void {
@@ -303,5 +334,9 @@ export class EditorState {
 
   notifyChange(): void {
     this.onTextChange?.(this.text)
+  }
+
+  notifySelectionChange(): void {
+    this.onSelectionChange?.()
   }
 }

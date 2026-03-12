@@ -459,8 +459,10 @@ export class EditorController {
     } else {
       this.state.focusedLineIndex = lineIndex
     }
-    line.updateFull(line.text, Math.max(0, Math.min(position, line.text.length)))
+    const clampedPos = Math.max(0, Math.min(position, line.text.length))
+    line.updateFull(line.text, clampedPos)
     this.state.clearSelection()
+    this.state.selectionAnchor = this.state.getLineStartOffset(lineIndex) + clampedPos
     this.state.requestFocusUpdate()
   }
 
@@ -476,6 +478,7 @@ export class EditorController {
     }
     const line = this.state.lines[lineIndex]
     if (line) line.updateFull(line.text, localOffset)
+    this.state.selectionAnchor = globalOffset
     this.state.requestFocusUpdate()
   }
 
@@ -521,6 +524,7 @@ export class EditorController {
       } else {
         this.state.focusedLineIndex = lineIndex
       }
+      this.state.selectionAnchor = this.state.getLineStartOffset(lineIndex)
       this.state.requestFocusUpdate()
     }
   }
@@ -547,6 +551,10 @@ export class EditorController {
     this.state.setSelection(globalStart, globalEnd)
   }
 
+  extendSelectionTo(globalOffset: number): void {
+    this.state.extendSelectionTo(globalOffset)
+  }
+
   handleSpaceWithSelection(): boolean {
     if (!this.state.hasSelection) return false
     this.undoManager.recordCommand(this.state.lines, this.state.focusedLineIndex, CommandType.INDENT)
@@ -561,7 +569,6 @@ export class EditorController {
     this.undoManager.recordCommand(this.state.lines, this.state.focusedLineIndex, CommandType.CHECKBOX)
     line.toggleCheckboxState()
     this.undoManager.commitAfterCommand(this.state.lines, this.state.focusedLineIndex, CommandType.CHECKBOX)
-    this.state.requestFocusUpdate()
     this.state.notifyChange()
   }
 

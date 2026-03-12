@@ -54,6 +54,7 @@
   --color-surface-hover: #f0f0f0;
   --color-surface-alt: #f5f5f5;
   --color-surface-focus: #f8f9ff;
+  --color-selection: rgba(51, 143, 255, 0.3);
 
   /* Directive view */
   --color-view-border: #B0BEC5;
