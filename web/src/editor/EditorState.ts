@@ -75,14 +75,14 @@ export class EditorState {
     if (hadSelection) this.notifySelectionChange()
   }
 
-  private getEffectiveSelectionRange(fullText: string): [number, number] {
-    return SC.getEffectiveSelectionRange(fullText, this.selection)
+  getEffectiveSelectionRange(): [number, number] {
+    return SC.getEffectiveSelectionRange(this.text, this.selection)
   }
 
   getSelectedText(): string {
     if (!this.hasSelection) return ''
     const fullText = this.text
-    const [selStart, selEnd] = this.getEffectiveSelectionRange(fullText)
+    const [selStart, selEnd] = this.getEffectiveSelectionRange()
     return fullText.substring(selStart, selEnd)
   }
 
@@ -90,7 +90,7 @@ export class EditorState {
     if (!this.hasSelection) return -1
 
     const fullText = this.text
-    const [selStart, selEnd] = this.getEffectiveSelectionRange(fullText)
+    const [selStart, selEnd] = this.getEffectiveSelectionRange()
     const newText = fullText.substring(0, selStart) + fullText.substring(selEnd)
     const newCursorPos = selStart
 
@@ -113,7 +113,7 @@ export class EditorState {
     let newText: string
 
     if (this.hasSelection) {
-      const [selStart, selEnd] = this.getEffectiveSelectionRange(fullText)
+      const [selStart, selEnd] = this.getEffectiveSelectionRange()
       insertPos = selStart
       newText = fullText.substring(0, selStart) + replacement + fullText.substring(selEnd)
     } else {

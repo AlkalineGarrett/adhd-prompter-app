@@ -152,15 +152,12 @@ export function NoteEditorScreen() {
   }, [noteId, loading])
 
   // Update tab display text when title changes (without reordering)
-  const prevFirstLineRef = useRef<string>('')
+  const firstLineText = editorState.lines[0]?.text ?? ''
   useEffect(() => {
     if (!noteId || loading) return
-    const firstLine = editorState.lines[0]?.text ?? ''
-    if (firstLine === prevFirstLineRef.current) return
-    prevFirstLineRef.current = firstLine
-    const displayText = extractDisplayText(firstLine)
+    const displayText = extractDisplayText(firstLineText)
     void updateTabDisplayText(noteId, displayText)
-  }, [noteId, loading, editorState.lines])
+  }, [noteId, loading, firstLineText])
 
   // Save with directive execution
   const saveWithDirectives = useCallback(async () => {

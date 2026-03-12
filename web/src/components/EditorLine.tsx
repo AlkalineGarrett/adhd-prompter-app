@@ -115,7 +115,7 @@ export function EditorLine({
           controller.cutSelection()
           return
         }
-        if (e.key === 'v' && hasSel) {
+        if (e.key === 'v') {
           e.preventDefault()
           void navigator.clipboard.readText().then((text) => {
             controller.paste(text)

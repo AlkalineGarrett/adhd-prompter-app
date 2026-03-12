@@ -180,12 +180,12 @@ export class EditorController {
   cutSelection(): string | null {
     if (!this.state.hasSelection) return null
     return this.executeOperation(OperationType.CUT, () => {
-      const text = this.state.getSelectedText()
-      if (text.length > 0) {
-        void navigator.clipboard.writeText(text)
+      const clipText = this.getClipboardText()
+      if (clipText.length > 0) {
+        void navigator.clipboard.writeText(clipText)
         this.state.deleteSelectionInternal()
       }
-      return text.length > 0 ? text : null
+      return clipText.length > 0 ? clipText : null
     })
   }
 
@@ -265,8 +265,30 @@ export class EditorController {
     return newRange != null
   }
 
-  copySelection(): void {
+  /** Returns clipboard text, prepending the first line's prefix for multi-line selections. */
+  private getClipboardText(): string {
     const text = this.state.getSelectedText()
+    if (text.length === 0 || !text.includes('\n')) return text
+
+    // Multi-line: prepend the first line's prefix (indent + bullet/checkbox)
+    // so pasted content preserves structure. Characters between prefix end
+    // and selection start are skipped.
+    const [selStart] = this.state.getEffectiveSelectionRange()
+    const [lineIndex] = this.state.getLineAndLocalOffset(selStart)
+    const firstLine = this.state.lines[lineIndex]
+    if (firstLine) {
+      const prefix = firstLine.prefix
+      const lineStart = this.state.getLineStartOffset(lineIndex)
+      const selLocalOffset = selStart - lineStart
+      if (prefix.length > 0 && selLocalOffset >= prefix.length) {
+        return prefix + text
+      }
+    }
+    return text
+  }
+
+  copySelection(): void {
+    const text = this.getClipboardText()
     if (text.length > 0) {
       void navigator.clipboard.writeText(text)
     }
