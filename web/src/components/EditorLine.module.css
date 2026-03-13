@@ -4,6 +4,19 @@
   min-height: 1.5rem;
 }
 
+.selectionGutter {
+  width: 1.25rem;
+  flex-shrink: 0;
+  background: var(--color-gutter-bg);
+  border-bottom: 1px solid var(--color-gutter-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.selectionGutter.selected {
+  background: var(--color-gutter-selected);
+}
+
 .line.focused {
   background: var(--color-surface-focus);
 }
@@ -83,4 +96,9 @@
   color: transparent;
   /* Extend background to cover full line-height (clipped by overflow:hidden on overlay) */
   padding-block: 1rem;
+}
+
+/* Grab cursor over selected text to indicate draggable */
+.input.grabbable {
+  cursor: grab;
 }

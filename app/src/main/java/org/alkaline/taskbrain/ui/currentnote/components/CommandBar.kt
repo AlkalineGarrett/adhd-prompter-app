@@ -11,7 +11,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import android.content.ClipboardManager
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -36,13 +38,14 @@ fun CommandBar(
     onMoveDown: () -> Unit,
     moveUpState: MoveButtonState,
     moveDownState: MoveButtonState,
-    onPaste: (String) -> Unit,
+    onPaste: (plainText: String, html: String?) -> Unit,
     isPasteEnabled: Boolean,
     onAddAlarm: () -> Unit,
     isAlarmEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     Row(
         modifier = modifier
@@ -144,7 +147,10 @@ fun CommandBar(
             onClick = {
                 val clipText = clipboardManager.getText()?.text ?: ""
                 if (clipText.isNotEmpty()) {
-                    onPaste(clipText)
+                    val nativeClip = (context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? ClipboardManager)
+                        ?.primaryClip?.getItemAt(0)
+                    val htmlText = nativeClip?.htmlText
+                    onPaste(clipText, htmlText)
                 }
             },
             enabled = isPasteEnabled,

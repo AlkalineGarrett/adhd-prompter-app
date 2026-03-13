@@ -37,6 +37,13 @@ export function getCharIndexAtX(text: string, x: number, font: string): number {
   return lo
 }
 
+/** Returns the pixel X offset for a given character index in `text`. */
+export function getXAtCharIndex(text: string, charIndex: number, font: string): number {
+  if (charIndex <= 0 || text.length === 0) return 0
+  const ctx = getContext(font)
+  return ctx.measureText(text.substring(0, charIndex)).width
+}
+
 /** Returns [start, end) bounds of the word at the given character index. */
 export function getWordBoundsAt(text: string, charIndex: number): [number, number] {
   const isWordChar = (c: string) => /\w/.test(c)

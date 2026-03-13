@@ -2,6 +2,8 @@ import { LineState } from './LineState'
 import { EditorState } from './EditorState'
 import { CommandType, UndoManager, type UndoSnapshot } from './UndoManager'
 import * as LP from './LinePrefixes'
+import { parseClipboardContent } from './ClipboardParser'
+import { executePaste } from './PasteHandler'
 
 export enum OperationType {
   COMMAND_BULLET = 'COMMAND_BULLET',
@@ -171,10 +173,25 @@ export class EditorController {
     })
   }
 
-  paste(text: string): number {
-    return this.executeOperation(OperationType.PASTE, () =>
-      this.state.replaceSelectionInternal(text),
-    )
+  paste(plainText: string, html?: string | null): void {
+    this.executeOperation(OperationType.PASTE, () => {
+      const parsed = parseClipboardContent(plainText, html ?? null)
+      const result = executePaste(
+        this.state.lines,
+        this.state.focusedLineIndex,
+        this.state.selection,
+        parsed,
+      )
+      this.state.lines = result.lines
+      this.state.focusedLineIndex = result.cursorLineIndex
+      this.state.lines[result.cursorLineIndex]?.updateFull(
+        this.state.lines[result.cursorLineIndex]!.text,
+        result.cursorPosition,
+      )
+      this.state.clearSelection()
+      this.state.requestFocusUpdate()
+      this.state.notifyChange()
+    })
   }
 
   cutSelection(): string | null {
@@ -285,6 +302,35 @@ export class EditorController {
       }
     }
     return text
+  }
+
+  moveSelectionTo(targetGlobalOffset: number): void {
+    if (!this.state.hasSelection) return
+    const [selStart, selEnd] = this.state.getEffectiveSelectionRange()
+    // No-op if dropping inside the selection
+    if (targetGlobalOffset >= selStart && targetGlobalOffset <= selEnd) return
+
+    this.undoManager.captureStateBeforeChange(this.state.lines, this.state.focusedLineIndex)
+
+    const text = this.state.getSelectedText()
+    const fullText = this.state.text
+    const withoutSelection = fullText.substring(0, selStart) + fullText.substring(selEnd)
+    const adjustedTarget = targetGlobalOffset > selEnd
+      ? targetGlobalOffset - (selEnd - selStart)
+      : targetGlobalOffset
+    const newText = withoutSelection.substring(0, adjustedTarget) + text + withoutSelection.substring(adjustedTarget)
+
+    this.state.updateFromText(newText)
+    this.state.clearSelection()
+
+    const cursorPos = adjustedTarget + text.length
+    const [lineIndex, localOffset] = this.state.getLineAndLocalOffset(cursorPos)
+    this.state.focusedLineIndex = lineIndex
+    this.state.lines[lineIndex]?.updateFull(this.state.lines[lineIndex]!.text, localOffset)
+
+    this.state.requestFocusUpdate()
+    this.state.notifyChange()
+    this.undoManager.beginEditingLine(this.state.lines, this.state.focusedLineIndex, this.state.focusedLineIndex)
   }
 
   copySelection(): void {

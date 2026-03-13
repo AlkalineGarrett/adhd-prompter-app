@@ -992,7 +992,7 @@ fun CurrentNoteScreen(
             },
             moveUpState = activeController.getMoveUpState(),
             moveDownState = activeController.getMoveDownState(),
-            onPaste = { clipText -> activeController.paste(clipText) },
+            onPaste = { clipText, html -> activeController.paste(clipText, html) },
             isPasteEnabled = (isMainContentFocused || inlineEditState.isActive) &&
                 !(inlineEditState.activeSession?.editorState?.hasSelection ?: editorState.hasSelection),
             onAddAlarm = {

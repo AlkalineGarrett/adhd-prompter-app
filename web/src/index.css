@@ -56,6 +56,11 @@
   --color-surface-focus: #f8f9ff;
   --color-selection: rgba(51, 143, 255, 0.3);
 
+  /* Selection gutter (matches Android LineGutter colors) */
+  --color-gutter-bg: #E0E0E0;
+  --color-gutter-border: #9E9E9E;
+  --color-gutter-selected: #90CAF9;
+
   /* Directive view */
   --color-view-border: #B0BEC5;
   --color-view-divider: #E0E0E0;

@@ -1,5 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote.ime
 
+import android.content.ClipboardManager
+import android.content.Context
 import android.view.KeyEvent
 import android.view.inputmethod.ExtractedText
 import androidx.compose.runtime.getValue
@@ -143,6 +145,11 @@ class LineImeState(
     private var lastNotifiedComposingStart: Int = -1
     private var lastNotifiedComposingEnd: Int = -1
 
+    // Paste suppression: when we handle paste via performContextMenuAction,
+    // some IMEs also deliver the pasted text via commitText. This flag tells
+    // commitText to ignore that redundant delivery.
+    private var suppressNextCommit: Boolean = false
+
     // Public read access
     val text: String get() = buffer.text
     val cursorPosition: Int get() = buffer.cursor
@@ -153,6 +160,7 @@ class LineImeState(
     // =========================================================================
 
     fun syncFromController() {
+        suppressNextCommit = false
         val content = controller.getLineContent(lineIndex)
         val cursor = controller.getContentCursor(lineIndex)
         buffer.reset(content, cursor)
@@ -254,6 +262,14 @@ class LineImeState(
     // =========================================================================
 
     fun commitText(text: String, newCursorPosition: Int) {
+        // If a structured paste just happened via performContextMenuAction,
+        // the IME may redundantly deliver the pasted text via commitText.
+        // Skip it to avoid double-insertion.
+        if (suppressNextCommit) {
+            suppressNextCommit = false
+            return
+        }
+
         // Check for user selection - handle specially
         if (controller.hasSelection()) {
             if (text == " ") {
@@ -290,6 +306,9 @@ class LineImeState(
     }
 
     fun setComposingText(text: String, newCursorPosition: Int) {
+        // Any composing text means the user started typing, not a paste follow-up
+        suppressNextCommit = false
+
         if (controller.hasSelection()) {
             controller.replaceSelectionNoUndo(text)
             syncFromController()
@@ -344,6 +363,9 @@ class LineImeState(
     }
 
     fun deleteSurroundingText(beforeLength: Int, afterLength: Int) {
+        // Any delete means the user is interacting, not a paste follow-up
+        suppressNextCommit = false
+
         if (controller.hasSelection()) {
             controller.deleteSelectionNoUndo()
             syncFromController()
@@ -393,5 +415,51 @@ class LineImeState(
             }
         }
         return false
+    }
+
+    // =========================================================================
+    // Structured paste via IME context menu
+    // =========================================================================
+
+    /**
+     * Handles paste from the soft keyboard context menu (long-press paste).
+     * Reads the clipboard and routes through EditorController.paste() for
+     * structured paste handling (prefix merging, indent shifting, etc.).
+     *
+     * Sets [suppressNextCommit] so that the redundant commitText call
+     * that some IMEs send after performContextMenuAction(paste) is ignored.
+     *
+     * @return true if paste was handled, false if clipboard was empty
+     */
+    fun handlePaste(context: Context): Boolean {
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            ?: return false
+        val clip = clipboardManager.primaryClip ?: return false
+        if (clip.itemCount == 0) return false
+
+        val item = clip.getItemAt(0)
+        val plainText = item.text?.toString() ?: return false
+        if (plainText.isEmpty()) return false
+
+        val htmlText = item.htmlText
+
+        // Finish any active composition before pasting
+        if (buffer.hasComposition()) {
+            buffer.commitComposition()
+            syncBufferToController()
+        }
+
+        // Route through EditorController.paste() for structured handling
+        controller.paste(plainText, htmlText)
+
+        // Sync our buffer from the controller's updated state
+        syncFromController()
+        sendImeNotification()
+
+        // Suppress the next commitText — some IMEs deliver pasted text
+        // both via performContextMenuAction AND commitText
+        suppressNextCommit = true
+
+        return true
     }
 }

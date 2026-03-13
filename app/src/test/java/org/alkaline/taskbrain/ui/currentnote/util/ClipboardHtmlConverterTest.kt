@@ -25,20 +25,20 @@ class ClipboardHtmlConverterTest {
     }
 
     @Test
-    fun `convertToHtml converts checkbox to html list item`() {
+    fun `convertToHtml converts checkbox to html list item with input`() {
         val text = "☐ Task"
         val html = convertToHtml(text)
         assertTrue(html.contains("<ul>"))
-        assertTrue(html.contains("<li>Task</li>"))
+        assertTrue(html.contains("""<li><input type="checkbox" disabled>Task</li>"""))
         assertTrue(html.contains("</ul>"))
     }
 
     @Test
-    fun `convertToHtml converts checked checkbox to html list item`() {
+    fun `convertToHtml converts checked checkbox to html list item with checked input`() {
         val text = "☑ Done"
         val html = convertToHtml(text)
         assertTrue(html.contains("<ul>"))
-        assertTrue(html.contains("<li>Done</li>"))
+        assertTrue(html.contains("""<li><input type="checkbox" checked disabled>Done</li>"""))
         assertTrue(html.contains("</ul>"))
     }
 
@@ -105,8 +105,8 @@ class ClipboardHtmlConverterTest {
         val text = "• Bullet\n☐ Unchecked\n☑ Checked"
         val html = convertToHtml(text)
         assertTrue(html.contains("<li>Bullet</li>"))
-        assertTrue(html.contains("<li>Unchecked</li>"))
-        assertTrue(html.contains("<li>Checked</li>"))
+        assertTrue(html.contains("""<li><input type="checkbox" disabled>Unchecked</li>"""))
+        assertTrue(html.contains("""<li><input type="checkbox" checked disabled>Checked</li>"""))
     }
 
     @Test
@@ -123,6 +123,6 @@ class ClipboardHtmlConverterTest {
         val text = "• Parent\n\t☐ Child task"
         val html = convertToHtml(text)
         assertTrue(html.contains("<li>Parent</li>"))
-        assertTrue(html.contains("<li>Child task</li>"))
+        assertTrue(html.contains("""<li><input type="checkbox" disabled>Child task</li>"""))
     }
 }

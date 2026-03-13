@@ -9,9 +9,23 @@
 .editor {
   flex: 1;
   padding: 0.5rem 0;
+  position: relative;
 }
 
 .deletedEditor {
   background: var(--color-deleted-bg);
   opacity: 0.6;
+}
+
+.editor.moveDragging,
+.editor.moveDragging * {
+  cursor: grabbing !important;
+}
+
+.dropCursor {
+  position: absolute;
+  width: 2px;
+  background: var(--color-text);
+  pointer-events: none;
+  z-index: 10;
 }

@@ -15,7 +15,7 @@ import { LOADING_NOTE } from '@/strings'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
-import { getCharIndexAtX, getComputedFont } from '@/editor/TextMeasure'
+import { getCharIndexAtX, getXAtCharIndex, getComputedFont } from '@/editor/TextMeasure'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
@@ -206,20 +206,63 @@ export function NoteEditorScreen() {
   }, [saveWithDirectives])
 
 
+  // --- Gutter selection (select whole lines by click/drag) ---
+  const gutterAnchorRef = useRef(-1)
+
+  const selectLineRange = useCallback((fromLine: number, toLine: number) => {
+    const first = Math.max(0, Math.min(fromLine, toLine))
+    const last = Math.min(editorState.lines.length - 1, Math.max(fromLine, toLine))
+    const start = editorState.getLineStartOffset(first)
+    const lastLine = editorState.lines[last]
+    const end = editorState.getLineStartOffset(last) + (lastLine?.text.length ?? 0)
+    controller.setSelection(start, end)
+  }, [editorState, controller])
+
+  const handleGutterDragStart = useCallback((lineIndex: number) => {
+    gutterAnchorRef.current = lineIndex
+    selectLineRange(lineIndex, lineIndex)
+  }, [selectLineRange])
+
+  const handleGutterDragUpdate = useCallback((lineIndex: number) => {
+    if (gutterAnchorRef.current < 0) return
+    selectLineRange(gutterAnchorRef.current, lineIndex)
+  }, [selectLineRange])
+
+  // Reset gutter drag anchor on mouseup anywhere
+  useEffect(() => {
+    const handleMouseUp = () => { gutterAnchorRef.current = -1 }
+    document.addEventListener('mouseup', handleMouseUp)
+    return () => document.removeEventListener('mouseup', handleMouseUp)
+  }, [])
+
   // --- Drag selection across lines ---
   const editorRef = useRef<HTMLDivElement>(null)
+  const dropCursorRef = useRef<HTMLDivElement>(null)
   const isDraggingRef = useRef(false)
+  const isMoveDraggingRef = useRef(false)
 
   const handleDragStart = useCallback((anchorGlobalOffset: number) => {
     isDraggingRef.current = true
     editorState.selectionAnchor = anchorGlobalOffset
   }, [editorState])
 
-  const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
+  const handleMoveStart = useCallback(() => {
+    isMoveDraggingRef.current = true
+    editorRef.current?.classList.add(styles.moveDragging!)
+  }, [])
+
+  interface HitResult {
+    globalOffset: number
+    lineIndex: number
+    charIndex: number
+    inputEl: Element | null
+    lineEl: Element | null
+  }
+
+  const hitTestFromPoint = useCallback((clientX: number, clientY: number): HitResult | null => {
     const editorEl = editorRef.current
     if (!editorEl) return null
 
-    // Find which line the Y falls in
     const lineElements = editorEl.querySelectorAll('[data-line-index]')
     let targetLineIndex = -1
     for (let i = 0; i < lineElements.length; i++) {
@@ -229,7 +272,6 @@ export function NoteEditorScreen() {
         break
       }
     }
-    // Clamp to first/last line if mouse is above/below
     if (targetLineIndex < 0) {
       if (clientY < (lineElements[0]?.getBoundingClientRect().top ?? 0)) {
         targetLineIndex = 0
@@ -241,15 +283,14 @@ export function NoteEditorScreen() {
     const targetLine = editorState.lines[targetLineIndex]
     if (!targetLine) return null
 
-    // Find the input or selectedContent element within this line for char measurement
-    const lineEl = lineElements[targetLineIndex]
-    const inputEl = lineEl?.querySelector('input') ?? lineEl?.querySelector('[class*="selectedContent"]')
+    const lineEl = lineElements[targetLineIndex] ?? null
+    const inputEl = lineEl?.querySelector('input') ?? lineEl?.querySelector('[class*="selectedContent"]') ?? null
     if (!inputEl) {
-      // Fallback: use line start or end based on horizontal position
       const lineStart = editorState.getLineStartOffset(targetLineIndex)
-      return clientX < (lineEl?.getBoundingClientRect().left ?? 0 + 100)
+      const offset = clientX < (lineEl?.getBoundingClientRect().left ?? 100)
         ? lineStart
         : lineStart + targetLine.text.length
+      return { globalOffset: offset, lineIndex: targetLineIndex, charIndex: 0, inputEl: null, lineEl }
     }
 
     const rect = inputEl.getBoundingClientRect()
@@ -257,18 +298,67 @@ export function NoteEditorScreen() {
     const content = targetLine.content
     const font = getComputedFont(inputEl as HTMLElement)
     const charIdx = getCharIndexAtX(content, clickX, font)
-    return editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
+    const globalOffset = editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
+    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl, lineEl }
   }, [editorState])
+
+  const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
+    return hitTestFromPoint(clientX, clientY)?.globalOffset ?? null
+  }, [hitTestFromPoint])
+
+  const positionDropCursor = useCallback((clientX: number, clientY: number) => {
+    const cursor = dropCursorRef.current
+    const editorEl = editorRef.current
+    if (!cursor || !editorEl) return
+
+    const hit = hitTestFromPoint(clientX, clientY)
+    if (!hit?.inputEl) {
+      cursor.style.display = 'none'
+      return
+    }
+
+    const line = editorState.lines[hit.lineIndex]
+    if (!line) return
+
+    const font = getComputedFont(hit.inputEl as HTMLElement)
+    const xInInput = getXAtCharIndex(line.content, hit.charIndex, font)
+
+    const inputRect = hit.inputEl.getBoundingClientRect()
+    const editorRect = editorEl.getBoundingClientRect()
+    const paddingLeft = parseFloat(getComputedStyle(hit.inputEl).paddingLeft)
+
+    cursor.style.display = 'block'
+    cursor.style.left = `${inputRect.left - editorRect.left + paddingLeft + xInInput}px`
+    cursor.style.top = `${inputRect.top - editorRect.top}px`
+    cursor.style.height = `${inputRect.height}px`
+  }, [editorState, hitTestFromPoint])
 
   useEffect(() => {
     const handleMouseMove = (e: globalThis.MouseEvent) => {
-      if (!isDraggingRef.current) return
-      const globalOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
-      if (globalOffset != null) {
-        editorState.extendSelectionTo(globalOffset)
+      if (!isDraggingRef.current && !isMoveDraggingRef.current) return
+      if (isDraggingRef.current) {
+        const globalOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
+        if (globalOffset != null) {
+          editorState.extendSelectionTo(globalOffset)
+        }
+      } else if (isMoveDraggingRef.current) {
+        positionDropCursor(e.clientX, e.clientY)
       }
     }
-    const handleMouseUp = () => {
+    const hideDropCursor = () => {
+      if (dropCursorRef.current) dropCursorRef.current.style.display = 'none'
+      editorRef.current?.classList.remove(styles.moveDragging!)
+    }
+    const handleMouseUp = (e: globalThis.MouseEvent) => {
+      if (isMoveDraggingRef.current) {
+        isMoveDraggingRef.current = false
+        hideDropCursor()
+        const dropOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
+        if (dropOffset != null) {
+          controller.moveSelectionTo(dropOffset)
+        }
+        return
+      }
       isDraggingRef.current = false
     }
     document.addEventListener('mousemove', handleMouseMove)
@@ -277,7 +367,7 @@ export function NoteEditorScreen() {
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [editorState, getGlobalOffsetFromPoint])
+  }, [editorState, controller, getGlobalOffsetFromPoint, positionDropCursor])
 
   if (showLoading) {
     return <div className="loading">{LOADING_NOTE}</div>
@@ -308,6 +398,7 @@ export function NoteEditorScreen() {
         ref={editorRef}
         className={`${styles.editor} ${currentNote?.state === 'deleted' ? styles.deletedEditor : ''}`}
       >
+        <div ref={dropCursorRef} className={styles.dropCursor} style={{ display: 'none' }} />
         {editorState.lines.map((_, index) => (
           <div key={index} data-line-index={index}>
             <EditorLine
@@ -319,6 +410,9 @@ export function NoteEditorScreen() {
               onDirectiveRefresh={refreshDirective}
               onViewNoteClick={handleViewNoteClick}
               onDragStart={handleDragStart}
+              onGutterDragStart={handleGutterDragStart}
+              onGutterDragUpdate={handleGutterDragUpdate}
+              onMoveStart={handleMoveStart}
             />
           </div>
         ))}

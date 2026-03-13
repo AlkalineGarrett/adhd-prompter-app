@@ -221,7 +221,7 @@ internal class LineImeConnectionNode(
                         android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
                     outAttrs.initialSelStart = state.cursorPosition
                     outAttrs.initialSelEnd = state.cursorPosition
-                    LineInputConnection(state)
+                    LineInputConnection(state, hostView.context)
                 }
                 startInputMethod(request)
             }
@@ -242,7 +242,10 @@ internal fun Modifier.lineImeConnection(state: LineImeState, cursorPosition: Int
 // Input Connection - Thin wrapper that logs and delegates to LineImeState
 // =============================================================================
 
-private class LineInputConnection(private val state: LineImeState) : InputConnection {
+private class LineInputConnection(
+    private val state: LineImeState,
+    private val context: Context
+) : InputConnection {
 
     override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
         if (text != null) {
@@ -345,7 +348,10 @@ private class LineInputConnection(private val state: LineImeState) : InputConnec
 
     override fun performContextMenuAction(id: Int): Boolean {
         return when (id) {
-            android.R.id.paste, android.R.id.pasteAsPlainText -> true
+            android.R.id.paste, android.R.id.pasteAsPlainText -> {
+                state.handlePaste(context)
+                true
+            }
             android.R.id.copy, android.R.id.cut -> true
             else -> false
         }

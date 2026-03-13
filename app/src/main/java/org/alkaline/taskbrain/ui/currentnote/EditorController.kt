@@ -5,7 +5,10 @@ import org.alkaline.taskbrain.ui.currentnote.undo.CommandType
 import org.alkaline.taskbrain.ui.currentnote.undo.UndoManager
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
 import org.alkaline.taskbrain.ui.currentnote.undo.UndoSnapshot
+import org.alkaline.taskbrain.ui.currentnote.selection.SelectionCoordinates
+import org.alkaline.taskbrain.ui.currentnote.util.ClipboardParser
 import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
+import org.alkaline.taskbrain.ui.currentnote.util.PasteHandler
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.ClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -272,11 +275,27 @@ class EditorController(
     }
 
     /**
-     * Pastes text, replacing selection if present.
-     * Always creates its own undo step.
+     * Pastes text with structure-aware handling (prefix merging, indent shifting, etc.).
+     * See docs/paste-requirements.md for the full specification.
      */
-    fun paste(text: String) = executeOperation(OperationType.PASTE) {
-        state.replaceSelectionInternal(text)
+    fun paste(plainText: String, html: String? = null) = executeOperation(OperationType.PASTE) {
+        val parsed = ClipboardParser.parse(plainText, html)
+        val result = PasteHandler.execute(
+            state.lines.toList(),
+            state.focusedLineIndex,
+            state.selection,
+            parsed,
+        )
+        state.lines.clear()
+        state.lines.addAll(result.lines)
+        state.focusedLineIndex = result.cursorLineIndex
+        state.lines.getOrNull(result.cursorLineIndex)?.updateFull(
+            state.lines[result.cursorLineIndex].text,
+            result.cursorPosition,
+        )
+        state.clearSelection()
+        state.requestFocusUpdate()
+        state.notifyChange()
     }
 
     /**
@@ -287,12 +306,12 @@ class EditorController(
     fun cutSelection(clipboard: ClipboardManager): String? {
         if (!state.hasSelection) return null
         return executeOperation(OperationType.CUT) {
-            val text = state.getSelectedText()
-            if (text.isNotEmpty()) {
-                clipboard.setText(AnnotatedString(text))
+            val clipText = getClipboardText()
+            if (clipText.isNotEmpty()) {
+                clipboard.setText(AnnotatedString(clipText))
                 state.deleteSelectionInternal()
             }
-            text.takeIf { it.isNotEmpty() }
+            clipText.takeIf { it.isNotEmpty() }
         }
     }
 
@@ -422,9 +441,34 @@ class EditorController(
      * Copies selected text to clipboard without modifying state.
      */
     fun copySelection(clipboard: ClipboardManager) {
+        val clipText = getClipboardText()
+        if (clipText.isNotEmpty()) {
+            clipboard.setText(AnnotatedString(clipText))
+        }
+    }
+
+    /**
+     * Returns clipboard text, prepending the first line's prefix for multi-line selections.
+     *
+     * When text is selected by touching/dragging on content (not via gutter), the selection
+     * starts after the prefix. For multi-line copy, the prefix needs to be prepended so
+     * the clipboard text preserves structure (checkboxes, bullets, indentation).
+     */
+    private fun getClipboardText(): String {
         val text = state.getSelectedText()
-        if (text.isNotEmpty()) {
-            clipboard.setText(AnnotatedString(text))
+        if (text.isEmpty() || !text.contains('\n')) return text
+
+        val fullText = state.text
+        val (selStart, _) = SelectionCoordinates.getEffectiveSelectionRange(fullText, state.selection)
+        val (lineIndex, _) = state.getLineAndLocalOffset(selStart)
+        val firstLine = state.lines.getOrNull(lineIndex) ?: return text
+        val prefix = firstLine.prefix
+        val lineStart = state.getLineStartOffset(lineIndex)
+        val selLocalOffset = selStart - lineStart
+        return if (prefix.isNotEmpty() && selLocalOffset >= prefix.length) {
+            prefix + text
+        } else {
+            text
         }
     }
 

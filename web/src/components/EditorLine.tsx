@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent, type MouseEvent } from 'react'
+import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent, type MouseEvent, type ClipboardEvent } from 'react'
 import type { EditorController } from '@/editor/EditorController'
 import type { EditorState } from '@/editor/EditorState'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
@@ -18,6 +18,9 @@ interface EditorLineProps {
   onButtonClick?: (key: string) => void
   onViewNoteClick?: (noteId: string) => void
   onDragStart?: (anchorGlobalOffset: number) => void
+  onGutterDragStart?: (lineIndex: number) => void
+  onGutterDragUpdate?: (lineIndex: number) => void
+  onMoveStart?: () => void
 }
 
 export function EditorLine({
@@ -30,6 +33,9 @@ export function EditorLine({
   onButtonClick,
   onViewNoteClick,
   onDragStart,
+  onGutterDragStart,
+  onGutterDragUpdate,
+  onMoveStart,
 }: EditorLineProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const line = editorState.lines[lineIndex]
@@ -116,10 +122,7 @@ export function EditorLine({
           return
         }
         if (e.key === 'v') {
-          e.preventDefault()
-          void navigator.clipboard.readText().then((text) => {
-            controller.paste(text)
-          })
+          // Let the native paste event fire — handled by onPaste
           return
         }
         return
@@ -128,7 +131,7 @@ export function EditorLine({
       // Typing with cross-line selection: replace selection with typed character
       if (hasSel && e.key.length === 1) {
         e.preventDefault()
-        controller.paste(e.key)
+        controller.paste(e.key, null)
         return
       }
 
@@ -242,6 +245,16 @@ export function EditorLine({
     [controller, editorState, lineIndex, content.length],
   )
 
+  const handlePaste = useCallback(
+    (e: ClipboardEvent<HTMLInputElement>) => {
+      e.preventDefault()
+      const plainText = e.clipboardData.getData('text/plain')
+      const html = e.clipboardData.getData('text/html') || null
+      controller.paste(plainText, html)
+    },
+    [controller],
+  )
+
   const getCharIndexFromEvent = useCallback(
     (e: MouseEvent<HTMLInputElement | HTMLDivElement>): number => {
       const target = e.currentTarget
@@ -261,6 +274,15 @@ export function EditorLine({
 
       const charIdx = getCharIndexFromEvent(e)
       const globalOffset = editorState.getLineStartOffset(lineIndex) + prefix.length + charIdx
+
+      // Click inside existing selection: start drag-move
+      if (!e.shiftKey && e.detail === 1 && editorState.hasSelection) {
+        const [selStart, selEnd] = editorState.getEffectiveSelectionRange()
+        if (globalOffset >= selStart && globalOffset <= selEnd) {
+          onMoveStart?.()
+          return
+        }
+      }
 
       if (e.shiftKey) {
         editorState.extendSelectionTo(globalOffset)
@@ -300,6 +322,27 @@ export function EditorLine({
     }
   }, [controller, line.text, lineIndex])
 
+  // Selection gutter: is this line (partially) selected?
+  const isLineSelected = lineSelection != null
+
+  const handleGutterMouseDown = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      onGutterDragStart?.(lineIndex)
+    },
+    [lineIndex, onGutterDragStart],
+  )
+
+  const handleGutterMouseEnter = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      // Only extend if primary button is held (drag in progress)
+      if (e.buttons === 1) {
+        onGutterDragUpdate?.(lineIndex)
+      }
+    },
+    [lineIndex, onGutterDragUpdate],
+  )
+
   // Show directive chips for unfocused lines that contain directives
   const showDirectiveChips = !isFocused && directiveResults && hasDirectives(content)
 
@@ -309,8 +352,13 @@ export function EditorLine({
   return (
     <div
       className={`${styles.line} ${isFocused ? styles.focused : ''}`}
-      style={{ paddingLeft: `${0.25 + indentLevel * 0.6}rem` }}
     >
+      <div
+        className={`${styles.selectionGutter}${isLineSelected ? ` ${styles.selected}` : ''}`}
+        onMouseDown={handleGutterMouseDown}
+        onMouseEnter={handleGutterMouseEnter}
+      />
+      <div style={{ paddingLeft: `${0.25 + indentLevel * 0.6}rem`, display: 'flex', flex: 1, minWidth: 0 }}>
       {displayPrefix ? (
         <div className={styles.gutter} onClick={handleGutterClick}>
           <span className={styles.prefix}>{displayPrefix}</span>
@@ -332,11 +380,12 @@ export function EditorLine({
         <div className={styles.inputWrapper}>
           <input
             ref={inputRef}
-            className={`${styles.input}${showSelectionOverlay ? ` ${styles.nativeSelectionHidden}` : ''}`}
+            className={`${styles.input}${showSelectionOverlay ? ` ${styles.nativeSelectionHidden}` : ''}${hasContentSelection ? ` ${styles.grabbable}` : ''}`}
             value={content}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onMouseDown={handleMouseDown}
+            onPaste={handlePaste}
             onFocus={handleFocus}
             spellCheck={false}
             autoComplete="off"
@@ -351,6 +400,7 @@ export function EditorLine({
           )}
         </div>
       )}
+      </div>
     </div>
   )
 }
