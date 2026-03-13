@@ -199,8 +199,9 @@ function applyStructuredPaste(
   // Trailing half (text after cursor / after selection end)
   const trailingContent = trailingText.substring(extractPrefix(trailingText).length)
   const hasTrailingContent = trailingContent.length > 0
-  if (hasTrailingContent) {
-    // Trailing half inherits the original line's prefix
+  // Preserve trailing half if it has content, or if cursor was at the start
+  // of the line (no leading content) — the original line scoots down
+  if (hasTrailingContent || !hasLeadingContent) {
     const trailingLine = trailingPrefix + trailingContent
     result.push(new LineState(trailingLine))
   }

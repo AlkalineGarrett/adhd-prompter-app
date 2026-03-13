@@ -13,6 +13,7 @@ export enum OperationType {
   CUT = 'CUT',
   DELETE_SELECTION = 'DELETE_SELECTION',
   CHECKBOX_TOGGLE = 'CHECKBOX_TOGGLE',
+  ALARM_SYMBOL = 'ALARM_SYMBOL',
   MOVE_LINES = 'MOVE_LINES',
   DIRECTIVE_EDIT = 'DIRECTIVE_EDIT',
 }
@@ -107,6 +108,7 @@ export class EditorController {
       case OperationType.DELETE_SELECTION:
         um.captureStateBeforeChange(s.lines, s.focusedLineIndex)
         break
+      case OperationType.ALARM_SYMBOL:
       case OperationType.DIRECTIVE_EDIT:
         um.commitPendingUndoState(s.lines, s.focusedLineIndex)
         um.captureStateBeforeChange(s.lines, s.focusedLineIndex)
@@ -132,6 +134,7 @@ export class EditorController {
         um.beginEditingLine(s.lines, s.focusedLineIndex, s.focusedLineIndex)
         break
       case OperationType.COMMAND_INDENT:
+      case OperationType.ALARM_SYMBOL:
       case OperationType.MOVE_LINES:
         break
     }
@@ -197,7 +200,7 @@ export class EditorController {
   cutSelection(): string | null {
     if (!this.state.hasSelection) return null
     return this.executeOperation(OperationType.CUT, () => {
-      const clipText = this.getClipboardText()
+      const clipText = this.getSelectedTextWithPrefix()
       if (clipText.length > 0) {
         void navigator.clipboard.writeText(clipText)
         this.state.deleteSelectionInternal()
@@ -210,6 +213,12 @@ export class EditorController {
     if (!this.state.hasSelection) return
     this.executeOperation(OperationType.DELETE_SELECTION, () => {
       this.state.deleteSelectionInternal()
+    })
+  }
+
+  insertAtEndOfCurrentLine(text: string): void {
+    this.executeOperation(OperationType.ALARM_SYMBOL, () => {
+      this.state.insertAtEndOfCurrentLineInternal(text)
     })
   }
 
@@ -282,22 +291,20 @@ export class EditorController {
     return newRange != null
   }
 
-  /** Returns clipboard text, prepending the first line's prefix for multi-line selections. */
-  private getClipboardText(): string {
+  /** Returns the selected text, prepending the first line's prefix when selection starts at content boundary. */
+  private getSelectedTextWithPrefix(): string {
     const text = this.state.getSelectedText()
-    if (text.length === 0 || !text.includes('\n')) return text
+    if (text.length === 0) return text
 
-    // Multi-line: prepend the first line's prefix (indent + bullet/checkbox)
-    // so pasted content preserves structure. Characters between prefix end
-    // and selection start are skipped.
+    // Only prepend prefix when selection starts exactly at the content boundary
+    // (right after the prefix), meaning the full content from the start is selected.
+    // Partial selections within content are returned as-is.
     const [selStart] = this.state.getEffectiveSelectionRange()
-    const [lineIndex] = this.state.getLineAndLocalOffset(selStart)
+    const [lineIndex, selLocalOffset] = this.state.getLineAndLocalOffset(selStart)
     const firstLine = this.state.lines[lineIndex]
     if (firstLine) {
       const prefix = firstLine.prefix
-      const lineStart = this.state.getLineStartOffset(lineIndex)
-      const selLocalOffset = selStart - lineStart
-      if (prefix.length > 0 && selLocalOffset >= prefix.length) {
+      if (prefix.length > 0 && selLocalOffset === prefix.length) {
         return prefix + text
       }
     }
@@ -312,21 +319,37 @@ export class EditorController {
 
     this.undoManager.captureStateBeforeChange(this.state.lines, this.state.focusedLineIndex)
 
-    const text = this.state.getSelectedText()
-    const fullText = this.state.text
-    const withoutSelection = fullText.substring(0, selStart) + fullText.substring(selEnd)
+    // Get clipboard text with prefix (same as cut)
+    const clipText = this.getSelectedTextWithPrefix()
+
+    // Delete the selection
+    this.state.deleteSelectionInternal()
+
+    // Adjust target offset for removed text
     const adjustedTarget = targetGlobalOffset > selEnd
       ? targetGlobalOffset - (selEnd - selStart)
       : targetGlobalOffset
-    const newText = withoutSelection.substring(0, adjustedTarget) + text + withoutSelection.substring(adjustedTarget)
 
-    this.state.updateFromText(newText)
-    this.state.clearSelection()
-
-    const cursorPos = adjustedTarget + text.length
-    const [lineIndex, localOffset] = this.state.getLineAndLocalOffset(cursorPos)
+    // Position cursor at the drop target
+    const [lineIndex, localOffset] = this.state.getLineAndLocalOffset(adjustedTarget)
     this.state.focusedLineIndex = lineIndex
     this.state.lines[lineIndex]?.updateFull(this.state.lines[lineIndex]!.text, localOffset)
+
+    // Parse and paste using the structured paste system (same as paste)
+    const parsed = parseClipboardContent(clipText, null)
+    const result = executePaste(
+      this.state.lines,
+      this.state.focusedLineIndex,
+      this.state.selection,
+      parsed,
+    )
+    this.state.lines = result.lines
+    this.state.focusedLineIndex = result.cursorLineIndex
+    this.state.lines[result.cursorLineIndex]?.updateFull(
+      this.state.lines[result.cursorLineIndex]!.text,
+      result.cursorPosition,
+    )
+    this.state.clearSelection()
 
     this.state.requestFocusUpdate()
     this.state.notifyChange()
@@ -334,7 +357,7 @@ export class EditorController {
   }
 
   copySelection(): void {
-    const text = this.getClipboardText()
+    const text = this.getSelectedTextWithPrefix()
     if (text.length > 0) {
       void navigator.clipboard.writeText(text)
     }

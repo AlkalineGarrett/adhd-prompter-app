@@ -204,7 +204,8 @@ describe('combined scenarios from spec', () => {
       parsed(0, '☐ ', 'one'),
       parsed(0, '☐ ', 'two'),
     ])
-    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two'])
+    // Empty bullet line scoots down
+    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two', '• '])
   })
 
   it('multi-line paste onto prefix-only line (source has no prefix)', () => {
@@ -213,8 +214,8 @@ describe('combined scenarios from spec', () => {
       parsed(0, '', 'one'),
       parsed(0, '', 'two'),
     ])
-    // Adopt destination bullet
-    expect(lineTexts(result.lines)).toEqual(['• one', '• two'])
+    // Adopt destination bullet; empty bullet line scoots down
+    expect(lineTexts(result.lines)).toEqual(['• one', '• two', '• '])
   })
 
   it('external plain text paste onto checkbox line', () => {
@@ -224,7 +225,8 @@ describe('combined scenarios from spec', () => {
       parsed(0, '', 'two'),
       parsed(0, '', 'three'),
     ])
-    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two', '☐ three'])
+    // Empty checkbox line scoots down
+    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two', '☐ three', '☐ '])
   })
 
   it('partial multi-line selection replacement', () => {
@@ -239,12 +241,13 @@ describe('combined scenarios from spec', () => {
     expect(lineTexts(result.lines)).toEqual(['• he', '☐ one', '☐ two', '• ld'])
   })
 
-  it('paste onto empty line', () => {
+  it('paste onto empty line scoots it down', () => {
     const ls = withCursor(lines(''), 0, 0)
     const result = executePaste(ls, 0, SELECTION_NONE, [
       parsed(0, '☐ ', 'one'),
       parsed(0, '☐ ', 'two'),
     ])
-    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two'])
+    // Empty line scoots down
+    expect(lineTexts(result.lines)).toEqual(['☐ one', '☐ two', ''])
   })
 })

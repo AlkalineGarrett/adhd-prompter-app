@@ -306,7 +306,7 @@ class EditorController(
     fun cutSelection(clipboard: ClipboardManager): String? {
         if (!state.hasSelection) return null
         return executeOperation(OperationType.CUT) {
-            val clipText = getClipboardText()
+            val clipText = getSelectedTextWithPrefix()
             if (clipText.isNotEmpty()) {
                 clipboard.setText(AnnotatedString(clipText))
                 state.deleteSelectionInternal()
@@ -441,31 +441,30 @@ class EditorController(
      * Copies selected text to clipboard without modifying state.
      */
     fun copySelection(clipboard: ClipboardManager) {
-        val clipText = getClipboardText()
+        val clipText = getSelectedTextWithPrefix()
         if (clipText.isNotEmpty()) {
             clipboard.setText(AnnotatedString(clipText))
         }
     }
 
     /**
-     * Returns clipboard text, prepending the first line's prefix for multi-line selections.
-     *
-     * When text is selected by touching/dragging on content (not via gutter), the selection
-     * starts after the prefix. For multi-line copy, the prefix needs to be prepended so
-     * the clipboard text preserves structure (checkboxes, bullets, indentation).
+     * Returns the selected text, prepending the first line's prefix when the selection
+     * starts at the beginning of content (right after the prefix). This ensures
+     * cut/copy of full line content preserves structure (checkboxes, bullets, indentation),
+     * while partial selections within content are returned as-is.
      */
-    private fun getClipboardText(): String {
+    private fun getSelectedTextWithPrefix(): String {
         val text = state.getSelectedText()
-        if (text.isEmpty() || !text.contains('\n')) return text
+        if (text.isEmpty()) return text
 
         val fullText = state.text
         val (selStart, _) = SelectionCoordinates.getEffectiveSelectionRange(fullText, state.selection)
-        val (lineIndex, _) = state.getLineAndLocalOffset(selStart)
+        val (lineIndex, selLocalOffset) = state.getLineAndLocalOffset(selStart)
         val firstLine = state.lines.getOrNull(lineIndex) ?: return text
         val prefix = firstLine.prefix
-        val lineStart = state.getLineStartOffset(lineIndex)
-        val selLocalOffset = selStart - lineStart
-        return if (prefix.isNotEmpty() && selLocalOffset >= prefix.length) {
+        // Only prepend prefix when selection starts exactly at the content boundary
+        // (right after the prefix), meaning the full content from the start is selected
+        return if (prefix.isNotEmpty() && selLocalOffset == prefix.length) {
             prefix + text
         } else {
             text

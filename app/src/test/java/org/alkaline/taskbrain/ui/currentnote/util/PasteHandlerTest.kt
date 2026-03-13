@@ -227,7 +227,8 @@ class PasteHandlerTest {
             parsed(0, "☐ ", "one"),
             parsed(0, "☐ ", "two"),
         ))
-        assertEquals(listOf("☐ one", "☐ two"), lineTexts(result.lines))
+        // Empty bullet line scoots down
+        assertEquals(listOf("☐ one", "☐ two", "• "), lineTexts(result.lines))
     }
 
     @Test
@@ -237,7 +238,8 @@ class PasteHandlerTest {
             parsed(0, "", "one"),
             parsed(0, "", "two"),
         ))
-        assertEquals(listOf("• one", "• two"), lineTexts(result.lines))
+        // Empty bullet line scoots down
+        assertEquals(listOf("• one", "• two", "• "), lineTexts(result.lines))
     }
 
     @Test
@@ -248,7 +250,8 @@ class PasteHandlerTest {
             parsed(0, "", "two"),
             parsed(0, "", "three"),
         ))
-        assertEquals(listOf("☐ one", "☐ two", "☐ three"), lineTexts(result.lines))
+        // Empty checkbox line scoots down
+        assertEquals(listOf("☐ one", "☐ two", "☐ three", "☐ "), lineTexts(result.lines))
     }
 
     @Test
@@ -264,12 +267,13 @@ class PasteHandlerTest {
     }
 
     @Test
-    fun `paste onto empty line`() {
+    fun `paste onto empty line scoots it down`() {
         val ls = withCursor(lines(""), 0, 0)
         val result = PasteHandler.execute(ls, 0, EditorSelection.None, listOf(
             parsed(0, "☐ ", "one"),
             parsed(0, "☐ ", "two"),
         ))
-        assertEquals(listOf("☐ one", "☐ two"), lineTexts(result.lines))
+        // Empty line scoots down
+        assertEquals(listOf("☐ one", "☐ two", ""), lineTexts(result.lines))
     }
 }

@@ -189,7 +189,9 @@ object PasteHandler {
 
         val trailingContent = trailingText.drop(LineState.extractPrefix(trailingText).length)
         val hasTrailingContent = trailingContent.isNotEmpty()
-        if (hasTrailingContent) {
+        // Preserve trailing half if it has content, or if cursor was at the start
+        // of the line (no leading content) — the original line scoots down
+        if (hasTrailingContent || !hasLeadingContent) {
             result.add(LineState(trailingPrefix + trailingContent))
         }
 
