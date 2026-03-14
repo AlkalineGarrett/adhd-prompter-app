@@ -30,6 +30,9 @@
   --color-error-bg: #FFEBEE;
   --color-error-text: #C62828;
 
+  /* Destructive actions (Android: destructive_text) */
+  --color-destructive-text: #B71C1C;
+
   /* Status: warning */
   --color-warning: #FF9800;
   --color-warning-bg: #FFF3E0;

@@ -17,6 +17,7 @@ import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
+import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmStateManager
 import org.alkaline.taskbrain.service.RecurrenceConfigMapper
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
@@ -247,8 +248,15 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
 
     fun deleteAllAlarms() = executeAlarmOperation {
         repository.deleteAllAlarms().also { result ->
-            result.onSuccess {
-                recurringRepository.deleteAll()
+            result.onSuccess { alarmIds ->
+                // Cancel AlarmManager PendingIntents for each deleted alarm
+                val scheduler = AlarmScheduler(getApplication())
+                for (alarmId in alarmIds) {
+                    scheduler.cancelAlarm(alarmId)
+                }
+                recurringRepository.deleteAll().onFailure {
+                    Log.e(TAG, "Failed to delete recurring alarm templates", it)
+                }
             }
         }
     }

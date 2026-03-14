@@ -27,14 +27,13 @@ object AlarmUtils {
      * Returns the highest priority enabled stage type.
      */
     fun determineAlarmTypeForSnooze(alarm: Alarm): AlarmType {
-        val due = alarm.dueTime ?: return AlarmType.ALARM
         return alarm.enabledStages
             .maxByOrNull { stagePriority(it.type) }
             ?.type?.toAlarmType()
             ?: AlarmType.ALARM
     }
 
-    private fun stagePriority(type: AlarmStageType): Int = when (type) {
+    fun stagePriority(type: AlarmStageType): Int = when (type) {
         AlarmStageType.SOUND_ALARM -> 3
         AlarmStageType.LOCK_SCREEN -> 2
         AlarmStageType.NOTIFICATION -> 1

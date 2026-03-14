@@ -554,7 +554,3 @@ private fun CompletedAlarmItem(
     }
 }
 
-private fun formatTime(timestamp: com.google.firebase.Timestamp): String {
-    val dateFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-    return dateFormat.format(timestamp.toDate())
-}

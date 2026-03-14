@@ -14,4 +14,6 @@
     
     <color name="action_button_background">#FF6200EE</color>
     <color name="action_button_text">#FFFFFFFF</color>
+
+    <color name="destructive_text">#FFB71C1C</color>
 </resources>

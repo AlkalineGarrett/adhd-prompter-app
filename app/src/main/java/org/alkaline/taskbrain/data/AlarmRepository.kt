@@ -78,17 +78,21 @@ class AlarmRepository(
     /**
      * Deletes all alarms for the current user.
      */
-    suspend fun deleteAllAlarms(): Result<Unit> = runCatching {
+    suspend fun deleteAllAlarms(): Result<List<String>> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
             val result = alarmsCollection(userId).get().await()
-            val batch = db.batch()
-            for (doc in result.documents) {
-                batch.delete(doc.reference)
+            val alarmIds = result.documents.map { it.id }
+            // Firestore batches are limited to 500 operations
+            for (chunk in result.documents.chunked(500)) {
+                val batch = db.batch()
+                for (doc in chunk) {
+                    batch.delete(doc.reference)
+                }
+                batch.commit().await()
             }
-            batch.commit().await()
             Log.d(TAG, "Deleted all alarms (${result.documents.size} documents)")
-            Unit
+            alarmIds
         }
     }.onFailure { Log.e(TAG, "Error deleting all alarms", it) }
 

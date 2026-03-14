@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
@@ -93,7 +92,7 @@ fun AlarmConfigDialog(
         mutableStateOf(existingRecurrenceConfig ?: RecurrenceConfig())
     }
 
-    val hasAnyThreshold = dueTime != null
+    val hasDueTime = dueTime != null
     val isNewAlarm = existingAlarm == null
     val isPending = existingAlarm?.status == AlarmStatus.PENDING
     val formEnabled = isNewAlarm || isPending
@@ -173,7 +172,7 @@ fun AlarmConfigDialog(
                 // Save/delete buttons
                 BottomButtons(
                     existingAlarm = existingAlarm,
-                    hasAnyThreshold = hasAnyThreshold,
+                    hasDueTime = hasDueTime,
                     formEnabled = formEnabled,
                     dueTime = dueTime,
                     stages = stages,
@@ -406,7 +405,7 @@ private fun StageTimePicker(
 @Composable
 private fun BottomButtons(
     existingAlarm: Alarm?,
-    hasAnyThreshold: Boolean,
+    hasDueTime: Boolean,
     formEnabled: Boolean,
     dueTime: Timestamp?,
     stages: List<AlarmStage>,
@@ -429,7 +428,7 @@ private fun BottomButtons(
                     onDismiss()
                 },
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = Color(0xFFB71C1C)
+                    contentColor = colorResource(R.color.destructive_text)
                 )
             ) {
                 Text(stringResource(R.string.action_delete))
@@ -446,7 +445,7 @@ private fun BottomButtons(
                 }
                 onDismiss()
             },
-            enabled = hasAnyThreshold && formEnabled,
+            enabled = hasDueTime && formEnabled,
             colors = ButtonDefaults.buttonColors(
                 containerColor = colorResource(R.color.action_button_background),
                 contentColor = colorResource(R.color.action_button_text)
