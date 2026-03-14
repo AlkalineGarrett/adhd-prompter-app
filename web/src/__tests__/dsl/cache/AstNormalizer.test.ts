@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { normalize, computeCacheKey } from '../../../dsl/cache/AstNormalizer'
+import { CharClassType } from '../../../dsl/language/Expression'
 import type { Expression } from '../../../dsl/language/Expression'
 
 function numLit(value: number, position = 0): Expression {
@@ -143,7 +144,7 @@ describe('AstNormalizer', () => {
     it('normalizes pattern with char class', () => {
       const expr: Expression = {
         kind: 'PatternExpr',
-        elements: [{ kind: 'CharClass', type: 'DIGIT' as const, position: 0 }],
+        elements: [{ kind: 'CharClass', type: CharClassType.DIGIT, position: 0 }],
         position: 0,
       }
       expect(normalize(expr)).toBe('PATTERN(CHAR(DIGIT))')
@@ -163,7 +164,7 @@ describe('AstNormalizer', () => {
         kind: 'PatternExpr',
         elements: [{
           kind: 'Quantified',
-          element: { kind: 'CharClass', type: 'DIGIT' as const, position: 0 },
+          element: { kind: 'CharClass', type: CharClassType.DIGIT, position: 0 },
           quantifier: { kind: 'Exact', n: 3 },
           position: 0,
         }],
@@ -177,7 +178,7 @@ describe('AstNormalizer', () => {
         kind: 'PatternExpr',
         elements: [{
           kind: 'Quantified',
-          element: { kind: 'CharClass', type: 'LETTER' as const, position: 0 },
+          element: { kind: 'CharClass', type: CharClassType.LETTER, position: 0 },
           quantifier: { kind: 'Range', min: 1, max: 5 },
           position: 0,
         }],
@@ -191,7 +192,7 @@ describe('AstNormalizer', () => {
         kind: 'PatternExpr',
         elements: [{
           kind: 'Quantified',
-          element: { kind: 'CharClass', type: 'ANY' as const, position: 0 },
+          element: { kind: 'CharClass', type: CharClassType.ANY, position: 0 },
           quantifier: { kind: 'Any' },
           position: 0,
         }],

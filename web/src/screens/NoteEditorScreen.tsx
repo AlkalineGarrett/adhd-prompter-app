@@ -15,10 +15,18 @@ import { LOADING_NOTE } from '@/strings'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
-import { getCharIndexAtX, getXAtCharIndex, getComputedFont } from '@/editor/TextMeasure'
+import { getCharOffsetHidingTextarea, getCharRectInElement } from '@/editor/TextMeasure'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
+
+interface HitResult {
+  globalOffset: number
+  lineIndex: number
+  charIndex: number
+  inputEl: Element | null
+  lineEl: Element | null
+}
 
 export function NoteEditorScreen() {
   const { noteId } = useParams<{ noteId: string }>()
@@ -132,14 +140,14 @@ export function NoteEditorScreen() {
     ])
     setAllNotes(notes)
     setCurrentNote(note)
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void executeAndSave(content)
   }, [noteId, editorState, executeAndSave])
 
   // Execute directives when note finishes loading and notes context is available
   useEffect(() => {
     if (loading || !noteId || allNotes.length === 0) return
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void loadAndExecute(content)
   }, [loading, noteId, allNotes.length])
 
@@ -162,7 +170,7 @@ export function NoteEditorScreen() {
   // Save with directive execution
   const saveWithDirectives = useCallback(async () => {
     await save()
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void executeAndSave(content)
   }, [save, editorState, executeAndSave])
 
@@ -176,20 +184,20 @@ export function NoteEditorScreen() {
     const directive = directives.find((d) => d.startOffset === startOffset)
     if (!directive) return
     controller.confirmDirectiveEdit(lineIndex, startOffset, directive.endOffset, newSourceText)
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void executeAndSave(content)
   }, [editorState, controller, executeAndSave])
 
   // Undo/redo with directive re-execution
   const handleUndo = useCallback(() => {
     controller.undo()
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void executeAndSave(content)
   }, [controller, editorState, executeAndSave])
 
   const handleRedo = useCallback(() => {
     controller.redo()
-    const content = editorState.lines.map((l) => l.text).join('\n')
+    const content = editorState.text
     void executeAndSave(content)
   }, [controller, editorState, executeAndSave])
 
@@ -251,14 +259,6 @@ export function NoteEditorScreen() {
     editorRef.current?.classList.add(styles.moveDragging!)
   }, [])
 
-  interface HitResult {
-    globalOffset: number
-    lineIndex: number
-    charIndex: number
-    inputEl: Element | null
-    lineEl: Element | null
-  }
-
   const hitTestFromPoint = useCallback((clientX: number, clientY: number): HitResult | null => {
     const editorEl = editorRef.current
     if (!editorEl) return null
@@ -284,8 +284,8 @@ export function NoteEditorScreen() {
     if (!targetLine) return null
 
     const lineEl = lineElements[targetLineIndex] ?? null
-    const inputEl = lineEl?.querySelector('input') ?? lineEl?.querySelector('[class*="selectedContent"]') ?? null
-    if (!inputEl) {
+    const overlayEl = lineEl?.querySelector('[data-text-overlay]') ?? null
+    if (!overlayEl) {
       const lineStart = editorState.getLineStartOffset(targetLineIndex)
       const offset = clientX < (lineEl?.getBoundingClientRect().left ?? 100)
         ? lineStart
@@ -293,13 +293,12 @@ export function NoteEditorScreen() {
       return { globalOffset: offset, lineIndex: targetLineIndex, charIndex: 0, inputEl: null, lineEl }
     }
 
-    const rect = inputEl.getBoundingClientRect()
-    const clickX = clientX - rect.left - parseFloat(getComputedStyle(inputEl).paddingLeft)
-    const content = targetLine.content
-    const font = getComputedFont(inputEl as HTMLElement)
-    const charIdx = getCharIndexAtX(content, clickX, font)
+    const textareaEl = lineEl?.querySelector('textarea') as HTMLElement | null
+    const charIdx = textareaEl
+      ? getCharOffsetHidingTextarea(overlayEl as HTMLElement, textareaEl, clientX, clientY) ?? targetLine.content.length
+      : targetLine.content.length
     const globalOffset = editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
-    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl, lineEl }
+    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl: overlayEl, lineEl }
   }, [editorState])
 
   const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
@@ -317,21 +316,19 @@ export function NoteEditorScreen() {
       return
     }
 
-    const line = editorState.lines[hit.lineIndex]
-    if (!line) return
+    // Use browser's own layout to get the character position (works with wrapped text)
+    const charRect = getCharRectInElement(hit.inputEl as HTMLElement, hit.charIndex)
+    if (!charRect) {
+      cursor.style.display = 'none'
+      return
+    }
 
-    const font = getComputedFont(hit.inputEl as HTMLElement)
-    const xInInput = getXAtCharIndex(line.content, hit.charIndex, font)
-
-    const inputRect = hit.inputEl.getBoundingClientRect()
     const editorRect = editorEl.getBoundingClientRect()
-    const paddingLeft = parseFloat(getComputedStyle(hit.inputEl).paddingLeft)
-
     cursor.style.display = 'block'
-    cursor.style.left = `${inputRect.left - editorRect.left + paddingLeft + xInInput}px`
-    cursor.style.top = `${inputRect.top - editorRect.top}px`
-    cursor.style.height = `${inputRect.height}px`
-  }, [editorState, hitTestFromPoint])
+    cursor.style.left = `${charRect.left - editorRect.left}px`
+    cursor.style.top = `${charRect.top - editorRect.top}px`
+    cursor.style.height = `${charRect.height}px`
+  }, [hitTestFromPoint])
 
   useEffect(() => {
     const handleMouseMove = (e: globalThis.MouseEvent) => {

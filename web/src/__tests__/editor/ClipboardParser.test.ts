@@ -4,7 +4,6 @@ import {
   parseMarkdownLines,
   parseHtmlLines,
   parseClipboardContent,
-  type ParsedLine,
 } from '@/editor/ClipboardParser'
 
 describe('parseInternalLines', () => {

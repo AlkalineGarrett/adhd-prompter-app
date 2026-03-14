@@ -13,7 +13,6 @@ import {
   dateTimeVal,
   booleanVal,
   UNDEFINED,
-  listVal,
 } from '../../../dsl/runtime/DslValue'
 import { sortCompareValues } from '../../../dsl/builtins/ListFunctions'
 

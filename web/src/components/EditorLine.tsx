@@ -1,11 +1,11 @@
-import { useRef, useEffect, useCallback, type KeyboardEvent, type ChangeEvent, type MouseEvent, type ClipboardEvent } from 'react'
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, type KeyboardEvent, type ChangeEvent, type MouseEvent, type ClipboardEvent } from 'react'
 import type { EditorController } from '@/editor/EditorController'
 import type { EditorState } from '@/editor/EditorState'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
 import { hasCheckbox } from '@/editor/LinePrefixes'
 import { hasDirectives } from '@/dsl/directives/DirectiveSegmenter'
 import { DirectiveLineContent } from './DirectiveLineContent'
-import { getCharIndexAtX, getComputedFont, getWordBoundsAt } from '@/editor/TextMeasure'
+import { getCharOffsetHidingTextarea, getWordBoundsAt, isOnFirstVisualRow, isOnLastVisualRow } from '@/editor/TextMeasure'
 import styles from './EditorLine.module.css'
 
 interface EditorLineProps {
@@ -37,7 +37,8 @@ export function EditorLine({
   onGutterDragUpdate,
   onMoveStart,
 }: EditorLineProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
   const line = editorState.lines[lineIndex]
   if (!line) return null
 
@@ -58,7 +59,89 @@ export function EditorLine({
     : null
   const hasContentSelection = contentSelection && contentSelection[0] < contentSelection[1]
 
-  // Focus management — sets native input selection for focused line
+  // Compute selection highlight rectangles from overlay text nodes
+  const [selectionRects, setSelectionRects] = useState<DOMRect[]>([])
+  useLayoutEffect(() => {
+    const overlay = overlayRef.current
+    if (!overlay || !hasContentSelection) {
+      if (selectionRects.length > 0) setSelectionRects([])
+      return
+    }
+    const walker = document.createTreeWalker(overlay, NodeFilter.SHOW_TEXT)
+    let remaining = contentSelection[0]
+    let startNode: Node | null = null
+    let startOffset = 0
+    let endNode: Node | null = null
+    let endOffset = 0
+    let accumulated = 0
+    let textNode = walker.nextNode()
+    while (textNode) {
+      const len = textNode.textContent?.length ?? 0
+      if (!startNode && accumulated + len > remaining) {
+        startNode = textNode
+        startOffset = remaining - accumulated
+      }
+      if (accumulated + len >= contentSelection[1]) {
+        endNode = textNode
+        endOffset = contentSelection[1] - accumulated
+        break
+      }
+      accumulated += len
+      textNode = walker.nextNode()
+    }
+    if (!startNode || !endNode) {
+      if (selectionRects.length > 0) setSelectionRects([])
+      return
+    }
+    const range = document.createRange()
+    range.setStart(startNode, startOffset)
+    range.setEnd(endNode, endOffset)
+    const overlayRect = overlay.getBoundingClientRect()
+    const lineHeight = parseFloat(getComputedStyle(overlay).lineHeight)
+    const rects: DOMRect[] = []
+    const rawRects = range.getClientRects()
+    // Deduplicate rects (Range can return multiple rects per visual row)
+    const seen = new Set<number>()
+    for (let i = 0; i < rawRects.length; i++) {
+      const r = rawRects[i]!
+      const rowKey = Math.round(r.top)
+      if (seen.has(rowKey)) continue
+      seen.add(rowKey)
+      // Expand to full line-height, centered on the glyph center
+      const glyphCenter = r.top + r.height / 2
+      const top = glyphCenter - lineHeight / 2
+      rects.push(new DOMRect(
+        r.left - overlayRect.left,
+        top - overlayRect.top,
+        r.right - r.left,
+        lineHeight,
+      ))
+    }
+    setSelectionRects(rects)
+  }, [contentSelection?.[0], contentSelection?.[1], content, hasContentSelection])
+
+  // Auto-resize textarea to fit wrapped content
+  useLayoutEffect(() => {
+    const textarea = inputRef.current
+    if (!textarea) return
+    textarea.style.height = '0'
+    textarea.style.height = `${textarea.scrollHeight}px`
+  }, [content])
+
+  // Re-resize on container width changes (wrapping may change)
+  useEffect(() => {
+    const textarea = inputRef.current
+    if (!textarea?.parentElement) return
+    const resize = () => {
+      textarea.style.height = '0'
+      textarea.style.height = `${textarea.scrollHeight}px`
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(textarea.parentElement)
+    return () => observer.disconnect()
+  }, [])
+
+  // Focus management — sets native textarea selection for focused line
   useEffect(() => {
     if (!isFocused || !inputRef.current) return
     if (document.activeElement !== inputRef.current) {
@@ -73,10 +156,10 @@ export function EditorLine({
   }, [isFocused, editorState.stateVersion])
 
   const handleChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
+    (e: ChangeEvent<HTMLTextAreaElement>) => {
       // If there's a cross-line selection, ignore native onChange — typing is handled in handleKeyDown
       if (editorState.hasSelection) {
-        // Revert the input to the expected content
+        // Revert the textarea to the expected content
         e.target.value = content
         return
       }
@@ -87,8 +170,19 @@ export function EditorLine({
     [controller, editorState, lineIndex, content],
   )
 
+  /** Let the textarea handle intra-line arrow navigation, then sync the cursor position back. */
+  const syncCursorAfterNativeNav = useCallback(() => {
+    setTimeout(() => {
+      const ta = inputRef.current
+      if (!ta) return
+      const newCursor = ta.selectionStart ?? 0
+      line.updateContent(content, newCursor)
+      editorState.requestFocusUpdate()
+    }, 0)
+  }, [line, content, editorState])
+
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLInputElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       const input = e.currentTarget
       const cursor = input.selectionStart ?? 0
       const hasSel = editorState.hasSelection
@@ -227,26 +321,53 @@ export function EditorLine({
           }
           break
 
-        case 'ArrowUp':
-          if (lineIndex > 0) {
+        case 'ArrowLeft':
+          if (cursor === 0 && lineIndex > 0) {
             e.preventDefault()
             controller.setCursor(lineIndex - 1, editorState.lines[lineIndex - 1]!.text.length)
           }
           break
 
-        case 'ArrowDown':
-          if (lineIndex < editorState.lines.length - 1) {
+        case 'ArrowRight':
+          if (cursor === content.length && lineIndex < editorState.lines.length - 1) {
             e.preventDefault()
-            controller.setCursor(lineIndex + 1, 0)
+            const nextLine = editorState.lines[lineIndex + 1]!
+            controller.setCursor(lineIndex + 1, nextLine.prefix.length)
           }
           break
+
+        case 'ArrowUp': {
+          const overlay = overlayRef.current
+          if (overlay && !isOnFirstVisualRow(overlay, cursor)) {
+            syncCursorAfterNativeNav()
+          } else {
+            e.preventDefault()
+            if (lineIndex > 0) {
+              controller.setCursor(lineIndex - 1, editorState.lines[lineIndex - 1]!.text.length)
+            }
+          }
+          break
+        }
+
+        case 'ArrowDown': {
+          const overlay = overlayRef.current
+          if (overlay && !isOnLastVisualRow(overlay, cursor, content.length)) {
+            syncCursorAfterNativeNav()
+          } else {
+            e.preventDefault()
+            if (lineIndex < editorState.lines.length - 1) {
+              controller.setCursor(lineIndex + 1, 0)
+            }
+          }
+          break
+        }
       }
     },
-    [controller, editorState, lineIndex, content.length],
+    [controller, editorState, lineIndex, content, syncCursorAfterNativeNav],
   )
 
   const handlePaste = useCallback(
-    (e: ClipboardEvent<HTMLInputElement>) => {
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
       e.preventDefault()
       const plainText = e.clipboardData.getData('text/plain')
       const html = e.clipboardData.getData('text/html') || null
@@ -256,20 +377,22 @@ export function EditorLine({
   )
 
   const getCharIndexFromEvent = useCallback(
-    (e: MouseEvent<HTMLInputElement | HTMLDivElement>): number => {
-      const target = e.currentTarget
-      const rect = target.getBoundingClientRect()
-      const paddingLeft = parseFloat(getComputedStyle(target).paddingLeft)
-      const clickX = e.clientX - rect.left - paddingLeft
-      const font = getComputedFont(target as HTMLElement)
-      return getCharIndexAtX(content, clickX, font)
+    (e: MouseEvent): number => {
+      const overlay = overlayRef.current
+      const textarea = inputRef.current
+      if (overlay && textarea) {
+        const offset = getCharOffsetHidingTextarea(overlay, textarea, e.clientX, e.clientY)
+        if (offset != null) return offset
+      }
+      // Fallback: clicking past the end of content
+      return content.length
     },
-    [content],
+    [content.length],
   )
 
   const handleMouseDown = useCallback(
-    (e: MouseEvent<HTMLInputElement | HTMLDivElement>) => {
-      // Prevent native input selection so we can handle cross-line drag
+    (e: MouseEvent<HTMLTextAreaElement | HTMLDivElement>) => {
+      // Prevent native textarea selection so we can handle cross-line drag
       e.preventDefault()
 
       const charIdx = getCharIndexFromEvent(e)
@@ -346,9 +469,6 @@ export function EditorLine({
   // Show directive chips for unfocused lines that contain directives
   const showDirectiveChips = !isFocused && directiveResults && hasDirectives(content)
 
-  // All lines with cross-line selection use the overlay for consistent rendering
-  const showSelectionOverlay = !!hasContentSelection
-
   return (
     <div
       className={`${styles.line} ${isFocused ? styles.focused : ''}`}
@@ -378,10 +498,11 @@ export function EditorLine({
         </div>
       ) : (
         <div className={styles.inputWrapper}>
-          <input
+          <textarea
             ref={inputRef}
-            className={`${styles.input}${showSelectionOverlay ? ` ${styles.nativeSelectionHidden}` : ''}${hasContentSelection ? ` ${styles.grabbable}` : ''}`}
+            className={`${styles.input}${hasContentSelection ? ` ${styles.grabbable}` : ''}`}
             value={content}
+            rows={1}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onMouseDown={handleMouseDown}
@@ -390,14 +511,16 @@ export function EditorLine({
             spellCheck={false}
             autoComplete="off"
           />
-          {showSelectionOverlay && (
-            <div className={styles.selectionOverlay} aria-hidden>
-              <span className={styles.selectionInvisible}>{content.substring(0, contentSelection[0])}</span>
-              <span className={styles.selectionHighlight}>
-                {content.substring(contentSelection[0], contentSelection[1])}
-              </span>
-            </div>
-          )}
+          <div ref={overlayRef} className={styles.textOverlay} data-text-overlay aria-hidden>
+            {selectionRects.map((r, i) => (
+              <div
+                key={i}
+                className={styles.selectionHighlight}
+                style={{ left: r.x, top: r.y, width: r.width, height: r.height }}
+              />
+            ))}
+            {content}
+          </div>
         </div>
       )}
       </div>

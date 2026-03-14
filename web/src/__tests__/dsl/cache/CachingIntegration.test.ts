@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { DirectiveCacheManager } from '../../../dsl/cache/DirectiveCache'
 import { EditSessionManager, InvalidationReason } from '../../../dsl/cache/EditSessionManager'
 import { cachedResultSuccess, cachedResultError, shouldRetryError } from '../../../dsl/cache/CachedDirectiveResult'

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { EditorState } from '../../editor/EditorState'
 import { LineState } from '../../editor/LineState'
-import { BULLET, CHECKBOX_UNCHECKED, CHECKBOX_CHECKED } from '../../editor/LinePrefixes'
+import { BULLET, CHECKBOX_UNCHECKED } from '../../editor/LinePrefixes'
 
 function stateWithText(text: string, focusedLine = 0): EditorState {
   const state = new EditorState()

@@ -4,16 +4,11 @@ import { Parser } from '../../../dsl/language/Parser'
 import { Executor } from '../../../dsl/runtime/Executor'
 import { Environment } from '../../../dsl/runtime/Environment'
 import type { DslValue } from '../../../dsl/runtime/DslValue'
-import { toDisplayString } from '../../../dsl/runtime/DslValue'
 
 function execute(source: string, env?: Environment): DslValue {
   const tokens = new Lexer(source).tokenize()
   const directive = new Parser(tokens, source).parseDirective()
   return new Executor().execute(directive, env ?? Environment.create())
-}
-
-function display(source: string, env?: Environment): string {
-  return toDisplayString(execute(source, env))
 }
 
 describe('DateFunctions - extended', () => {

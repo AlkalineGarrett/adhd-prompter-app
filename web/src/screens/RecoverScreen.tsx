@@ -3,6 +3,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore'
 import { db, auth } from '@/firebase/config'
 import { type Note, noteFromFirestore } from '@/data/Note'
 import { NoteRepository } from '@/data/NoteRepository'
+import styles from './RecoverScreen.module.css'
 
 const repo = new NoteRepository(db, auth)
 
@@ -96,55 +97,35 @@ export function RecoverScreen() {
   }, [batches])
 
   if (loading) {
-    return <div style={{ padding: '2rem' }}>Loading deleted notes...</div>
+    return <div className={styles.loading}>Loading deleted notes...</div>
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: '1rem' }}>
-      <h2 style={{ marginBottom: '0.5rem' }}>Batch-Deleted Notes</h2>
-      <p style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)', marginBottom: '1rem' }}>
+    <div className={styles.container}>
+      <h2 className={styles.title}>Batch-Deleted Notes</h2>
+      <p className={styles.subtitle}>
         Showing groups of 3+ notes deleted within {BATCH_WINDOW_MS / 1000}s of each other (likely overwrites).
       </p>
       {batches.length === 0 && <p>No batch deletions found.</p>}
       {batches.map((batch, batchIndex) => (
-        <div
-          key={batchIndex}
-          style={{
-            border: '1px solid var(--color-border)',
-            borderRadius: 6,
-            padding: '0.75rem',
-            marginBottom: '1rem',
-            background: 'var(--color-surface-alt)',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-            <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+        <div key={batchIndex} className={styles.batch}>
+          <div className={styles.batchHeader}>
+            <div className={styles.batchMeta}>
               {batch.notes.length} notes &middot; deleted {batch.deletedAt.toLocaleString()}
             </div>
             <button
+              className={styles.restoreButton}
               onClick={() => void handleRestoreBatch(batchIndex)}
               disabled={restoringBatch === batchIndex}
-              style={{
-                padding: '0.4rem 0.8rem',
-                background: 'var(--color-success)',
-                color: 'white',
-                border: 'none',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
             >
               {restoringBatch === batchIndex ? 'Restoring...' : 'Restore All'}
             </button>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+          <div className={styles.noteList}>
             {batch.notes.map(n => (
               <div
                 key={n.id}
-                style={{
-                  fontSize: '0.9rem',
-                  paddingLeft: n.parentNoteId ? '1rem' : 0,
-                  borderLeft: n.parentNoteId ? '2px solid var(--color-border)' : 'none',
-                }}
+                className={`${styles.noteItem} ${n.parentNoteId ? styles.child : ''}`}
               >
                 {n.content || '(empty)'}
               </div>

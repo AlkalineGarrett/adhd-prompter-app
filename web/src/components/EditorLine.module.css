@@ -23,7 +23,7 @@
 
 .gutter {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
@@ -53,26 +53,22 @@
   padding: 0 0.25rem 0 0;
   background: transparent;
   min-width: 0;
+  /* Textarea-specific */
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: transparent;
+  caret-color: var(--color-text);
+  margin: 0;
+  display: block;
 }
 
 .input::selection {
-  background: var(--color-selection, rgba(51, 143, 255, 0.3));
-}
-
-.input.nativeSelectionHidden::selection {
   background: transparent;
 }
 
-.directiveContent {
-  flex: 1;
-  padding: 0 0.25rem 0 0;
-  cursor: text;
-  min-height: 1.5rem;
-  display: flex;
-  align-items: center;
-}
-
-.selectionOverlay {
+.textOverlay {
   position: absolute;
   top: 0;
   left: 0;
@@ -82,20 +78,24 @@
   font-size: 0.9375rem;
   line-height: 1.5rem;
   padding: 0 0.25rem 0 0;
-  white-space: pre;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
   overflow: hidden;
   pointer-events: none;
 }
 
-.selectionInvisible {
-  visibility: hidden;
+.selectionHighlight {
+  position: absolute;
+  background: var(--color-selection, rgba(51, 143, 255, 0.3));
 }
 
-.selectionHighlight {
-  background: var(--color-selection, rgba(51, 143, 255, 0.3));
-  color: transparent;
-  /* Extend background to cover full line-height (clipped by overflow:hidden on overlay) */
-  padding-block: 1rem;
+.directiveContent {
+  flex: 1;
+  padding: 0 0.25rem 0 0;
+  cursor: text;
+  min-height: 1.5rem;
+  display: flex;
+  align-items: center;
 }
 
 /* Grab cursor over selected text to indicate draggable */

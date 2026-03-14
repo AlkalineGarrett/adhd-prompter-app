@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { DirectiveCacheManager } from '../../../dsl/cache/DirectiveCache'
 import { cachedResultSuccess, cachedResultError } from '../../../dsl/cache/CachedDirectiveResult'
 import { EMPTY_DEPENDENCIES } from '../../../dsl/cache/DirectiveDependencies'
-import { EMPTY_METADATA_HASHES } from '../../../dsl/cache/MetadataHasher'
 import { numberVal, stringVal } from '../../../dsl/runtime/DslValue'
 
 describe('DirectiveCacheManager', () => {

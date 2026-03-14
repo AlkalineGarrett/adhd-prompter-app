@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NoteRepository } from '../../data/NoteRepository'
-import type { Note, NoteLine } from '../../data/Note'
 import type { Firestore, DocumentReference } from 'firebase/firestore'
 import type { Auth } from 'firebase/auth'
 
@@ -49,25 +48,6 @@ const {
   writeBatch: mockWriteBatch,
   collection: mockCollection,
 } = await import('firebase/firestore')
-
-function mockDocument(noteId: string, noteData: Record<string, unknown> | null) {
-  const ref = { id: noteId } as DocumentReference
-  vi.mocked(mockDoc).mockReturnValue(ref)
-
-  vi.mocked(mockGetDoc).mockImplementation(async (docRef: unknown) => {
-    const r = docRef as { id: string }
-    if (r.id === noteId) {
-      return {
-        exists: () => noteData !== null,
-        data: () => noteData,
-        id: noteId,
-      } as any
-    }
-    return { exists: () => false, data: () => null, id: r.id } as any
-  })
-
-  return ref
-}
 
 function mockDocumentMultiple(docs: Map<string, Record<string, unknown> | null>) {
   vi.mocked(mockDoc).mockImplementation((...args: any[]) => {

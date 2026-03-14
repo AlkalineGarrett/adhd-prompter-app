@@ -67,3 +67,152 @@ export function getComputedFont(element: HTMLElement): string {
   const style = getComputedStyle(element)
   return `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
 }
+
+/**
+ * Gets the character offset within a container's text content from screen coordinates,
+ * using the browser's caret position API. Works correctly with wrapped text.
+ */
+export function getCharOffsetFromPoint(
+  container: HTMLElement,
+  clientX: number,
+  clientY: number,
+): number | null {
+  let node: Node
+  let offsetInNode: number
+
+  // Standard API (Chrome 128+, Firefox, Safari 18+), then WebKit/Blink fallback
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const doc = document as any
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(clientX, clientY) as { offsetNode: Node; offset: number } | null
+    if (!pos) return null
+    node = pos.offsetNode
+    offsetInNode = pos.offset
+  } else if (document.caretRangeFromPoint) {
+    const range = document.caretRangeFromPoint(clientX, clientY)
+    if (!range) return null
+    node = range.startContainer
+    offsetInNode = range.startOffset
+  } else {
+    return null
+  }
+
+  // If the API returned an element node (not a text node), resolve to a text position.
+  // This happens when clicking at element boundaries (e.g., between spans).
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const children = node.childNodes
+    if (offsetInNode >= children.length) {
+      // Past all children — find the last text node descendant
+      const lastWalker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+      let last: Node | null = null
+      let n = lastWalker.nextNode()
+      while (n) { last = n; n = lastWalker.nextNode() }
+      if (last) {
+        node = last
+        offsetInNode = last.textContent?.length ?? 0
+      }
+    } else {
+      const child = children[offsetInNode]
+      if (child) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          node = child
+          offsetInNode = 0
+        } else {
+          // Find first text node in this child
+          const childWalker = document.createTreeWalker(child, NodeFilter.SHOW_TEXT)
+          const firstText = childWalker.nextNode()
+          if (firstText) {
+            node = firstText
+            offsetInNode = 0
+          }
+        }
+      }
+    }
+  }
+
+  // Walk text nodes to compute total offset within the container
+  let totalOffset = 0
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let textNode = walker.nextNode()
+  while (textNode) {
+    if (textNode === node) {
+      return totalOffset + offsetInNode
+    }
+    totalOffset += textNode.textContent?.length ?? 0
+    textNode = walker.nextNode()
+  }
+
+  // Node not found in container — check if it's outside the container entirely.
+  // This can happen if caretRangeFromPoint hit a different element.
+  // Fall back to nearest edge based on Y position.
+  if (!container.contains(node)) {
+    const rect = container.getBoundingClientRect()
+    if (clientY < rect.top) return 0
+    if (clientY > rect.bottom) return container.textContent?.length ?? 0
+    // Same vertical range but different element — estimate from X
+    if (clientX <= rect.left) return 0
+    return container.textContent?.length ?? 0
+  }
+
+  return null
+}
+
+/**
+ * Gets the character offset within an overlay element, temporarily hiding a sibling textarea
+ * so that caretRangeFromPoint can reach the overlay's text nodes.
+ */
+export function getCharOffsetHidingTextarea(
+  overlay: HTMLElement,
+  textarea: HTMLElement,
+  clientX: number,
+  clientY: number,
+): number | null {
+  textarea.style.visibility = 'hidden'
+  const offset = getCharOffsetFromPoint(overlay, clientX, clientY)
+  textarea.style.visibility = ''
+  return offset
+}
+
+/** Gets the bounding rect of a character position within an element's text nodes. */
+export function getCharRectInElement(
+  element: HTMLElement,
+  charIndex: number,
+): DOMRect | null {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  let remaining = charIndex
+  let textNode = walker.nextNode()
+  while (textNode) {
+    const len = textNode.textContent?.length ?? 0
+    if (remaining <= len) {
+      const range = document.createRange()
+      range.setStart(textNode, remaining)
+      range.setEnd(textNode, remaining)
+      const rects = range.getClientRects()
+      return rects[0] ?? range.getBoundingClientRect()
+    }
+    remaining -= len
+    textNode = walker.nextNode()
+  }
+  return null
+}
+
+/** Pixel tolerance for comparing visual row positions. */
+const VISUAL_ROW_TOLERANCE_PX = 2
+
+/** Returns true if the given character index is on the first visual row of the element. */
+export function isOnFirstVisualRow(element: HTMLElement, charIndex: number): boolean {
+  if (charIndex === 0) return true
+  const firstRect = getCharRectInElement(element, 0)
+  const cursorRect = getCharRectInElement(element, charIndex)
+  if (!firstRect || !cursorRect) return true
+  return Math.abs(cursorRect.top - firstRect.top) < VISUAL_ROW_TOLERANCE_PX
+}
+
+/** Returns true if the given character index is on the last visual row of the element. */
+export function isOnLastVisualRow(element: HTMLElement, charIndex: number, totalLength: number): boolean {
+  if (charIndex >= totalLength) return true
+  const lastRect = getCharRectInElement(element, Math.max(0, totalLength - 1))
+  const cursorRect = getCharRectInElement(element, charIndex)
+  if (!lastRect || !cursorRect) return true
+  return Math.abs(cursorRect.top - lastRect.top) < VISUAL_ROW_TOLERANCE_PX
+}

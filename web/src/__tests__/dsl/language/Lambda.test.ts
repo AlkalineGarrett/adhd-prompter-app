@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Lexer } from '../../../dsl/language/Lexer'
 import { Parser } from '../../../dsl/language/Parser'
-import type { Expression, LambdaExpr } from '../../../dsl/language/Expression'
+import type { Expression } from '../../../dsl/language/Expression'
 
 function expr(source: string): Expression {
   const tokens = new Lexer(source).tokenize()

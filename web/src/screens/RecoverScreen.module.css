@@ -1,0 +1,70 @@
+.loading {
+  padding: 2rem;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.title {
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 1rem;
+}
+
+.batch {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  background: var(--color-surface-alt);
+}
+
+.batchHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.batchMeta {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.restoreButton {
+  padding: 0.4rem 0.8rem;
+  background: var(--color-success);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.restoreButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.noteList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.noteItem {
+  font-size: 0.9rem;
+}
+
+.noteItem.child {
+  padding-left: 1rem;
+  border-left: 2px solid var(--color-border);
+}

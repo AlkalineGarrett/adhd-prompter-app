@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { Lexer } from '../../../dsl/language/Lexer'
 import { Parser } from '../../../dsl/language/Parser'
 import type { Expression } from '../../../dsl/language/Expression'
