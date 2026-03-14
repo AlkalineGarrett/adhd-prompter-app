@@ -20,6 +20,7 @@
     <string name="status_saved">Saved</string>
     <string name="status_unsaved">Unsaved</string>
     <string name="action_save">Save</string>
+    <string name="action_create">Create</string>
     <string name="action_undo">Undo</string>
     <string name="action_redo">Redo</string>
 
@@ -82,9 +83,13 @@
 
     <!-- Alarm Config Dialog Strings -->
     <string name="alarm_show_upcoming">Show in Upcoming list</string>
-    <string name="alarm_lock_screen">Lock screen notification</string>
-    <string name="alarm_urgent">Urgent (red tint)</string>
+    <string name="alarm_lock_screen">Notification</string>
+    <string name="alarm_urgent">Lock screen</string>
     <string name="alarm_sound">Sound alarm</string>
+    <string name="alarm_due">Due</string>
+    <string name="alarm_minutes_before">%d min before</string>
+    <string name="alarm_hours_before">%d hr before</string>
+    <string name="alarm_at_due_time">At due time</string>
     <string name="alarm_done">Done</string>
     <string name="alarm_cancel">Cancel Alarm</string>
 
@@ -104,11 +109,15 @@
     <string name="section_upcoming">Upcoming</string>
     <string name="section_later">Later</string>
     <string name="section_completed">Completed</string>
-    <string name="section_cancelled">Cancelled</string>
+    <string name="section_cancelled">Skipped</string>
     <string name="alarm_mark_done_desc">Mark done</string>
     <string name="alarm_cancel_desc">Cancel</string>
     <string name="alarm_reactivate">Reactivate</string>
+    <string name="alarm_skipped">Skipped</string>
+    <string name="alarm_reopen">Re-open</string>
     <string name="alarm_untitled">Untitled alarm</string>
+    <string name="alarm_delete_all">Delete all alarms</string>
+    <string name="alarm_delete_all_confirm">This will permanently delete all alarms and recurring alarm templates. This cannot be undone.</string>
     <string name="alarm_completed_fmt">Completed: %s</string>
     <string name="alarm_urgent_fmt">Urgent: %s</string>
 
@@ -135,7 +144,8 @@
     <string name="recurrence_repeat">Repeat</string>
     <string name="recurrence_fixed_schedule">Fixed schedule</string>
     <string name="recurrence_after_completion">After completion</string>
-    <string name="recurrence_presets">Presets</string>
+    <string name="recurrence_frequency">Frequency</string>
+    <string name="recurrence_custom">Custom</string>
     <string name="recurrence_custom_interval">Custom interval</string>
     <string name="recurrence_every">Every</string>
     <string name="recurrence_on_days">On days</string>
@@ -143,9 +153,30 @@
     <string name="recurrence_ends">Ends</string>
     <string name="recurrence_after">After</string>
     <string name="recurrence_times">times</string>
+    <string name="recurrence_edit">Edit recurrence</string>
+
+    <!-- Recurrence Description Strings -->
+    <string name="recurrence_desc_daily">Repeats daily</string>
+    <string name="recurrence_desc_weekdays">Repeats on weekdays</string>
+    <string name="recurrence_desc_weekly">Repeats weekly</string>
+    <string name="recurrence_desc_monthly">Repeats monthly</string>
+    <string name="recurrence_desc_every_n_days">Repeats every %d days</string>
+    <string name="recurrence_desc_every_n_weeks">Repeats every %d weeks</string>
+    <string name="recurrence_desc_every_n_weeks_on">Repeats every %1$d weeks on %2$s</string>
+    <string name="recurrence_desc_weekly_on">Repeats weekly on %s</string>
+    <string name="recurrence_desc_every_n_months">Repeats every %d months</string>
+    <string name="recurrence_desc_relative_hours">Repeats %d hours after completion</string>
+    <string name="recurrence_desc_relative_days">Repeats %d days after completion</string>
+    <string name="recurrence_desc_relative_weeks">Repeats %d weeks after completion</string>
+    <string name="recurrence_desc_relative_1_hour">Repeats 1 hour after completion</string>
+    <string name="recurrence_desc_relative_1_day">Repeats 1 day after completion</string>
+    <string name="recurrence_desc_relative_1_week">Repeats 1 week after completion</string>
+    <string name="recurrence_desc_unknown">Repeating alarm</string>
 
     <!-- Date/Time Picker Strings -->
     <string name="datetime_not_set">Not set</string>
+    <string name="datetime_date">Date</string>
+    <string name="datetime_time">Time</string>
     <string name="datetime_select_time">Select time</string>
 
     <!-- Schedules Screen Strings -->

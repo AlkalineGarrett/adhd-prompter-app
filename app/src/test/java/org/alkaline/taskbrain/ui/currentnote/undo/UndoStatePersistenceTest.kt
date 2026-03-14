@@ -140,10 +140,8 @@ class UndoStatePersistenceTest {
             id = "alarm_123",
             noteId = "note_456",
             lineContent = "Task with alarm",
-            upcomingTime = Timestamp(Date(1000000)),
-            notifyTime = Timestamp(Date(2000000)),
-            urgentTime = null,
-            alarmTime = Timestamp(Date(3000000))
+            dueTime = Timestamp(Date(3000000)),
+            stages = org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES
         )
         val snapshot = UndoSnapshot(
             lineContents = listOf("Task with alarm"),
@@ -168,22 +166,18 @@ class UndoStatePersistenceTest {
         assertEquals("alarm_123", restoredAlarm!!.id)
         assertEquals("note_456", restoredAlarm.noteId)
         assertEquals("Task with alarm", restoredAlarm.lineContent)
-        assertEquals(1000000, restoredAlarm.upcomingTime!!.toDate().time)
-        assertEquals(2000000, restoredAlarm.notifyTime!!.toDate().time)
-        assertNull(restoredAlarm.urgentTime)
-        assertEquals(3000000, restoredAlarm.alarmTime!!.toDate().time)
+        assertEquals(3000000, restoredAlarm.dueTime!!.toDate().time)
+        assertEquals(3, restoredAlarm.stages.size)
     }
 
     @Test
-    fun `serialize and deserialize alarm with all null times`() {
+    fun `serialize and deserialize alarm with null dueTime`() {
         val alarm = AlarmSnapshot(
             id = "alarm_id",
             noteId = "note_id",
             lineContent = "Content",
-            upcomingTime = null,
-            notifyTime = null,
-            urgentTime = null,
-            alarmTime = null
+            dueTime = null,
+            stages = emptyList()
         )
         val snapshot = UndoSnapshot(
             lineContents = listOf("Content"),
@@ -205,10 +199,7 @@ class UndoStatePersistenceTest {
 
         val restoredAlarm = restored.undoStack[0].createdAlarm
         assertNotNull(restoredAlarm)
-        assertNull(restoredAlarm!!.upcomingTime)
-        assertNull(restoredAlarm.notifyTime)
-        assertNull(restoredAlarm.urgentTime)
-        assertNull(restoredAlarm.alarmTime)
+        assertNull(restoredAlarm!!.dueTime)
     }
 
     // ==================== Multi-line Content ====================

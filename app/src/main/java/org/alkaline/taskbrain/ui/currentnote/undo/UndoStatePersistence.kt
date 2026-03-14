@@ -5,6 +5,8 @@ import android.util.Log
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.alkaline.taskbrain.data.AlarmStage
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -197,26 +199,46 @@ object UndoStatePersistence {
             put("id", alarm.id)
             put("noteId", alarm.noteId)
             put("lineContent", alarm.lineContent)
-            put("upcomingTime", alarm.upcomingTime?.toDate()?.time ?: JSONObject.NULL)
-            put("notifyTime", alarm.notifyTime?.toDate()?.time ?: JSONObject.NULL)
-            put("urgentTime", alarm.urgentTime?.toDate()?.time ?: JSONObject.NULL)
-            put("alarmTime", alarm.alarmTime?.toDate()?.time ?: JSONObject.NULL)
+            put("dueTime", alarm.dueTime?.toDate()?.time ?: JSONObject.NULL)
+            put("stages", JSONArray().apply {
+                alarm.stages.forEach { stage ->
+                    put(JSONObject().apply {
+                        put("type", stage.type.name)
+                        put("offsetMs", stage.offsetMs)
+                        put("enabled", stage.enabled)
+                        put("absoluteTime", stage.absoluteTime?.toDate()?.time ?: JSONObject.NULL)
+                    })
+                }
+            })
         }
     }
 
     private fun deserializeAlarmSnapshot(json: JSONObject): AlarmSnapshot {
+        val stages = if (json.has("stages") && !json.isNull("stages")) {
+            val stagesArray = json.getJSONArray("stages")
+            (0 until stagesArray.length()).mapNotNull { i ->
+                try {
+                    val stageJson = stagesArray.getJSONObject(i)
+                    AlarmStage(
+                        type = AlarmStageType.valueOf(stageJson.getString("type")),
+                        offsetMs = stageJson.getLong("offsetMs"),
+                        enabled = stageJson.getBoolean("enabled"),
+                        absoluteTime = if (stageJson.isNull("absoluteTime")) null
+                            else Timestamp(Date(stageJson.getLong("absoluteTime")))
+                    )
+                } catch (e: Exception) { null }
+            }
+        } else {
+            org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES
+        }
+
         return AlarmSnapshot(
             id = json.getString("id"),
             noteId = json.getString("noteId"),
             lineContent = json.getString("lineContent"),
-            upcomingTime = if (json.isNull("upcomingTime")) null
-                else Timestamp(Date(json.getLong("upcomingTime"))),
-            notifyTime = if (json.isNull("notifyTime")) null
-                else Timestamp(Date(json.getLong("notifyTime"))),
-            urgentTime = if (json.isNull("urgentTime")) null
-                else Timestamp(Date(json.getLong("urgentTime"))),
-            alarmTime = if (json.isNull("alarmTime")) null
-                else Timestamp(Date(json.getLong("alarmTime")))
+            dueTime = if (json.isNull("dueTime")) null
+                else Timestamp(Date(json.getLong("dueTime"))),
+            stages = stages
         )
     }
 }

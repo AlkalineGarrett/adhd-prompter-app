@@ -76,6 +76,23 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error deleting alarm", it) }
 
     /**
+     * Deletes all alarms for the current user.
+     */
+    suspend fun deleteAllAlarms(): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = alarmsCollection(userId).get().await()
+            val batch = db.batch()
+            for (doc in result.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.commit().await()
+            Log.d(TAG, "Deleted all alarms (${result.documents.size} documents)")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error deleting all alarms", it) }
+
+    /**
      * Gets a single alarm by ID.
      */
     suspend fun getAlarm(alarmId: String): Result<Alarm?> = runCatching {
@@ -138,21 +155,20 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error getting alarms for notes", it) }
 
     /**
-     * Gets upcoming alarms (status=PENDING, upcomingTime != null, ordered by upcomingTime).
+     * Gets upcoming alarms (status=PENDING, dueTime != null, ordered by dueTime).
      */
     suspend fun getUpcomingAlarms(): Result<List<Alarm>> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
             val result = alarmsCollection(userId)
                 .whereEqualTo("status", AlarmStatus.PENDING.name)
-                .orderBy("upcomingTime", Query.Direction.ASCENDING)
+                .orderBy("dueTime", Query.Direction.ASCENDING)
                 .get()
                 .await()
             result.documents.mapNotNull { doc ->
                 try {
                     val alarm = mapToAlarm(doc.id, doc.data ?: emptyMap())
-                    // Filter to only those with upcomingTime set
-                    if (alarm.upcomingTime != null) alarm else null
+                    if (alarm.dueTime != null) alarm else null
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing alarm", e)
                     null
@@ -162,7 +178,7 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error getting upcoming alarms", it) }
 
     /**
-     * Gets later alarms (status=PENDING, upcomingTime == null).
+     * Gets later alarms (status=PENDING, dueTime == null).
      */
     suspend fun getLaterAlarms(): Result<List<Alarm>> = runCatching {
         withContext(Dispatchers.IO) {
@@ -175,8 +191,7 @@ class AlarmRepository(
             result.documents.mapNotNull { doc ->
                 try {
                     val alarm = mapToAlarm(doc.id, doc.data ?: emptyMap())
-                    // Filter to only those without upcomingTime
-                    if (alarm.upcomingTime == null) alarm else null
+                    if (alarm.dueTime == null) alarm else null
                 } catch (e: Exception) {
                     Log.e(TAG, "Error parsing alarm", e)
                     null
@@ -368,6 +383,7 @@ class AlarmRepository(
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
             val now = Timestamp.now()
+            val nowMs = now.toDate().time
 
             val result = alarmsCollection(userId)
                 .whereEqualTo("status", AlarmStatus.PENDING.name)
@@ -384,32 +400,31 @@ class AlarmRepository(
                 }
 
                 // Skip snoozed alarms
-                if (alarm.snoozedUntil != null && alarm.snoozedUntil > now) {
-                    continue
-                }
+                if (alarm.snoozedUntil != null && alarm.snoozedUntil > now) continue
+                val due = alarm.dueTime ?: continue
 
-                // Check each threshold from highest to lowest priority
-                val priority = when {
-                    alarm.alarmTime != null && alarm.alarmTime <= now -> AlarmPriority.ALARM
-                    alarm.urgentTime != null && alarm.urgentTime <= now -> AlarmPriority.URGENT
-                    alarm.notifyTime != null && alarm.notifyTime <= now -> AlarmPriority.NOTIFY
-                    alarm.upcomingTime != null -> AlarmPriority.UPCOMING
-                    else -> null
-                }
+                val priority = alarm.enabledStages
+                    .filter { it.resolveTime(due).toDate().time <= nowMs }
+                    .maxOfOrNull { stagePriority(it.type) }
+                    ?: if (alarm.dueTime != null) AlarmPriority.UPCOMING else null
 
                 if (priority != null && (highestPriority == null || priority > highestPriority)) {
                     highestPriority = priority
                 }
 
                 // If we found the highest possible priority, we can stop
-                if (highestPriority == AlarmPriority.ALARM) {
-                    break
-                }
+                if (highestPriority == AlarmPriority.ALARM) break
             }
 
             highestPriority
         }
     }.onFailure { Log.e(TAG, "Error getting highest priority alarm", it) }
+
+    private fun stagePriority(type: AlarmStageType): AlarmPriority = when (type) {
+        AlarmStageType.SOUND_ALARM -> AlarmPriority.ALARM
+        AlarmStageType.LOCK_SCREEN -> AlarmPriority.URGENT
+        AlarmStageType.NOTIFICATION -> AlarmPriority.NOTIFY
+    }
 
     private fun alarmToMap(alarm: Alarm): Map<String, Any?> = mapOf(
         "userId" to alarm.userId,
@@ -417,10 +432,15 @@ class AlarmRepository(
         "lineContent" to alarm.lineContent,
         "createdAt" to alarm.createdAt,
         "updatedAt" to alarm.updatedAt,
-        "upcomingTime" to alarm.upcomingTime,
-        "notifyTime" to alarm.notifyTime,
-        "urgentTime" to alarm.urgentTime,
-        "alarmTime" to alarm.alarmTime,
+        "dueTime" to alarm.dueTime,
+        "stages" to alarm.stages.map { stage ->
+            mapOf(
+                "type" to stage.type.name,
+                "offsetMs" to stage.offsetMs,
+                "enabled" to stage.enabled,
+                "absoluteTime" to stage.absoluteTime
+            )
+        },
         "status" to alarm.status.name,
         "snoozedUntil" to alarm.snoozedUntil,
         "recurringAlarmId" to alarm.recurringAlarmId
@@ -433,10 +453,8 @@ class AlarmRepository(
         lineContent = data["lineContent"] as? String ?: "",
         createdAt = data["createdAt"] as? Timestamp,
         updatedAt = data["updatedAt"] as? Timestamp,
-        upcomingTime = data["upcomingTime"] as? Timestamp,
-        notifyTime = data["notifyTime"] as? Timestamp,
-        urgentTime = data["urgentTime"] as? Timestamp,
-        alarmTime = data["alarmTime"] as? Timestamp,
+        dueTime = data["dueTime"] as? Timestamp,
+        stages = parseStages(data["stages"]),
         status = try {
             AlarmStatus.valueOf(data["status"] as? String ?: AlarmStatus.PENDING.name)
         } catch (e: IllegalArgumentException) {
@@ -445,6 +463,21 @@ class AlarmRepository(
         snoozedUntil = data["snoozedUntil"] as? Timestamp,
         recurringAlarmId = data["recurringAlarmId"] as? String
     )
+
+    private fun parseStages(raw: Any?): List<AlarmStage> {
+        val list = raw as? List<*> ?: return Alarm.DEFAULT_STAGES
+        return list.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            try {
+                AlarmStage(
+                    type = AlarmStageType.valueOf(map["type"] as? String ?: return@mapNotNull null),
+                    offsetMs = (map["offsetMs"] as? Number)?.toLong() ?: 0,
+                    enabled = map["enabled"] as? Boolean ?: true,
+                    absoluteTime = map["absoluteTime"] as? Timestamp
+                )
+            } catch (e: Exception) { null }
+        }.ifEmpty { Alarm.DEFAULT_STAGES }
+    }
 
     companion object {
         private const val TAG = "AlarmRepository"

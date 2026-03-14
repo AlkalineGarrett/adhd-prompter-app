@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import org.alkaline.taskbrain.R
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.RecurrencePreset
@@ -41,7 +42,7 @@ data class RecurrenceConfig(
     val recurrenceType: RecurrenceType = RecurrenceType.FIXED,
 
     // Fixed (RRULE) config
-    val selectedPreset: RecurrencePreset? = null,
+    val selectedPreset: RecurrencePreset? = RecurrencePreset.DAILY,
     val customInterval: Int = 1,
     val customFrequency: CustomFrequency = CustomFrequency.DAYS,
     val selectedDays: Set<Int> = emptySet(),
@@ -68,9 +69,9 @@ enum class RelativeUnit(val label: String, val toMs: Long) {
 }
 
 enum class EndType(val label: String) {
-    NEVER("Forever"),
+    NEVER("Never ends"),
     ON_DATE("Until date"),
-    AFTER_COUNT("After N times")
+    AFTER_COUNT("N times")
 }
 
 private val DAY_LABELS = listOf(
@@ -83,6 +84,8 @@ private val DAY_LABELS = listOf(
     Calendar.SUNDAY to "S"
 )
 
+private val SegmentedButtonFontSize = 12.sp
+
 /**
  * UI section for configuring alarm recurrence.
  * Shown inside AlarmConfigDialog when creating a new alarm.
@@ -92,26 +95,29 @@ private val DAY_LABELS = listOf(
 fun RecurrenceConfigSection(
     config: RecurrenceConfig,
     onConfigChange: (RecurrenceConfig) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showToggle: Boolean = true
 ) {
     Column(modifier = modifier.padding(horizontal = 16.dp)) {
-        // Enable/disable toggle
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = stringResource(R.string.recurrence_repeat),
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Switch(
-                checked = config.enabled,
-                onCheckedChange = { onConfigChange(config.copy(enabled = it)) }
-            )
-        }
+        if (showToggle) {
+            // Enable/disable toggle
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.recurrence_repeat),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Switch(
+                    checked = config.enabled,
+                    onCheckedChange = { onConfigChange(config.copy(enabled = it)) }
+                )
+            }
 
-        if (!config.enabled) return
+            if (!config.enabled) return
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -121,12 +127,12 @@ fun RecurrenceConfigSection(
                 selected = config.recurrenceType == RecurrenceType.FIXED,
                 onClick = { onConfigChange(config.copy(recurrenceType = RecurrenceType.FIXED)) },
                 shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-            ) { Text(stringResource(R.string.recurrence_fixed_schedule)) }
+            ) { Text(stringResource(R.string.recurrence_fixed_schedule), fontSize = SegmentedButtonFontSize) }
             SegmentedButton(
                 selected = config.recurrenceType == RecurrenceType.RELATIVE,
                 onClick = { onConfigChange(config.copy(recurrenceType = RecurrenceType.RELATIVE)) },
                 shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-            ) { Text(stringResource(R.string.recurrence_after_completion)) }
+            ) { Text(stringResource(R.string.recurrence_after_completion), fontSize = SegmentedButtonFontSize) }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -143,34 +149,27 @@ fun RecurrenceConfigSection(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun FixedRecurrenceConfig(
     config: RecurrenceConfig,
     onConfigChange: (RecurrenceConfig) -> Unit
 ) {
-    // Preset chips
-    Text(
-        text = stringResource(R.string.recurrence_presets),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
-    ) {
-        RecurrencePreset.entries.forEach { preset ->
-            FilterChip(
-                selected = config.selectedPreset == preset,
+    val options = RecurrencePreset.entries.map { it.label } + stringResource(R.string.recurrence_custom)
+    val selectedIndex = config.selectedPreset?.let { RecurrencePreset.entries.indexOf(it) }
+        ?: options.size - 1
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, label ->
+            SegmentedButton(
+                selected = index == selectedIndex,
                 onClick = {
+                    val preset = RecurrencePreset.entries.getOrNull(index)
                     onConfigChange(config.copy(
-                        selectedPreset = if (config.selectedPreset == preset) null else preset,
-                        selectedDays = emptySet()
+                        selectedPreset = preset,
+                        selectedDays = if (preset != null) emptySet() else config.selectedDays
                     ))
                 },
-                label = { Text(preset.label) }
-            )
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+            ) { Text(label, fontSize = SegmentedButtonFontSize) }
         }
     }
 
@@ -210,7 +209,7 @@ private fun FixedRecurrenceConfig(
                             index = index,
                             count = CustomFrequency.entries.size
                         )
-                    ) { Text(freq.label) }
+                    ) { Text(freq.label, fontSize = SegmentedButtonFontSize) }
                 }
             }
         }
@@ -296,7 +295,7 @@ private fun RelativeRecurrenceConfig(
                         index = index,
                         count = RelativeUnit.entries.size
                     )
-                ) { Text(unit.label) }
+                ) { Text(unit.label, fontSize = SegmentedButtonFontSize) }
             }
         }
     }
@@ -307,13 +306,6 @@ private fun EndConditionConfig(
     config: RecurrenceConfig,
     onConfigChange: (RecurrenceConfig) -> Unit
 ) {
-    Text(
-        text = stringResource(R.string.recurrence_ends),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(4.dp))
-
     SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
         EndType.entries.forEachIndexed { index, endType ->
             SegmentedButton(
@@ -323,7 +315,7 @@ private fun EndConditionConfig(
                     index = index,
                     count = EndType.entries.size
                 )
-            ) { Text(endType.label) }
+            ) { Text(endType.label, fontSize = SegmentedButtonFontSize) }
         }
     }
 
@@ -334,7 +326,8 @@ private fun EndConditionConfig(
             DateTimePickerRow(
                 label = "End date",
                 value = config.endDate,
-                onValueChange = { onConfigChange(config.copy(endDate = it)) }
+                onValueChange = { onConfigChange(config.copy(endDate = it)) },
+                showDelete = true
             )
         }
         EndType.AFTER_COUNT -> {

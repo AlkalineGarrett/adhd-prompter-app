@@ -93,10 +93,8 @@ class AlarmTest {
         assertEquals("", alarm.lineContent)
         assertNull(alarm.createdAt)
         assertNull(alarm.updatedAt)
-        assertNull(alarm.upcomingTime)
-        assertNull(alarm.notifyTime)
-        assertNull(alarm.urgentTime)
-        assertNull(alarm.alarmTime)
+        assertNull(alarm.dueTime)
+        assertEquals(Alarm.DEFAULT_STAGES, alarm.stages)
         assertEquals(AlarmStatus.PENDING, alarm.status)
         assertNull(alarm.snoozedUntil)
     }
@@ -109,7 +107,7 @@ class AlarmTest {
             userId = "user_1",
             noteId = "note_1",
             lineContent = "Test content",
-            upcomingTime = now,
+            dueTime = now,
             status = AlarmStatus.DONE
         )
 
@@ -119,15 +117,15 @@ class AlarmTest {
         assertEquals("user_1", copy.userId)
         assertEquals("note_1", copy.noteId)
         assertEquals("Updated content", copy.lineContent)
-        assertEquals(now, copy.upcomingTime)
+        assertEquals(now, copy.dueTime)
         assertEquals(AlarmStatus.DONE, copy.status)
     }
 
     @Test
     fun `Alarm equality works correctly`() {
         val now = Timestamp(Date())
-        val alarm1 = Alarm(id = "alarm_1", noteId = "note_1", upcomingTime = now)
-        val alarm2 = Alarm(id = "alarm_1", noteId = "note_1", upcomingTime = now)
+        val alarm1 = Alarm(id = "alarm_1", noteId = "note_1", dueTime = now)
+        val alarm2 = Alarm(id = "alarm_1", noteId = "note_1", dueTime = now)
 
         assertEquals(alarm1, alarm2)
     }
@@ -145,44 +143,202 @@ class AlarmTest {
     // region latestThresholdTime tests
 
     @Test
-    fun `latestThresholdTime returns null when no thresholds set`() {
+    fun `latestThresholdTime returns null when dueTime not set`() {
         val alarm = Alarm(id = "test")
         assertNull(alarm.latestThresholdTime)
     }
 
     @Test
-    fun `latestThresholdTime returns single threshold when only one set`() {
+    fun `latestThresholdTime returns dueTime when set`() {
         val time = Timestamp(Date(5000))
-        val alarm = Alarm(id = "test", notifyTime = time)
+        val alarm = Alarm(id = "test", dueTime = time)
         assertEquals(time, alarm.latestThresholdTime)
     }
 
+    // endregion
+
+    // region AlarmStage tests
+
     @Test
-    fun `latestThresholdTime returns latest across all thresholds`() {
-        val t1 = Timestamp(Date(1000))
-        val t2 = Timestamp(Date(2000))
-        val t3 = Timestamp(Date(3000))
-        val t4 = Timestamp(Date(4000))
-        val alarm = Alarm(
-            id = "test",
-            upcomingTime = t1,
-            notifyTime = t2,
-            urgentTime = t4,
-            alarmTime = t3
-        )
-        assertEquals(t4, alarm.latestThresholdTime)
+    fun `AlarmStage resolveTime returns dueTime minus offset`() {
+        val dueTime = Timestamp(Date(10000000L))
+        val stage = AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3600000L)
+
+        val resolved = stage.resolveTime(dueTime)
+
+        assertEquals(10000000L - 3600000L, resolved.toDate().time)
     }
 
     @Test
-    fun `latestThresholdTime skips null thresholds`() {
-        val t1 = Timestamp(Date(1000))
-        val t3 = Timestamp(Date(3000))
+    fun `AlarmStage resolveTime returns absoluteTime when set`() {
+        val dueTime = Timestamp(Date(10000000L))
+        val absoluteTime = Timestamp(Date(5000000L))
+        val stage = AlarmStage(
+            AlarmStageType.NOTIFICATION,
+            offsetMs = 3600000L,
+            absoluteTime = absoluteTime
+        )
+
+        val resolved = stage.resolveTime(dueTime)
+
+        assertEquals(5000000L, resolved.toDate().time)
+    }
+
+    @Test
+    fun `AlarmStageType toAlarmType maps correctly`() {
+        assertEquals(AlarmType.ALARM, AlarmStageType.SOUND_ALARM.toAlarmType())
+        assertEquals(AlarmType.URGENT, AlarmStageType.LOCK_SCREEN.toAlarmType())
+        assertEquals(AlarmType.NOTIFY, AlarmStageType.NOTIFICATION.toAlarmType())
+    }
+
+    @Test
+    fun `enabledStages filters disabled stages`() {
+        val stages = listOf(
+            AlarmStage(AlarmStageType.SOUND_ALARM, enabled = true),
+            AlarmStage(AlarmStageType.LOCK_SCREEN, enabled = false),
+            AlarmStage(AlarmStageType.NOTIFICATION, enabled = true)
+        )
+        val alarm = Alarm(id = "test", stages = stages)
+
+        assertEquals(2, alarm.enabledStages.size)
+        assertTrue(alarm.enabledStages.all { it.enabled })
+    }
+
+    // endregion
+
+    // region earliestThresholdTime tests
+
+    @Test
+    fun `earliestThresholdTime returns null when dueTime not set`() {
+        val alarm = Alarm(id = "test", dueTime = null)
+        assertNull(alarm.earliestThresholdTime)
+    }
+
+    @Test
+    fun `earliestThresholdTime returns null when no stages enabled`() {
         val alarm = Alarm(
             id = "test",
-            upcomingTime = t1,
-            alarmTime = t3
+            dueTime = Timestamp(Date(10000000L)),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = false),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3600000L, enabled = false)
+            )
         )
-        assertEquals(t3, alarm.latestThresholdTime)
+        assertNull(alarm.earliestThresholdTime)
+    }
+
+    @Test
+    fun `earliestThresholdTime returns earliest enabled stage time`() {
+        val dueTime = Timestamp(Date(10000000L))
+        val alarm = Alarm(
+            id = "test",
+            dueTime = dueTime,
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, offsetMs = 1800000L, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 7200000L, enabled = true)
+            )
+        )
+
+        // Notification has the largest offset, so its resolved time is the earliest
+        val expected = Timestamp(Date(10000000L - 7200000L))
+        assertEquals(expected, alarm.earliestThresholdTime)
+    }
+
+    @Test
+    fun `earliestThresholdTime skips disabled stages`() {
+        val dueTime = Timestamp(Date(10000000L))
+        val alarm = Alarm(
+            id = "test",
+            dueTime = dueTime,
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 7200000L, enabled = false)
+            )
+        )
+
+        // Only sound alarm is enabled (offset 0), so earliest = dueTime
+        assertEquals(dueTime, alarm.earliestThresholdTime)
+    }
+
+    @Test
+    fun `earliestThresholdTime uses absoluteTime when set`() {
+        val dueTime = Timestamp(Date(10000000L))
+        val earlyAbsolute = Timestamp(Date(1000000L))
+        val alarm = Alarm(
+            id = "test",
+            dueTime = dueTime,
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 0, enabled = true, absoluteTime = earlyAbsolute)
+            )
+        )
+
+        assertEquals(earlyAbsolute, alarm.earliestThresholdTime)
+    }
+
+    // endregion
+
+    // region displayName tests
+
+    @Test
+    fun `displayName returns plain text unchanged`() {
+        val alarm = Alarm(lineContent = "Buy groceries")
+        assertEquals("Buy groceries", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips leading tabs`() {
+        val alarm = Alarm(lineContent = "\t\tNested task")
+        assertEquals("Nested task", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips bullet prefix`() {
+        val alarm = Alarm(lineContent = "• Bullet item")
+        assertEquals("Bullet item", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips unchecked checkbox prefix`() {
+        val alarm = Alarm(lineContent = "☐ Todo item")
+        assertEquals("Todo item", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips checked checkbox prefix`() {
+        val alarm = Alarm(lineContent = "☑ Done item")
+        assertEquals("Done item", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips trailing alarm symbol`() {
+        val alarm = Alarm(lineContent = "Meeting ⏰")
+        assertEquals("Meeting", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName strips both prefix and alarm symbol`() {
+        val alarm = Alarm(lineContent = "\t• Important task ⏰")
+        assertEquals("Important task", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName handles empty lineContent`() {
+        val alarm = Alarm(lineContent = "")
+        assertEquals("", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName handles alarm symbol only`() {
+        val alarm = Alarm(lineContent = "⏰")
+        assertEquals("", alarm.displayName)
+    }
+
+    @Test
+    fun `displayName handles tab bullet and alarm symbol`() {
+        val alarm = Alarm(lineContent = "\t☐ ⏰")
+        assertEquals("", alarm.displayName)
     }
 
     // endregion

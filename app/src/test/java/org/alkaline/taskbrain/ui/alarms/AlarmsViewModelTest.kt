@@ -14,6 +14,7 @@ import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.Calendar
 import java.util.Date
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -40,7 +41,7 @@ class AlarmsViewModelTest {
     private fun createTestAlarm(
         id: String = "test_alarm",
         status: AlarmStatus = AlarmStatus.PENDING,
-        upcomingTime: Timestamp? = null,
+        dueTime: Timestamp? = null,
         lineContent: String = "Test alarm"
     ) = Alarm(
         id = id,
@@ -48,7 +49,7 @@ class AlarmsViewModelTest {
         noteId = "note1",
         lineContent = lineContent,
         status = status,
-        upcomingTime = upcomingTime
+        dueTime = dueTime
     )
 
     @Test
@@ -67,18 +68,18 @@ class AlarmsViewModelTest {
     }
 
     @Test
-    fun `upcoming alarms have upcomingTime set`() {
+    fun `upcoming alarms have dueTime set`() {
         val upcomingAlarm = createTestAlarm(
             id = "upcoming1",
-            upcomingTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
+            dueTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
         )
         val laterAlarm = createTestAlarm(
             id = "later1",
-            upcomingTime = null
+            dueTime = null
         )
 
-        assertNotNull(upcomingAlarm.upcomingTime)
-        assertNull(laterAlarm.upcomingTime)
+        assertNotNull(upcomingAlarm.dueTime)
+        assertNull(laterAlarm.dueTime)
     }
 
     @Test
@@ -132,18 +133,18 @@ class AlarmsViewModelTest {
     }
 
     @Test
-    fun `alarms are sorted by upcomingTime`() {
+    fun `alarms are sorted by dueTime`() {
         val now = System.currentTimeMillis()
         val alarm1 = createTestAlarm(
             id = "alarm1",
-            upcomingTime = Timestamp(Date(now + 3600000)) // 1 hour from now
+            dueTime = Timestamp(Date(now + 3600000)) // 1 hour from now
         )
         val alarm2 = createTestAlarm(
             id = "alarm2",
-            upcomingTime = Timestamp(Date(now + 1800000)) // 30 min from now
+            dueTime = Timestamp(Date(now + 1800000)) // 30 min from now
         )
 
-        val sortedAlarms = listOf(alarm1, alarm2).sortedBy { it.upcomingTime?.toDate()?.time }
+        val sortedAlarms = listOf(alarm1, alarm2).sortedBy { it.dueTime?.toDate()?.time }
 
         assertEquals("alarm2", sortedAlarms[0].id)
         assertEquals("alarm1", sortedAlarms[1].id)
@@ -294,7 +295,7 @@ class AlarmsViewModelTest {
         val pendingAlarm = createTestAlarm(
             id = "alarm1",
             status = AlarmStatus.PENDING,
-            upcomingTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
+            dueTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
         )
         coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(listOf(pendingAlarm))
         coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
@@ -324,10 +325,10 @@ class AlarmsViewModelTest {
     // ==================== Past Due Partitioning Tests ====================
 
     @Test
-    fun `isPastDue returns true when latest threshold is in the past`() {
+    fun `isPastDue returns true when dueTime is in the past`() {
         val pastTime = Timestamp(Date(System.currentTimeMillis() - 3600000))
         val alarm = createTestAlarm(
-            upcomingTime = pastTime,
+            dueTime = pastTime,
             lineContent = "Overdue task"
         )
         val now = Timestamp.now()
@@ -336,10 +337,10 @@ class AlarmsViewModelTest {
     }
 
     @Test
-    fun `isPastDue returns false when latest threshold is in the future`() {
+    fun `isPastDue returns false when dueTime is in the future`() {
         val futureTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
         val alarm = createTestAlarm(
-            upcomingTime = futureTime,
+            dueTime = futureTime,
             lineContent = "Future task"
         )
         val now = Timestamp.now()
@@ -348,45 +349,11 @@ class AlarmsViewModelTest {
     }
 
     @Test
-    fun `isPastDue returns false when no thresholds are set`() {
-        val alarm = createTestAlarm(upcomingTime = null)
+    fun `isPastDue returns false when no dueTime is set`() {
+        val alarm = createTestAlarm(dueTime = null)
         val now = Timestamp.now()
 
         assertFalse(AlarmsViewModel.isPastDue(alarm, now))
-    }
-
-    @Test
-    fun `isPastDue uses latest threshold not earliest`() {
-        val pastTime = Timestamp(Date(System.currentTimeMillis() - 3600000))
-        val futureTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
-        val alarm = Alarm(
-            id = "test",
-            noteId = "note1",
-            lineContent = "Test",
-            upcomingTime = pastTime,
-            alarmTime = futureTime // latest threshold is still future
-        )
-        val now = Timestamp.now()
-
-        assertFalse(AlarmsViewModel.isPastDue(alarm, now))
-    }
-
-    @Test
-    fun `isPastDue returns true when all thresholds are past`() {
-        val past1 = Timestamp(Date(System.currentTimeMillis() - 7200000))
-        val past2 = Timestamp(Date(System.currentTimeMillis() - 3600000))
-        val past3 = Timestamp(Date(System.currentTimeMillis() - 1800000))
-        val alarm = Alarm(
-            id = "test",
-            noteId = "note1",
-            lineContent = "Test",
-            upcomingTime = past1,
-            urgentTime = past2,
-            alarmTime = past3
-        )
-        val now = Timestamp.now()
-
-        assertTrue(AlarmsViewModel.isPastDue(alarm, now))
     }
 
     @Test
@@ -395,7 +362,7 @@ class AlarmsViewModelTest {
         val pendingAlarm = createTestAlarm(
             id = "alarm1",
             status = AlarmStatus.PENDING,
-            upcomingTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
+            dueTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
         )
         coEvery { mockRepository.getUpcomingAlarms() } returns Result.success(listOf(pendingAlarm))
         coEvery { mockRepository.getLaterAlarms() } returns Result.success(emptyList())
@@ -420,5 +387,62 @@ class AlarmsViewModelTest {
         assertEquals(0, upcomingResult?.size)
         assertEquals(1, completedResult?.size)
         assertEquals(AlarmStatus.DONE, completedResult?.first()?.status)
+    }
+
+    // ==================== endOfDay Tests ====================
+
+    @Test
+    fun `endOfDay returns 23_59_59_999 of the same day`() {
+        // 2026-03-14 10:30:00
+        val cal = Calendar.getInstance().apply {
+            set(2026, Calendar.MARCH, 14, 10, 30, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val input = Timestamp(cal.time)
+
+        val result = AlarmsViewModel.endOfDay(input)
+
+        val resultCal = Calendar.getInstance().apply { time = result.toDate() }
+        assertEquals(2026, resultCal.get(Calendar.YEAR))
+        assertEquals(Calendar.MARCH, resultCal.get(Calendar.MONTH))
+        assertEquals(14, resultCal.get(Calendar.DAY_OF_MONTH))
+        assertEquals(23, resultCal.get(Calendar.HOUR_OF_DAY))
+        assertEquals(59, resultCal.get(Calendar.MINUTE))
+        assertEquals(59, resultCal.get(Calendar.SECOND))
+        assertEquals(999, resultCal.get(Calendar.MILLISECOND))
+    }
+
+    @Test
+    fun `endOfDay at midnight returns end of that same day`() {
+        val cal = Calendar.getInstance().apply {
+            set(2026, Calendar.JANUARY, 1, 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val input = Timestamp(cal.time)
+
+        val result = AlarmsViewModel.endOfDay(input)
+
+        val resultCal = Calendar.getInstance().apply { time = result.toDate() }
+        assertEquals(1, resultCal.get(Calendar.DAY_OF_MONTH))
+        assertEquals(23, resultCal.get(Calendar.HOUR_OF_DAY))
+        assertEquals(59, resultCal.get(Calendar.MINUTE))
+    }
+
+    @Test
+    fun `endOfDay at 23_59 returns end of that same day`() {
+        val cal = Calendar.getInstance().apply {
+            set(2026, Calendar.JUNE, 15, 23, 59, 58)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val input = Timestamp(cal.time)
+
+        val result = AlarmsViewModel.endOfDay(input)
+
+        val resultCal = Calendar.getInstance().apply { time = result.toDate() }
+        assertEquals(15, resultCal.get(Calendar.DAY_OF_MONTH))
+        assertEquals(23, resultCal.get(Calendar.HOUR_OF_DAY))
+        assertEquals(59, resultCal.get(Calendar.MINUTE))
+        assertEquals(59, resultCal.get(Calendar.SECOND))
+        assertEquals(999, resultCal.get(Calendar.MILLISECOND))
     }
 }

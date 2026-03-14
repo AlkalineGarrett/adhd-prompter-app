@@ -63,6 +63,23 @@ class RecurringAlarmRepository(
         }
     }.onFailure { Log.e(TAG, "Error deleting recurring alarm", it) }
 
+    /**
+     * Deletes all recurring alarms for the current user.
+     */
+    suspend fun deleteAll(): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = collection(userId).get().await()
+            val batch = db.batch()
+            for (doc in result.documents) {
+                batch.delete(doc.reference)
+            }
+            batch.commit().await()
+            Log.d(TAG, "Deleted all recurring alarms (${result.documents.size} documents)")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error deleting all recurring alarms", it) }
+
     suspend fun get(id: String): Result<RecurringAlarm?> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
@@ -172,10 +189,15 @@ class RecurringAlarmRepository(
         "recurrenceType" to ra.recurrenceType.name,
         "rrule" to ra.rrule,
         "relativeIntervalMs" to ra.relativeIntervalMs,
-        "upcomingOffsetMs" to ra.upcomingOffsetMs,
-        "notifyOffsetMs" to ra.notifyOffsetMs,
-        "urgentOffsetMs" to ra.urgentOffsetMs,
-        "alarmOffsetMs" to ra.alarmOffsetMs,
+        "dueOffsetMs" to ra.dueOffsetMs,
+        "stages" to ra.stages.map { stage ->
+            mapOf(
+                "type" to stage.type.name,
+                "offsetMs" to stage.offsetMs,
+                "enabled" to stage.enabled,
+                "absoluteTime" to stage.absoluteTime
+            )
+        },
         "endDate" to ra.endDate,
         "repeatCount" to ra.repeatCount,
         "completionCount" to ra.completionCount,
@@ -196,10 +218,8 @@ class RecurringAlarmRepository(
         } catch (e: IllegalArgumentException) { RecurrenceType.FIXED },
         rrule = data["rrule"] as? String,
         relativeIntervalMs = (data["relativeIntervalMs"] as? Number)?.toLong(),
-        upcomingOffsetMs = (data["upcomingOffsetMs"] as? Number)?.toLong(),
-        notifyOffsetMs = (data["notifyOffsetMs"] as? Number)?.toLong(),
-        urgentOffsetMs = (data["urgentOffsetMs"] as? Number)?.toLong(),
-        alarmOffsetMs = (data["alarmOffsetMs"] as? Number)?.toLong(),
+        dueOffsetMs = (data["dueOffsetMs"] as? Number)?.toLong() ?: 0,
+        stages = parseStages(data["stages"]),
         endDate = data["endDate"] as? Timestamp,
         repeatCount = (data["repeatCount"] as? Number)?.toInt(),
         completionCount = (data["completionCount"] as? Number)?.toInt() ?: 0,
@@ -211,6 +231,21 @@ class RecurringAlarmRepository(
         createdAt = data["createdAt"] as? Timestamp,
         updatedAt = data["updatedAt"] as? Timestamp
     )
+
+    private fun parseStages(raw: Any?): List<AlarmStage> {
+        val list = raw as? List<*> ?: return Alarm.DEFAULT_STAGES
+        return list.mapNotNull { item ->
+            val map = item as? Map<*, *> ?: return@mapNotNull null
+            try {
+                AlarmStage(
+                    type = AlarmStageType.valueOf(map["type"] as? String ?: return@mapNotNull null),
+                    offsetMs = (map["offsetMs"] as? Number)?.toLong() ?: 0,
+                    enabled = map["enabled"] as? Boolean ?: true,
+                    absoluteTime = map["absoluteTime"] as? Timestamp
+                )
+            } catch (e: Exception) { null }
+        }.ifEmpty { Alarm.DEFAULT_STAGES }
+    }
 
     companion object {
         private const val TAG = "RecurringAlarmRepo"

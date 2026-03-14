@@ -4,12 +4,12 @@
  * and app/src/main/res/values/themes.xml
  */
 :root {
-  /* Brand (Android: brand_color, brand_text_color) */
+  /* Titlebar (Android: titlebar_background, titlebar_text) */
   --color-brand: #AED581;
   --color-brand-border: #c5e1a5;
   --color-brand-text: #000000;
 
-  /* Primary / Action (Android: action_button_background = purple_500) */
+  /* Primary / Action (Android: action_button_background, action_button_text) */
   --color-primary: #6200EE;
   --color-primary-hover: #3700B3;
   --color-primary-light: #EDE7F6;

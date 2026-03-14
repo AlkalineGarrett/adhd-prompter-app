@@ -6,6 +6,8 @@ import io.mockk.*
 import kotlinx.coroutines.test.runTest
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStage
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -42,18 +44,14 @@ class AlarmStateManagerTest {
 
     private fun createTestAlarm(
         id: String = "test_alarm",
-        upcomingTime: Timestamp? = Timestamp(Date(System.currentTimeMillis() + 3600000)),
-        notifyTime: Timestamp? = null,
-        urgentTime: Timestamp? = null,
-        alarmTime: Timestamp? = null
+        dueTime: Timestamp? = Timestamp(Date(System.currentTimeMillis() + 3600000)),
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES
     ) = Alarm(
         id = id,
         noteId = "note1",
         lineContent = "Test alarm",
-        upcomingTime = upcomingTime,
-        notifyTime = notifyTime,
-        urgentTime = urgentTime,
-        alarmTime = alarmTime
+        dueTime = dueTime,
+        stages = stages
     )
 
     // region deactivate
@@ -190,7 +188,7 @@ class AlarmStateManagerTest {
     @Test
     fun `update deactivates old state and reschedules`() = runTest {
         val alarm = createTestAlarm(id = "alarm1")
-        val newUpcoming = Timestamp(Date(System.currentTimeMillis() + 7200000))
+        val newDueTime = Timestamp(Date(System.currentTimeMillis() + 7200000))
         val scheduleResult = AlarmScheduleResult(
             alarmId = "alarm1",
             scheduledTriggers = listOf(org.alkaline.taskbrain.data.AlarmType.NOTIFY),
@@ -202,7 +200,7 @@ class AlarmStateManagerTest {
         coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
         every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
 
-        val result = stateManager.update(alarm, newUpcoming, null, null, null)
+        val result = stateManager.update(alarm, newDueTime, Alarm.DEFAULT_STAGES)
 
         assertTrue(result.isSuccess)
         // Old state is deactivated
@@ -219,7 +217,7 @@ class AlarmStateManagerTest {
         val alarm = createTestAlarm(id = "alarm1")
         coEvery { mockRepository.updateAlarm(any()) } returns Result.failure(RuntimeException("fail"))
 
-        val result = stateManager.update(alarm, null, null, null, null)
+        val result = stateManager.update(alarm, null, Alarm.DEFAULT_STAGES)
 
         assertTrue(result.isFailure)
         // Should not deactivate or schedule since repo failed before that
@@ -241,17 +239,18 @@ class AlarmStateManagerTest {
         coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
         every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
 
-        val result = stateManager.update(alarm, null, null, null, null)
+        val result = stateManager.update(alarm, null, Alarm.DEFAULT_STAGES)
 
         assertEquals(scheduleResult, result.getOrNull())
     }
 
     @Test
-    fun `update passes updated alarm with new times to repository and scheduler`() = runTest {
+    fun `update passes updated alarm with new dueTime and stages to repository`() = runTest {
         val alarm = createTestAlarm(id = "alarm1")
-        val notifyTime = Timestamp(Date(1000))
-        val urgentTime = Timestamp(Date(2000))
-        val alarmTime = Timestamp(Date(3000))
+        val dueTime = Timestamp(Date(3000))
+        val stages = listOf(
+            AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true)
+        )
         val scheduleResult = AlarmScheduleResult(
             alarmId = "alarm1",
             scheduledTriggers = emptyList(),
@@ -263,49 +262,22 @@ class AlarmStateManagerTest {
         coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
         every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
 
-        stateManager.update(alarm, null, notifyTime, urgentTime, alarmTime)
+        stateManager.update(alarm, dueTime, stages)
 
-        // Verify repository gets alarm with all updated fields
+        // Verify repository gets alarm with updated fields
         coVerify {
             mockRepository.updateAlarm(match {
-                it.notifyTime == notifyTime &&
-                it.urgentTime == urgentTime &&
-                it.alarmTime == alarmTime &&
-                it.upcomingTime == notifyTime // resolved from earliest
+                it.dueTime == dueTime &&
+                it.stages == stages
             })
         }
 
-        // Verify scheduler gets the same updated alarm (not the original)
+        // Verify scheduler gets the same updated alarm
         verify {
             mockScheduler.scheduleAlarm(match {
-                it.notifyTime == notifyTime &&
-                it.urgentTime == urgentTime &&
-                it.alarmTime == alarmTime
+                it.dueTime == dueTime &&
+                it.stages == stages
             })
-        }
-    }
-
-    @Test
-    fun `update applies resolveUpcomingTime when upcomingTime is null`() = runTest {
-        val alarm = createTestAlarm(id = "alarm1")
-        val notifyTime = Timestamp(Date(System.currentTimeMillis() + 3600000))
-        val alarmTime = Timestamp(Date(System.currentTimeMillis() + 7200000))
-        val scheduleResult = AlarmScheduleResult(
-            alarmId = "alarm1",
-            scheduledTriggers = emptyList(),
-            skippedPastTriggers = emptyList(),
-            noTriggersConfigured = false,
-            usedExactAlarm = true
-        )
-
-        coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
-        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
-
-        stateManager.update(alarm, null, notifyTime, null, alarmTime)
-
-        // Verify the alarm passed to updateAlarm has upcomingTime = notifyTime (earliest)
-        coVerify {
-            mockRepository.updateAlarm(match { it.upcomingTime == notifyTime })
         }
     }
 
@@ -369,47 +341,6 @@ class AlarmStateManagerTest {
         assertTrue(result.isSuccess)
         assertNull(result.getOrNull())
         verify(exactly = 0) { mockScheduler.scheduleAlarm(any()) }
-    }
-
-    // endregion
-
-    // region resolveUpcomingTime
-
-    @Test
-    fun `resolveUpcomingTime returns explicit upcomingTime when set`() {
-        val upcoming = Timestamp(Date(1000))
-        val notify = Timestamp(Date(500))
-
-        val result = AlarmStateManager.resolveUpcomingTime(upcoming, notify, null, null)
-
-        assertEquals(upcoming, result)
-    }
-
-    @Test
-    fun `resolveUpcomingTime returns earliest threshold when upcomingTime is null`() {
-        val notify = Timestamp(Date(3000))
-        val urgent = Timestamp(Date(1000))
-        val alarm = Timestamp(Date(2000))
-
-        val result = AlarmStateManager.resolveUpcomingTime(null, notify, urgent, alarm)
-
-        assertEquals(urgent, result)
-    }
-
-    @Test
-    fun `resolveUpcomingTime returns null when all times are null`() {
-        val result = AlarmStateManager.resolveUpcomingTime(null, null, null, null)
-
-        assertNull(result)
-    }
-
-    @Test
-    fun `resolveUpcomingTime returns single threshold when only one is set`() {
-        val alarmTime = Timestamp(Date(5000))
-
-        val result = AlarmStateManager.resolveUpcomingTime(null, null, null, alarmTime)
-
-        assertEquals(alarmTime, result)
     }
 
     // endregion

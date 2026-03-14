@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -14,11 +15,16 @@ import java.util.Calendar
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
+import org.alkaline.taskbrain.data.RecurringAlarm
+import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.service.AlarmStateManager
+import org.alkaline.taskbrain.service.RecurrenceConfigMapper
+import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 
 class AlarmsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AlarmRepository()
+    private val recurringRepository = RecurringAlarmRepository()
     private val alarmStateManager = AlarmStateManager(application)
 
     private val _pastDueAlarms = MutableLiveData<List<Alarm>>(emptyList())
@@ -35,6 +41,9 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _cancelledAlarms = MutableLiveData<List<Alarm>>(emptyList())
     val cancelledAlarms: LiveData<List<Alarm>> = _cancelledAlarms
+
+    private val _recurringAlarms = MutableLiveData<Map<String, RecurringAlarm>>(emptyMap())
+    val recurringAlarms: LiveData<Map<String, RecurringAlarm>> = _recurringAlarms
 
     private val _isLoading = MutableLiveData(false)
     val isLoading: LiveData<Boolean> = _isLoading
@@ -56,12 +65,28 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         _error.value = null
 
         viewModelScope.launch {
-            // Load all alarm categories
-            val pendingResult = repository.getPendingAlarms()
-            val completedResult = repository.getCompletedAlarms()
-            val cancelledResult = repository.getCancelledAlarms()
+            // Load all alarm categories and recurring templates in parallel
+            val pendingDeferred = async { repository.getPendingAlarms() }
+            val completedDeferred = async { repository.getCompletedAlarms() }
+            val cancelledDeferred = async { repository.getCancelledAlarms() }
+            val recurringDeferred = async { recurringRepository.getActiveRecurringAlarms() }
+
+            val pendingResult = pendingDeferred.await()
+            val completedResult = completedDeferred.await()
+            val cancelledResult = cancelledDeferred.await()
+            val recurringResult = recurringDeferred.await()
 
             var firstError: Throwable? = null
+
+            recurringResult.fold(
+                onSuccess = { templates ->
+                    _recurringAlarms.value = templates.associateBy { it.id }
+                },
+                onFailure = {
+                    Log.e(TAG, "Error loading recurring alarms", it)
+                    if (firstError == null) firstError = it
+                }
+            )
 
             pendingResult.fold(
                 onSuccess = { alarms ->
@@ -122,12 +147,10 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateAlarm(
         alarm: Alarm,
-        upcomingTime: com.google.firebase.Timestamp?,
-        notifyTime: com.google.firebase.Timestamp?,
-        urgentTime: com.google.firebase.Timestamp?,
-        alarmTime: com.google.firebase.Timestamp?
+        dueTime: Timestamp?,
+        stages: List<org.alkaline.taskbrain.data.AlarmStage> = org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES
     ) = executeAlarmOperation {
-        alarmStateManager.update(alarm, upcomingTime, notifyTime, urgentTime, alarmTime).also { result ->
+        alarmStateManager.update(alarm, dueTime, stages).also { result ->
             result.getOrNull()?.let { scheduleResult ->
                 if (!scheduleResult.success) {
                     Log.w(TAG, "Alarm scheduling warning: ${scheduleResult.message}")
@@ -136,12 +159,97 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateAlarmAndRecurrence(
+        alarm: Alarm,
+        dueTime: Timestamp?,
+        stages: List<org.alkaline.taskbrain.data.AlarmStage> = org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES,
+        recurrenceConfig: RecurrenceConfig
+    ) = executeAlarmOperation {
+        // Update the instance
+        alarmStateManager.update(alarm, dueTime, stages).also { result ->
+            result.getOrNull()?.let { scheduleResult ->
+                if (!scheduleResult.success) {
+                    Log.w(TAG, "Alarm scheduling warning: ${scheduleResult.message}")
+                }
+            }
+        }
+
+        // Update the recurring alarm template
+        val recurringAlarmId = alarm.recurringAlarmId
+        if (recurringAlarmId == null) {
+            Log.w(TAG, "updateAlarmAndRecurrence called but alarm has no recurringAlarmId: ${alarm.id}")
+            return@executeAlarmOperation Result.success(Unit)
+        }
+        val existing = recurringRepository.get(recurringAlarmId).getOrNull()
+        if (existing == null) {
+            Log.w(TAG, "Recurring alarm template not found: $recurringAlarmId")
+            return@executeAlarmOperation Result.success(Unit)
+        }
+
+        val updated = applyRecurrenceConfig(existing, dueTime, stages, recurrenceConfig)
+        recurringRepository.update(updated)
+    }
+
+    fun updateRecurrence(
+        recurringAlarmId: String,
+        recurrenceConfig: RecurrenceConfig
+    ) = executeAlarmOperation {
+        val existing = recurringRepository.get(recurringAlarmId).getOrNull()
+            ?: return@executeAlarmOperation Result.failure<Unit>(
+                IllegalStateException("Recurring alarm not found: $recurringAlarmId")
+            )
+
+        // Use the existing alarm's current instance to get threshold times for offset calculation
+        val currentAlarm = existing.currentAlarmId?.let { repository.getAlarm(it).getOrNull() }
+
+        val updated = applyRecurrenceConfig(
+            existing,
+            currentAlarm?.dueTime,
+            currentAlarm?.stages ?: org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES,
+            recurrenceConfig
+        )
+        recurringRepository.update(updated)
+    }
+
+    /**
+     * Builds an updated [RecurringAlarm] by applying new recurrence config and stage configuration
+     * while preserving the existing template's identity and state fields.
+     */
+    private fun applyRecurrenceConfig(
+        existing: RecurringAlarm,
+        dueTime: Timestamp?,
+        stages: List<org.alkaline.taskbrain.data.AlarmStage>,
+        config: RecurrenceConfig
+    ): RecurringAlarm = RecurrenceConfigMapper.toRecurringAlarm(
+        noteId = existing.noteId,
+        lineContent = existing.lineContent,
+        dueTime = dueTime,
+        stages = stages,
+        config = config
+    ).copy(
+        id = existing.id,
+        userId = existing.userId,
+        completionCount = existing.completionCount,
+        lastCompletionDate = existing.lastCompletionDate,
+        currentAlarmId = existing.currentAlarmId,
+        status = existing.status,
+        createdAt = existing.createdAt
+    )
+
     private fun executeAlarmOperation(operation: suspend () -> Result<*>) {
         viewModelScope.launch {
             operation().fold(
                 onSuccess = { loadAlarms() },
                 onFailure = { _error.value = it }
             )
+        }
+    }
+
+    fun deleteAllAlarms() = executeAlarmOperation {
+        repository.deleteAllAlarms().also { result ->
+            result.onSuccess {
+                recurringRepository.deleteAll()
+            }
         }
     }
 

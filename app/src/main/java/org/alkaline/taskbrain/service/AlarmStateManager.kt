@@ -6,6 +6,7 @@ import android.util.Log
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStage
 
 /**
  * Centralizes all alarm state transition side effects.
@@ -86,25 +87,19 @@ class AlarmStateManager(
     }
 
     /**
-     * Updates an alarm's time thresholds, reschedules triggers, and clears stale
+     * Updates an alarm's due time and stages, reschedules triggers, and clears stale
      * urgent state/notifications from the old schedule.
      *
      * @return Result containing the schedule result on success.
      */
     suspend fun update(
         alarm: Alarm,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>
     ): Result<AlarmScheduleResult> {
-        val effectiveUpcomingTime = resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
-
         val updatedAlarm = alarm.copy(
-            upcomingTime = effectiveUpcomingTime,
-            notifyTime = notifyTime,
-            urgentTime = urgentTime,
-            alarmTime = alarmTime
+            dueTime = dueTime,
+            stages = stages
         )
 
         return repository.updateAlarm(updatedAlarm).map {
@@ -133,17 +128,5 @@ class AlarmStateManager(
 
     companion object {
         private const val TAG = "AlarmStateManager"
-
-        /**
-         * If the user didn't set an explicit upcoming time, use the earliest
-         * of the other thresholds so the alarm appears in the Upcoming list.
-         */
-        fun resolveUpcomingTime(
-            upcomingTime: Timestamp?,
-            notifyTime: Timestamp?,
-            urgentTime: Timestamp?,
-            alarmTime: Timestamp?
-        ): Timestamp? = upcomingTime ?: listOfNotNull(notifyTime, urgentTime, alarmTime)
-            .minByOrNull { it.toDate().time }
     }
 }

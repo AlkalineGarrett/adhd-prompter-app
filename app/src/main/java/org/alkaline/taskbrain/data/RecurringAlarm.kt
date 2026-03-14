@@ -25,15 +25,11 @@ data class RecurringAlarm(
     /** Interval in milliseconds for RELATIVE type. */
     val relativeIntervalMs: Long? = null,
 
-    /**
-     * Threshold offsets in milliseconds relative to the base alarm time.
-     * Negative = before, zero = at, positive = after.
-     * Null = threshold not used.
-     */
-    val upcomingOffsetMs: Long? = null,
-    val notifyOffsetMs: Long? = null,
-    val urgentOffsetMs: Long? = null,
-    val alarmOffsetMs: Long? = null,
+    /** Offset from the recurrence base time to the due time. */
+    val dueOffsetMs: Long = 0,
+
+    /** Stage configuration (offsets are relative to dueTime, same as Alarm). */
+    val stages: List<AlarmStage> = Alarm.DEFAULT_STAGES,
 
     /** Optional end date — no more instances after this. */
     val endDate: Timestamp? = null,
@@ -111,7 +107,6 @@ enum class RecurringAlarmStatus {
  */
 enum class RecurrencePreset(val label: String, val rrule: String) {
     DAILY("Daily", "FREQ=DAILY"),
-    WEEKDAYS("Weekdays", "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"),
     WEEKLY("Weekly", "FREQ=WEEKLY"),
     MONTHLY("Monthly", "FREQ=MONTHLY")
 }

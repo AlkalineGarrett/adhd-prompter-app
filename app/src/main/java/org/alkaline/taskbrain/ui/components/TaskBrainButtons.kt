@@ -34,7 +34,7 @@ fun ActionButton(
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(
             containerColor = colorResource(R.color.action_button_background),
-            contentColor = Color.White
+            contentColor = colorResource(R.color.action_button_text)
         ),
         shape = RoundedCornerShape(Dimens.StatusBarButtonCornerRadius),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = Dimens.StatusBarButtonHorizontalPadding, vertical = 0.dp),
@@ -44,7 +44,7 @@ fun ActionButton(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(Dimens.StatusBarButtonIconSize),
-            tint = Color.White
+            tint = colorResource(R.color.action_button_text)
         )
         Spacer(modifier = Modifier.width(Dimens.StatusBarButtonIconTextSpacing))
         Text(

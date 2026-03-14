@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.ui.alarms
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,22 +12,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -43,12 +49,18 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.data.RecurringAlarm
+import org.alkaline.taskbrain.service.RecurrenceConfigMapper
 import org.alkaline.taskbrain.ui.components.ErrorDialog
 import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
+import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 import org.alkaline.taskbrain.util.PermissionHelper
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -63,18 +75,23 @@ fun AlarmsScreen(
     val laterAlarms by alarmsViewModel.laterAlarms.observeAsState(emptyList())
     val completedAlarms by alarmsViewModel.completedAlarms.observeAsState(emptyList())
     val cancelledAlarms by alarmsViewModel.cancelledAlarms.observeAsState(emptyList())
+    val recurringAlarms by alarmsViewModel.recurringAlarms.observeAsState(emptyMap())
     val isLoading by alarmsViewModel.isLoading.observeAsState(false)
     val error by alarmsViewModel.error.observeAsState()
 
-    // Alarm edit dialog state
+    // Instance edit dialog state
     var selectedAlarm by remember { mutableStateOf<Alarm?>(null) }
+
+    // Recurrence-only edit dialog state
+    var recurrenceEditTarget by remember { mutableStateOf<RecurrenceEditTarget?>(null) }
+
+    // Delete all confirmation dialog state
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     // Check permission status
     var permissionStatus by remember { mutableStateOf(PermissionHelper.getAlarmPermissionStatus(context)) }
 
     // Refresh alarms when screen becomes visible (ON_RESUME).
-    // This ensures external changes (e.g., alarm cancelled/done via notification action)
-    // are reflected in the UI when the user returns to the app.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -97,17 +114,67 @@ fun AlarmsScreen(
         )
     }
 
+    // Instance edit dialog (with recurrence section for recurring alarms)
     selectedAlarm?.let { alarm ->
+        val recurringAlarm = alarm.recurringAlarmId?.let { recurringAlarms[it] }
+        val recurrenceConfig = recurringAlarm?.let { RecurrenceConfigMapper.toRecurrenceConfig(it) }
+
         AlarmConfigDialog(
             lineContent = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
             existingAlarm = alarm,
-            onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
-                alarmsViewModel.updateAlarm(alarm, upcomingTime, notifyTime, urgentTime, alarmTime)
+            existingRecurrenceConfig = recurrenceConfig,
+            onSave = { dueTime, stages ->
+                alarmsViewModel.updateAlarm(alarm, dueTime, stages)
             },
+            onSaveRecurring = if (recurringAlarm != null) { dueTime, stages, config ->
+                alarmsViewModel.updateAlarmAndRecurrence(
+                    alarm, dueTime, stages, recurrenceConfig = config
+                )
+            } else null,
             onMarkDone = { alarmsViewModel.markDone(alarm.id) },
-            onCancel = { alarmsViewModel.markCancelled(alarm.id) },
+            onMarkCancelled = { alarmsViewModel.markCancelled(alarm.id) },
+            onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) },
             onDelete = { alarmsViewModel.deleteAlarm(alarm.id) },
             onDismiss = { selectedAlarm = null }
+        )
+    }
+
+    // Delete all confirmation dialog
+    if (showDeleteAllDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAllDialog = false },
+            title = { Text(stringResource(R.string.alarm_delete_all)) },
+            text = { Text(stringResource(R.string.alarm_delete_all_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        alarmsViewModel.deleteAllAlarms()
+                        showDeleteAllDialog = false
+                    }
+                ) {
+                    Text(
+                        stringResource(R.string.action_delete),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    // Recurrence-only edit dialog
+    recurrenceEditTarget?.let { target ->
+        RecurrenceEditDialog(
+            lineContent = target.displayName,
+            initialConfig = target.config,
+            onSave = { config ->
+                alarmsViewModel.updateRecurrence(target.recurringAlarmId, config)
+            },
+            onDismiss = { recurrenceEditTarget = null }
         )
     }
 
@@ -140,6 +207,14 @@ fun AlarmsScreen(
                     contentPadding = PaddingValues(16.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    fun openRecurrenceEditor(alarm: Alarm, recurring: RecurringAlarm) {
+                        recurrenceEditTarget = RecurrenceEditTarget(
+                            recurringAlarmId = recurring.id,
+                            displayName = alarm.displayName,
+                            config = RecurrenceConfigMapper.toRecurrenceConfig(recurring)
+                        )
+                    }
+
                     // Past Due section
                     if (pastDueAlarms.isNotEmpty()) {
                         item {
@@ -151,9 +226,11 @@ fun AlarmsScreen(
                         items(pastDueAlarms) { alarm ->
                             AlarmItem(
                                 alarm = alarm,
+                                recurringAlarm = alarm.recurringAlarmId?.let { recurringAlarms[it] },
                                 onTap = { selectedAlarm = alarm },
                                 onMarkDone = { alarmsViewModel.markDone(alarm.id) },
-                                onCancel = { alarmsViewModel.markCancelled(alarm.id) }
+                                onCancel = { alarmsViewModel.markCancelled(alarm.id) },
+                                onEditRecurrence = { openRecurrenceEditor(alarm, it) }
                             )
                         }
                         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -167,9 +244,11 @@ fun AlarmsScreen(
                         items(upcomingAlarms) { alarm ->
                             AlarmItem(
                                 alarm = alarm,
+                                recurringAlarm = alarm.recurringAlarmId?.let { recurringAlarms[it] },
                                 onTap = { selectedAlarm = alarm },
                                 onMarkDone = { alarmsViewModel.markDone(alarm.id) },
-                                onCancel = { alarmsViewModel.markCancelled(alarm.id) }
+                                onCancel = { alarmsViewModel.markCancelled(alarm.id) },
+                                onEditRecurrence = { openRecurrenceEditor(alarm, it) }
                             )
                         }
                         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -183,9 +262,11 @@ fun AlarmsScreen(
                         items(laterAlarms) { alarm ->
                             AlarmItem(
                                 alarm = alarm,
+                                recurringAlarm = alarm.recurringAlarmId?.let { recurringAlarms[it] },
                                 onTap = { selectedAlarm = alarm },
                                 onMarkDone = { alarmsViewModel.markDone(alarm.id) },
-                                onCancel = { alarmsViewModel.markCancelled(alarm.id) }
+                                onCancel = { alarmsViewModel.markCancelled(alarm.id) },
+                                onEditRecurrence = { openRecurrenceEditor(alarm, it) }
                             )
                         }
                         item { Spacer(modifier = Modifier.height(16.dp)) }
@@ -219,12 +300,37 @@ fun AlarmsScreen(
                             )
                         }
                     }
+
+                    // Delete all alarms button
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { showDeleteAllDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.textButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Text(stringResource(R.string.alarm_delete_all))
+                        }
+                    }
                 }
             }
         }
         }
     }
 }
+
+/**
+ * State for the recurrence-only edit dialog.
+ */
+private data class RecurrenceEditTarget(
+    val recurringAlarmId: String,
+    val displayName: String,
+    val config: RecurrenceConfig
+)
 
 @Composable
 private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPermissionStatus) {
@@ -295,10 +401,14 @@ private fun SectionHeader(
 @Composable
 private fun AlarmItem(
     alarm: Alarm,
+    recurringAlarm: RecurringAlarm?,
     onTap: () -> Unit,
     onMarkDone: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    onEditRecurrence: (RecurringAlarm) -> Unit
 ) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -322,45 +432,71 @@ private fun AlarmItem(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                alarm.upcomingTime?.let { timestamp ->
+                alarm.dueTime?.let { timestamp ->
                     val dateFormat = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
                     Text(
-                        text = dateFormat.format(timestamp.toDate()),
+                        text = "Due: ${dateFormat.format(timestamp.toDate())}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                // Show threshold times if set
-                val urgentFmt = stringResource(R.string.alarm_urgent_fmt)
-                val thresholds = buildList {
-                    alarm.notifyTime?.let { add("Notify: ${formatTime(it)}") }
-                    alarm.urgentTime?.let { add(urgentFmt.format(formatTime(it))) }
-                    alarm.alarmTime?.let { add("Alarm: ${formatTime(it)}") }
-                }
-                if (thresholds.isNotEmpty()) {
-                    Text(
-                        text = thresholds.joinToString(" | "),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                // Recurrence description
+                if (recurringAlarm != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(16.dp)
+                            )
+                            .clickable { onEditRecurrence(recurringAlarm) }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.recurrence_edit),
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.Repeat,
+                            contentDescription = null,
+                            modifier = Modifier.size(12.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = RecurrenceDescriber.describe(context, recurringAlarm),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
-            IconButton(onClick = onMarkDone) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = stringResource(R.string.alarm_mark_done_desc),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            Spacer(modifier = Modifier.width(4.dp))
+            OutlinedButton(
+                onClick = onCancel,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Text(stringResource(R.string.alarm_skipped), fontSize = 11.sp)
             }
-
-            IconButton(onClick = onCancel) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = stringResource(R.string.alarm_cancel_desc),
-                    tint = MaterialTheme.colorScheme.error
+            Spacer(modifier = Modifier.width(4.dp))
+            Button(
+                onClick = onMarkDone,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colorResource(R.color.action_button_background),
+                    contentColor = colorResource(R.color.action_button_text)
                 )
+            ) {
+                Text(stringResource(R.string.alarm_done), fontSize = 11.sp)
             }
         }
     }
@@ -406,12 +542,13 @@ private fun CompletedAlarmItem(
                 }
             }
 
-            IconButton(onClick = onReactivate) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = stringResource(R.string.alarm_reactivate),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+            Spacer(modifier = Modifier.width(4.dp))
+            OutlinedButton(
+                onClick = onReactivate,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp)
+            ) {
+                Text(stringResource(R.string.alarm_reopen), fontSize = 11.sp)
             }
         }
     }

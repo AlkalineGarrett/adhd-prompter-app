@@ -123,7 +123,7 @@ This principle applies especially to:
 The Android and web apps share the same Firebase backend and should present a consistent UI. Two pairs of files are the source of truth for keeping them in sync:
 
 **Colors:**
-- Android: `app/src/main/res/values/colors.xml` (defines brand, action, and theme colors)
+- Android: `app/src/main/res/values/colors.xml` (defines titlebar, action, and theme colors)
 - Web: `web/src/index.css` `:root` block (CSS custom properties with comments mapping to Android names)
 - All web CSS modules use `var(--color-*)` — never hardcode hex colors in `.module.css` files
 

@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.service
 
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.RecurrencePreset
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurrenceType
@@ -15,33 +16,21 @@ import org.alkaline.taskbrain.ui.currentnote.components.RelativeUnit
 object RecurrenceConfigMapper {
 
     /**
-     * Creates a [RecurringAlarm] from the dialog's threshold times and recurrence config.
+     * Creates a [RecurringAlarm] from the dialog's due time, stages, and recurrence config.
      *
      * @param noteId The note/line ID this alarm is associated with
      * @param lineContent Snapshot of the line text
-     * @param baseAlarmTime The alarmTime set in the dialog (used as anchor for offset computation)
-     * @param upcomingTime The upcomingTime set in the dialog
-     * @param notifyTime The notifyTime set in the dialog
-     * @param urgentTime The urgentTime set in the dialog
-     * @param alarmTime The alarmTime set in the dialog
+     * @param dueTime The due time set in the dialog
+     * @param stages The alarm stages configuration
      * @param config The recurrence configuration from the UI
      */
     fun toRecurringAlarm(
         noteId: String,
         lineContent: String,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>,
         config: RecurrenceConfig
     ): RecurringAlarm {
-        // Use alarmTime as the base for computing offsets. If no alarmTime,
-        // use the latest threshold as the base.
-        val baseTime = alarmTime ?: listOfNotNull(urgentTime, notifyTime, upcomingTime)
-            .maxByOrNull { it.toDate().time }
-
-        val baseMs = baseTime?.toDate()?.time
-
         return RecurringAlarm(
             noteId = noteId,
             lineContent = lineContent,
@@ -50,10 +39,8 @@ object RecurrenceConfigMapper {
             relativeIntervalMs = if (config.recurrenceType == RecurrenceType.RELATIVE) {
                 config.relativeInterval.toLong() * config.relativeUnit.toMs
             } else null,
-            upcomingOffsetMs = computeOffset(upcomingTime, baseMs),
-            notifyOffsetMs = computeOffset(notifyTime, baseMs),
-            urgentOffsetMs = computeOffset(urgentTime, baseMs),
-            alarmOffsetMs = computeOffset(alarmTime, baseMs),
+            dueOffsetMs = 0,  // base time IS the due time for recurring alarms
+            stages = stages,
             endDate = if (config.endType == EndType.ON_DATE) config.endDate else null,
             repeatCount = if (config.endType == EndType.AFTER_COUNT) config.repeatCount else null
         )
@@ -151,10 +138,5 @@ object RecurrenceConfigMapper {
         recurring.endDate != null -> EndType.ON_DATE
         recurring.repeatCount != null -> EndType.AFTER_COUNT
         else -> EndType.NEVER
-    }
-
-    private fun computeOffset(time: Timestamp?, baseMs: Long?): Long? {
-        if (time == null || baseMs == null) return null
-        return time.toDate().time - baseMs
     }
 }

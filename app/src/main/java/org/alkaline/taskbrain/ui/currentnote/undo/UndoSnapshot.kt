@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote.undo
 
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.data.AlarmStage
 
 /**
  * Snapshot of editor state for undo/redo operations.
@@ -21,8 +22,6 @@ data class AlarmSnapshot(
     val id: String,
     val noteId: String,
     val lineContent: String,
-    val upcomingTime: Timestamp?,
-    val notifyTime: Timestamp?,
-    val urgentTime: Timestamp?,
-    val alarmTime: Timestamp?
+    val dueTime: Timestamp?,
+    val stages: List<AlarmStage>
 )

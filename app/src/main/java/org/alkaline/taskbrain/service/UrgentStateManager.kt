@@ -31,7 +31,7 @@ class UrgentStateManager(private val context: Context) {
 
         // Set the lock screen wallpaper
         val displayText = AlarmUtils.formatDisplayText(context, alarm)
-        val alarmTimeMillis = alarm.alarmTime?.toDate()?.time ?: System.currentTimeMillis()
+        val alarmTimeMillis = alarm.dueTime?.toDate()?.time ?: System.currentTimeMillis()
         val wallpaperSuccess = wallpaperManager.setUrgentWallpaper(alarm.id, displayText, alarmTimeMillis)
 
         if (!wallpaperSuccess) {

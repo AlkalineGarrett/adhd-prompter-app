@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote.undo
 
 import com.google.firebase.Timestamp
+import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.LineState
@@ -317,10 +318,8 @@ class UndoManagerTest {
             id = "alarm123",
             noteId = "note456",
             lineContent = "task with alarm",
-            upcomingTime = Timestamp(Date()),
-            notifyTime = null,
-            urgentTime = null,
-            alarmTime = null
+            dueTime = Timestamp(Date()),
+            stages = Alarm.DEFAULT_STAGES
         )
         undoManager.recordAlarmCreation(alarmSnapshot, editorState)
 
@@ -341,10 +340,8 @@ class UndoManagerTest {
             id = "old_id",
             noteId = "note",
             lineContent = "task",
-            upcomingTime = null,
-            notifyTime = null,
-            urgentTime = null,
-            alarmTime = null
+            dueTime = null,
+            stages = Alarm.DEFAULT_STAGES
         )
         undoManager.recordAlarmCreation(alarmSnapshot, editorState)
 
@@ -370,10 +367,8 @@ class UndoManagerTest {
             id = "alarm123",
             noteId = "note456",
             lineContent = "task line",
-            upcomingTime = Timestamp(Date()),
-            notifyTime = null,
-            urgentTime = null,
-            alarmTime = null
+            dueTime = Timestamp(Date()),
+            stages = Alarm.DEFAULT_STAGES
         )
         undoManager.recordAlarmCreation(alarmSnapshot, editorState)
 
@@ -664,10 +659,8 @@ class UndoManagerTest {
             id = "alarm123",
             noteId = "note",
             lineContent = "task",
-            upcomingTime = Timestamp(Date(1000000)),
-            notifyTime = Timestamp(Date(2000000)),
-            urgentTime = null,
-            alarmTime = Timestamp(Date(3000000))
+            dueTime = Timestamp(Date(3000000)),
+            stages = org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES
         )
         undoManager.recordAlarmCreation(alarm, editorState)
 
@@ -679,7 +672,7 @@ class UndoManagerTest {
         val snapshot = undoManager.undo(editorState)
         assertNotNull(snapshot!!.createdAlarm)
         assertEquals("alarm123", snapshot.createdAlarm!!.id)
-        assertEquals(1000000, snapshot.createdAlarm!!.upcomingTime!!.toDate().time)
+        assertEquals(3000000, snapshot.createdAlarm!!.dueTime!!.toDate().time)
     }
 
     // ==================== Enter + Subsequent Typing Merged ====================

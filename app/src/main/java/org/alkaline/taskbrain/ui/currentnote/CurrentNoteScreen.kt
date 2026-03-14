@@ -2,6 +2,8 @@ package org.alkaline.taskbrain.ui.currentnote
 
 import android.util.Log
 import androidx.compose.foundation.background
+import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.CloseTabResult
 import org.alkaline.taskbrain.data.TabState
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
@@ -214,7 +216,8 @@ fun CurrentNoteScreen(
     // Observe noteAlarms to trigger recomposition when alarm overlay states change
     val noteAlarmsForOverlay by currentNoteViewModel.noteAlarms.observeAsState(emptyMap())
     val alarmDialogExistingAlarm = lineAlarms
-        .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
+        .sortedWith(compareByDescending<Alarm> { it.status == AlarmStatus.PENDING }
+            .thenBy { it.createdAt?.toDate()?.time ?: 0L })
         .getOrNull(alarmDialogSymbolIndex)
     val alarmDialogRecurrenceConfig by currentNoteViewModel.recurrenceConfig.observeAsState()
 
@@ -569,16 +572,14 @@ fun CurrentNoteScreen(
             lineContent = alarmDialogLineContent,
             existingAlarm = alarmDialogExistingAlarm,
             existingRecurrenceConfig = alarmDialogRecurrenceConfig,
-            onSave = { upcomingTime, notifyTime, urgentTime, alarmTime ->
+            onSave = { dueTime, stages ->
                 val existing = alarmDialogExistingAlarm
                 if (existing != null) {
                     // Update existing alarm
                     currentNoteViewModel.updateAlarm(
                         alarm = existing,
-                        upcomingTime = upcomingTime,
-                        notifyTime = notifyTime,
-                        urgentTime = urgentTime,
-                        alarmTime = alarmTime
+                        dueTime = dueTime,
+                        stages = stages
                     )
                 } else {
                     // Auto-save before creating alarm to ensure correct note IDs
@@ -586,23 +587,19 @@ fun CurrentNoteScreen(
                         content = userContent,
                         lineContent = alarmDialogLineContent,
                         lineIndex = alarmDialogLineIndex,
-                        upcomingTime = upcomingTime,
-                        notifyTime = notifyTime,
-                        urgentTime = urgentTime,
-                        alarmTime = alarmTime
+                        dueTime = dueTime,
+                        stages = stages
                     )
                 }
             },
-            onSaveRecurring = { upcomingTime, notifyTime, urgentTime, alarmTime, recurrenceConfig ->
+            onSaveRecurring = { dueTime, stages, recurrenceConfig ->
                 val existing = alarmDialogExistingAlarm
                 if (existing != null) {
                     // Update existing recurring alarm
                     currentNoteViewModel.updateRecurringAlarm(
                         alarm = existing,
-                        upcomingTime = upcomingTime,
-                        notifyTime = notifyTime,
-                        urgentTime = urgentTime,
-                        alarmTime = alarmTime,
+                        dueTime = dueTime,
+                        stages = stages,
                         recurrenceConfig = recurrenceConfig
                     )
                 } else {
@@ -611,10 +608,8 @@ fun CurrentNoteScreen(
                         content = userContent,
                         lineContent = alarmDialogLineContent,
                         lineIndex = alarmDialogLineIndex,
-                        upcomingTime = upcomingTime,
-                        notifyTime = notifyTime,
-                        urgentTime = urgentTime,
-                        alarmTime = alarmTime,
+                        dueTime = dueTime,
+                        stages = stages,
                         recurrenceConfig = recurrenceConfig
                     )
                 }
@@ -622,8 +617,11 @@ fun CurrentNoteScreen(
             onMarkDone = alarmDialogExistingAlarm?.let { alarm ->
                 { currentNoteViewModel.markAlarmDone(alarm.id) }
             },
-            onCancel = alarmDialogExistingAlarm?.let { alarm ->
+            onMarkCancelled = alarmDialogExistingAlarm?.let { alarm ->
                 { currentNoteViewModel.cancelAlarm(alarm.id) }
+            },
+            onReactivate = alarmDialogExistingAlarm?.let { alarm ->
+                { currentNoteViewModel.reactivateAlarm(alarm.id) }
             },
             onDelete = alarmDialogExistingAlarm?.let { alarm ->
                 { currentNoteViewModel.deleteAlarmPermanently(alarm.id) }

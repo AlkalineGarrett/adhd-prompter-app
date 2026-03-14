@@ -55,16 +55,14 @@ class AlarmRepositoryTest {
         noteId: String = "note_1",
         lineContent: String = "Test content",
         status: AlarmStatus = AlarmStatus.PENDING,
-        upcomingTime: Timestamp? = null
+        dueTime: Timestamp? = null
     ): Map<String, Any?> = mapOf(
         "userId" to USER_ID,
         "noteId" to noteId,
         "lineContent" to lineContent,
         "status" to status.name,
-        "upcomingTime" to upcomingTime,
-        "notifyTime" to null,
-        "urgentTime" to null,
-        "alarmTime" to null,
+        "dueTime" to dueTime,
+        "stages" to null,
         "createdAt" to null,
         "updatedAt" to null,
         "snoozedUntil" to null
@@ -288,22 +286,22 @@ class AlarmRepositoryTest {
     }
 
     @Test
-    fun `getUpcomingAlarms filters to PENDING with upcomingTime set`() = runTest {
+    fun `getUpcomingAlarms filters to PENDING with dueTime set`() = runTest {
         val now = Timestamp(Date())
         val query = mockk<Query>()
         val orderedQuery = mockk<Query>()
         val docs = listOf(
             mockk<QueryDocumentSnapshot> {
                 every { id } returns "alarm_1"
-                every { data } returns alarmData(upcomingTime = now)
+                every { data } returns alarmData(dueTime = now)
             },
             mockk<QueryDocumentSnapshot> {
                 every { id } returns "alarm_2"
-                every { data } returns alarmData(upcomingTime = null) // Should be filtered out
+                every { data } returns alarmData(dueTime = null) // Should be filtered out
             }
         )
         every { mockAlarmsCollection.whereEqualTo("status", AlarmStatus.PENDING.name) } returns query
-        every { query.orderBy("upcomingTime", Query.Direction.ASCENDING) } returns orderedQuery
+        every { query.orderBy("dueTime", Query.Direction.ASCENDING) } returns orderedQuery
         every { orderedQuery.get() } returns Tasks.forResult(mockk {
             every { documents } returns docs
         })
@@ -316,18 +314,18 @@ class AlarmRepositoryTest {
     }
 
     @Test
-    fun `getLaterAlarms filters to PENDING without upcomingTime`() = runTest {
+    fun `getLaterAlarms filters to PENDING without dueTime`() = runTest {
         val now = Timestamp(Date())
         val query = mockk<Query>()
         val orderedQuery = mockk<Query>()
         val docs = listOf(
             mockk<QueryDocumentSnapshot> {
                 every { id } returns "alarm_1"
-                every { data } returns alarmData(upcomingTime = now) // Should be filtered out
+                every { data } returns alarmData(dueTime = now) // Should be filtered out
             },
             mockk<QueryDocumentSnapshot> {
                 every { id } returns "alarm_2"
-                every { data } returns alarmData(upcomingTime = null)
+                every { data } returns alarmData(dueTime = null)
             }
         )
         every { mockAlarmsCollection.whereEqualTo("status", AlarmStatus.PENDING.name) } returns query
@@ -418,7 +416,7 @@ class AlarmRepositoryTest {
         val query = mockk<Query>()
         val orderedQuery = mockk<Query>()
         every { mockAlarmsCollection.whereEqualTo("status", AlarmStatus.PENDING.name) } returns query
-        every { query.orderBy("upcomingTime", Query.Direction.ASCENDING) } returns orderedQuery
+        every { query.orderBy("dueTime", Query.Direction.ASCENDING) } returns orderedQuery
         every { orderedQuery.get() } returns Tasks.forException(
             RuntimeException("PERMISSION_DENIED: Missing or insufficient permissions")
         )

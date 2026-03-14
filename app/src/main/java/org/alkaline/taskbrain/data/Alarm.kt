@@ -1,27 +1,58 @@
 package org.alkaline.taskbrain.data
 
 import com.google.firebase.Timestamp
+import java.util.Date
+
+/**
+ * A single stage of an alarm (e.g., sound alarm, lock screen, notification).
+ * Times are expressed as offsets before dueTime, or optionally as absolute times.
+ */
+data class AlarmStage(
+    val type: AlarmStageType,
+    /** Milliseconds before dueTime (positive = before due, 0 = at due). */
+    val offsetMs: Long = 0,
+    val enabled: Boolean = true,
+    /** If non-null, overrides offset-based time computation. */
+    val absoluteTime: Timestamp? = null
+) {
+    /** Resolves this stage's trigger time given the alarm's dueTime. */
+    fun resolveTime(dueTime: Timestamp): Timestamp {
+        absoluteTime?.let { return it }
+        val dueMs = dueTime.toDate().time
+        return Timestamp(Date(dueMs - offsetMs))
+    }
+}
+
+enum class AlarmStageType {
+    SOUND_ALARM,    // Audible alarm with snooze
+    LOCK_SCREEN,    // Lock screen red tint / full-screen activity
+    NOTIFICATION;   // Status bar notification
+
+    /** Maps to the existing AlarmType used in PendingIntent extras. */
+    fun toAlarmType(): AlarmType = when (this) {
+        SOUND_ALARM -> AlarmType.ALARM
+        LOCK_SCREEN -> AlarmType.URGENT
+        NOTIFICATION -> AlarmType.NOTIFY
+    }
+}
 
 /**
  * Represents an alarm/reminder for a note line.
- * Alarms can have multiple time thresholds for different notification types.
+ * Alarms have a due time and configurable stages that trigger at offsets before the due time.
  */
 data class Alarm(
     val id: String = "",
     val userId: String = "",
-    val noteId: String = "",                   // Associated note/line ID (from NoteLineTracker)
-    val lineContent: String = "",              // Snapshot of line text (for display, updated on save)
+    val noteId: String = "",
+    val lineContent: String = "",
     val createdAt: Timestamp? = null,
     val updatedAt: Timestamp? = null,
 
-    // Four time thresholds (nullable = not set)
-    val upcomingTime: Timestamp? = null,       // When to show in "Upcoming" list
-    val notifyTime: Timestamp? = null,         // Lock screen notification + status bar icon
-    val urgentTime: Timestamp? = null,         // Lock screen red tint (full-screen red activity)
-    val alarmTime: Timestamp? = null,          // Audible alarm with snooze
+    val dueTime: Timestamp? = null,
+    val stages: List<AlarmStage> = DEFAULT_STAGES,
 
     val status: AlarmStatus = AlarmStatus.PENDING,
-    val snoozedUntil: Timestamp? = null,       // If snoozed, when to fire again
+    val snoozedUntil: Timestamp? = null,
 
     /** If this alarm was spawned by a recurring alarm template, its ID. */
     val recurringAlarmId: String? = null
@@ -57,25 +88,36 @@ data class Alarm(
         result.trim()
     }
 
-    /**
-     * The earliest configured threshold time across all four thresholds.
-     * Used to determine when an alarm first becomes relevant.
-     */
-    val earliestThresholdTime: Timestamp?
-        get() = listOfNotNull(upcomingTime, notifyTime, urgentTime, alarmTime)
-            .minByOrNull { it.toDate().time }
+    /** Enabled stages only. */
+    val enabledStages: List<AlarmStage>
+        get() = stages.filter { it.enabled }
 
     /**
-     * The latest configured threshold time across all four thresholds.
-     * An alarm is past due when this time is in the past.
+     * The earliest trigger time across all enabled stages.
+     */
+    val earliestThresholdTime: Timestamp?
+        get() {
+            val due = dueTime ?: return null
+            return enabledStages
+                .map { it.resolveTime(due) }
+                .minByOrNull { it.toDate().time }
+        }
+
+    /**
+     * The latest trigger time across all enabled stages (or dueTime itself).
      */
     val latestThresholdTime: Timestamp?
-        get() = listOfNotNull(upcomingTime, notifyTime, urgentTime, alarmTime)
-            .maxByOrNull { it.toDate().time }
+        get() = dueTime
 
     companion object {
         private const val ALARM_SYMBOL = "⏰"
         private val DISPLAY_PREFIXES = listOf("• ", "☐ ", "☑ ")
+
+        val DEFAULT_STAGES = listOf(
+            AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+            AlarmStage(AlarmStageType.LOCK_SCREEN, offsetMs = 30 * 60 * 1000L, enabled = false),
+            AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 2 * 60 * 60 * 1000L, enabled = false)
+        )
     }
 }
 
@@ -96,10 +138,10 @@ enum class SnoozeDuration(val minutes: Int) {
  * Ordered from lowest to highest priority.
  */
 enum class AlarmPriority {
-    UPCOMING,  // Green - upcomingTime is set
-    NOTIFY,    // Yellow - notifyTime has passed or is imminent
-    URGENT,    // Orange - urgentTime has passed or is imminent
-    ALARM      // Red - alarmTime has passed or is imminent
+    UPCOMING,
+    NOTIFY,
+    URGENT,
+    ALARM
 }
 
 /**

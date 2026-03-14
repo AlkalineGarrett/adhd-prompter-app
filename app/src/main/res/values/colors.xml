@@ -8,9 +8,10 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     
-    <!-- Brand Color: Green in Debug/Main, Purple in Release -->
-    <color name="brand_color">#AED581</color>
-    <color name="brand_text_color">#FF000000</color>
+    <!-- Titlebar: Green in Debug/Main, Purple in Release -->
+    <color name="titlebar_background">#AED581</color>
+    <color name="titlebar_text">#FF000000</color>
     
     <color name="action_button_background">#FF6200EE</color>
+    <color name="action_button_text">#FFFFFFFF</color>
 </resources>

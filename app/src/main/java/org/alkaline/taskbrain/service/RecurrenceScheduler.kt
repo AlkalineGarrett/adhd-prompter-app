@@ -47,15 +47,15 @@ class RecurrenceScheduler(
             return
         }
 
-        if (recurring.recurrenceType == RecurrenceType.RELATIVE) {
-            createNextInstance(updated, completionDate.toDate())
+        when (recurring.recurrenceType) {
+            RecurrenceType.RELATIVE -> createNextInstance(updated, completionDate.toDate())
+            RecurrenceType.FIXED -> createNextIfNeeded(updated, alarm)
         }
     }
 
     /**
-     * Called when an alarm instance is cancelled.
-     * For RELATIVE type, creates next instance based on last completion date
-     * (or creation date if never completed).
+     * Called when an alarm instance is cancelled/skipped.
+     * Creates the next instance so the recurring schedule continues.
      */
     suspend fun onInstanceCancelled(alarm: Alarm) {
         val recurringId = alarm.recurringAlarmId ?: return
@@ -63,12 +63,29 @@ class RecurrenceScheduler(
 
         if (recurring.hasReachedEnd) return
 
-        if (recurring.recurrenceType == RecurrenceType.RELATIVE) {
-            val anchorDate = recurring.lastCompletionDate?.toDate()
-                ?: recurring.createdAt?.toDate()
-                ?: return
-            createNextInstance(recurring, anchorDate)
+        when (recurring.recurrenceType) {
+            RecurrenceType.RELATIVE -> {
+                val anchorDate = recurring.lastCompletionDate?.toDate()
+                    ?: recurring.createdAt?.toDate()
+                    ?: return
+                createNextInstance(recurring, anchorDate)
+            }
+            RecurrenceType.FIXED -> createNextIfNeeded(recurring, alarm)
         }
+    }
+
+    /**
+     * For FIXED recurrences, creates the next instance only if one hasn't already
+     * been created (e.g., by [onFixedInstanceTriggered] at alarm trigger time).
+     */
+    private suspend fun createNextIfNeeded(recurring: RecurringAlarm, completedAlarm: Alarm) {
+        // If currentAlarmId differs from the completed alarm, a next instance already exists
+        if (recurring.currentAlarmId != null && recurring.currentAlarmId != completedAlarm.id) {
+            Log.d(TAG, "Next instance already exists for recurring alarm ${recurring.id}")
+            return
+        }
+        val baseTime = completedAlarm.dueTime?.toDate() ?: return
+        createNextInstance(recurring, baseTime)
     }
 
     /**
@@ -82,9 +99,7 @@ class RecurrenceScheduler(
         if (recurring.recurrenceType != RecurrenceType.FIXED) return
         if (recurring.hasReachedEnd) return
 
-        val baseTime = alarm.alarmTime?.toDate()
-            ?: alarm.latestThresholdTime?.toDate()
-            ?: return
+        val baseTime = alarm.dueTime?.toDate() ?: return
 
         createNextInstance(recurring, baseTime)
     }
@@ -135,17 +150,15 @@ class RecurrenceScheduler(
 
     /**
      * Builds an [Alarm] instance from a recurring alarm template and a base time.
-     * Applies threshold offsets to compute absolute times.
+     * Computes the due time from the base time + dueOffsetMs and carries over stages.
      */
     private fun buildAlarmFromTemplate(recurring: RecurringAlarm, baseTime: Date): Alarm {
         val baseMs = baseTime.time
         return Alarm(
             noteId = recurring.noteId,
             lineContent = recurring.lineContent,
-            upcomingTime = recurring.upcomingOffsetMs?.let { Timestamp(Date(baseMs + it)) },
-            notifyTime = recurring.notifyOffsetMs?.let { Timestamp(Date(baseMs + it)) },
-            urgentTime = recurring.urgentOffsetMs?.let { Timestamp(Date(baseMs + it)) },
-            alarmTime = recurring.alarmOffsetMs?.let { Timestamp(Date(baseMs + it)) },
+            dueTime = Timestamp(Date(baseMs + recurring.dueOffsetMs)),
+            stages = recurring.stages,
             recurringAlarmId = recurring.id
         )
     }

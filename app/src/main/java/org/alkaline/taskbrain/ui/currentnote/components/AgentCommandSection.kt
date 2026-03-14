@@ -113,7 +113,7 @@ private fun AgentSectionHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colorResource(R.color.brand_color))
+            .background(colorResource(R.color.titlebar_background))
             .clickable { onExpand() }
             .padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -121,14 +121,14 @@ private fun AgentSectionHeader(
     ) {
         Text(
             text = stringResource(id = R.string.agent_chat_label),
-            color = colorResource(R.color.brand_text_color),
+            color = colorResource(R.color.titlebar_text),
             fontSize = 18.sp
         )
         if (isExpanded) {
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
                 contentDescription = stringResource(R.string.action_collapse),
-                tint = colorResource(R.color.brand_text_color),
+                tint = colorResource(R.color.titlebar_text),
                 modifier = Modifier
                     .size(24.dp)
                     .clickable(
@@ -179,7 +179,7 @@ private fun AgentCommandTextField(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = stringResource(R.string.action_send),
-                    tint = if (isProcessing || command.isBlank()) Color.Gray else colorResource(R.color.brand_color)
+                    tint = if (isProcessing || command.isBlank()) Color.Gray else colorResource(R.color.titlebar_background)
                 )
             }
         },
@@ -211,9 +211,9 @@ fun ProcessingIndicatorBar() {
 
     val brush = Brush.linearGradient(
         colors = listOf(
-            colorResource(R.color.brand_color),
+            colorResource(R.color.titlebar_background),
             Color.White,
-            colorResource(R.color.brand_color)
+            colorResource(R.color.titlebar_background)
         ),
         start = Offset(x = offset * 1000f, y = 0f),
         end = Offset(x = offset * 1000f + 500f, y = 0f)

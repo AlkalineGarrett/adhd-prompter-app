@@ -49,6 +49,7 @@ export const EMPTY_NOTE = 'Empty Note'
 
 // Status (Android: action_save, status_saved, status_unsaved)
 export const SAVE = 'Save'
+export const CREATE = 'Create'
 export const SAVING = 'Saving...'
 export const SAVED = 'Saved'
 export const UNSAVED = 'Unsaved'
@@ -88,9 +89,13 @@ export const DISCARD_UNSAVED = 'Discard unsaved changes?'
 
 // Alarm config dialog (Android: alarm_show_upcoming, alarm_lock_screen, etc.)
 export const ALARM_SHOW_UPCOMING = 'Show in Upcoming list'
-export const ALARM_LOCK_SCREEN = 'Lock screen notification'
-export const ALARM_URGENT = 'Urgent (red tint)'
+export const ALARM_LOCK_SCREEN = 'Notification'
+export const ALARM_URGENT = 'Lock screen'
 export const ALARM_SOUND = 'Sound alarm'
+export const ALARM_DUE = 'Due'
+export const ALARM_MINUTES_BEFORE = '%d min before'
+export const ALARM_HOURS_BEFORE = '%d hr before'
+export const ALARM_AT_DUE_TIME = 'At due time'
 export const ALARM_DONE = 'Done'
 export const ALARM_CANCEL = 'Cancel Alarm'
 
@@ -110,11 +115,15 @@ export const SECTION_PAST_DUE = 'Past Due'
 export const SECTION_UPCOMING = 'Upcoming'
 export const SECTION_LATER = 'Later'
 export const SECTION_COMPLETED = 'Completed'
-export const SECTION_CANCELLED = 'Cancelled'
+export const SECTION_CANCELLED = 'Skipped'
 export const ALARM_MARK_DONE_DESC = 'Mark done'
 export const ALARM_CANCEL_DESC = 'Cancel'
 export const ALARM_REACTIVATE = 'Reactivate'
+export const ALARM_SKIPPED = 'Skipped'
+export const ALARM_REOPEN = 'Re-open'
 export const ALARM_UNTITLED = 'Untitled alarm'
+export const ALARM_DELETE_ALL = 'Delete all alarms'
+export const ALARM_DELETE_ALL_CONFIRM = 'This will permanently delete all alarms and recurring alarm templates. This cannot be undone.'
 
 // Permission warnings (Android: permission_issues, dialog_exact_alarms_title, etc.)
 export const PERMISSION_ISSUES = 'Permission Issues'
@@ -131,7 +140,8 @@ export const REDO_ERROR = 'Redo Error'
 export const RECURRENCE_REPEAT = 'Repeat'
 export const RECURRENCE_FIXED_SCHEDULE = 'Fixed schedule'
 export const RECURRENCE_AFTER_COMPLETION = 'After completion'
-export const RECURRENCE_PRESETS = 'Presets'
+export const RECURRENCE_FREQUENCY = 'Frequency'
+export const RECURRENCE_CUSTOM = 'Custom'
 export const RECURRENCE_CUSTOM_INTERVAL = 'Custom interval'
 export const RECURRENCE_EVERY = 'Every'
 export const RECURRENCE_ON_DAYS = 'On days'
@@ -139,9 +149,19 @@ export const RECURRENCE_INTERVAL_AFTER_COMPLETION = 'Repeat interval after compl
 export const RECURRENCE_ENDS = 'Ends'
 export const RECURRENCE_AFTER = 'After'
 export const RECURRENCE_TIMES = 'times'
+export const RECURRENCE_EDIT = 'Edit recurrence'
+
+// Recurrence descriptions (Android: recurrence_desc_daily, recurrence_desc_weekdays, etc.)
+export const RECURRENCE_DESC_DAILY = 'Repeats daily'
+export const RECURRENCE_DESC_WEEKDAYS = 'Repeats on weekdays'
+export const RECURRENCE_DESC_WEEKLY = 'Repeats weekly'
+export const RECURRENCE_DESC_MONTHLY = 'Repeats monthly'
+export const RECURRENCE_DESC_UNKNOWN = 'Repeating alarm'
 
 // Date/time picker (Android: datetime_not_set, datetime_select_time)
 export const DATETIME_NOT_SET = 'Not set'
+export const DATETIME_DATE = 'Date'
+export const DATETIME_TIME = 'Time'
 export const DATETIME_SELECT_TIME = 'Select time'
 
 // Schedules screen (Android: schedule_unknown_note, schedule_manual_run, etc.)

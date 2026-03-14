@@ -2,6 +2,8 @@ package org.alkaline.taskbrain.service
 
 import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmStage
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.AlarmType
 import org.junit.Assert.*
@@ -48,11 +50,14 @@ class AlarmUtilsTest {
     // region determineAlarmTypeForSnooze tests
 
     @Test
-    fun `determineAlarmTypeForSnooze returns ALARM when alarmTime is set`() {
+    fun `determineAlarmTypeForSnooze returns ALARM when sound alarm stage enabled`() {
         val alarm = Alarm(
-            alarmTime = Timestamp(Date()),
-            urgentTime = Timestamp(Date()),
-            notifyTime = Timestamp(Date())
+            dueTime = Timestamp(Date()),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, enabled = true),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, enabled = true)
+            )
         )
 
         val result = AlarmUtils.determineAlarmTypeForSnooze(alarm)
@@ -61,11 +66,14 @@ class AlarmUtilsTest {
     }
 
     @Test
-    fun `determineAlarmTypeForSnooze returns URGENT when only urgentTime and notifyTime set`() {
+    fun `determineAlarmTypeForSnooze returns URGENT when only lock screen and notification enabled`() {
         val alarm = Alarm(
-            alarmTime = null,
-            urgentTime = Timestamp(Date()),
-            notifyTime = Timestamp(Date())
+            dueTime = Timestamp(Date()),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, enabled = false),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, enabled = true)
+            )
         )
 
         val result = AlarmUtils.determineAlarmTypeForSnooze(alarm)
@@ -74,11 +82,14 @@ class AlarmUtilsTest {
     }
 
     @Test
-    fun `determineAlarmTypeForSnooze returns NOTIFY when only notifyTime set`() {
+    fun `determineAlarmTypeForSnooze returns NOTIFY when only notification enabled`() {
         val alarm = Alarm(
-            alarmTime = null,
-            urgentTime = null,
-            notifyTime = Timestamp(Date())
+            dueTime = Timestamp(Date()),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, enabled = false),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, enabled = false),
+                AlarmStage(AlarmStageType.NOTIFICATION, enabled = true)
+            )
         )
 
         val result = AlarmUtils.determineAlarmTypeForSnooze(alarm)
@@ -87,16 +98,12 @@ class AlarmUtilsTest {
     }
 
     @Test
-    fun `determineAlarmTypeForSnooze returns NOTIFY when no times set`() {
-        val alarm = Alarm(
-            alarmTime = null,
-            urgentTime = null,
-            notifyTime = null
-        )
+    fun `determineAlarmTypeForSnooze returns ALARM when no dueTime set`() {
+        val alarm = Alarm(dueTime = null)
 
         val result = AlarmUtils.determineAlarmTypeForSnooze(alarm)
 
-        assertEquals(AlarmType.NOTIFY, result)
+        assertEquals(AlarmType.ALARM, result)
     }
 
     // endregion
@@ -104,7 +111,7 @@ class AlarmUtilsTest {
     // region getTriggersToSchedule tests
 
     @Test
-    fun `getTriggersToSchedule returns empty list when no times set`() {
+    fun `getTriggersToSchedule returns empty list when no dueTime`() {
         val alarm = Alarm()
 
         val triggers = AlarmUtils.getTriggersToSchedule(alarm)
@@ -113,33 +120,22 @@ class AlarmUtilsTest {
     }
 
     @Test
-    fun `getTriggersToSchedule returns single trigger when only notifyTime set`() {
-        val notifyTime = Timestamp(Date(1000L))
-        val alarm = Alarm(notifyTime = notifyTime)
-
-        val triggers = AlarmUtils.getTriggersToSchedule(alarm)
-
-        assertEquals(1, triggers.size)
-        assertEquals(1000L to AlarmType.NOTIFY, triggers[0])
-    }
-
-    @Test
-    fun `getTriggersToSchedule returns all triggers when all times set`() {
-        val notifyTime = Timestamp(Date(1000L))
-        val urgentTime = Timestamp(Date(2000L))
-        val alarmTime = Timestamp(Date(3000L))
+    fun `getTriggersToSchedule returns triggers for enabled stages`() {
+        val dueTime = Timestamp(Date(10000000L))
         val alarm = Alarm(
-            notifyTime = notifyTime,
-            urgentTime = urgentTime,
-            alarmTime = alarmTime
+            dueTime = dueTime,
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, offsetMs = 1800000, enabled = false),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 7200000, enabled = true)
+            )
         )
 
         val triggers = AlarmUtils.getTriggersToSchedule(alarm)
 
-        assertEquals(3, triggers.size)
-        assertTrue(triggers.contains(1000L to AlarmType.NOTIFY))
-        assertTrue(triggers.contains(2000L to AlarmType.URGENT))
-        assertTrue(triggers.contains(3000L to AlarmType.ALARM))
+        assertEquals(2, triggers.size)
+        assertTrue(triggers.any { it.second == AlarmType.ALARM && it.first == 10000000L })
+        assertTrue(triggers.any { it.second == AlarmType.NOTIFY && it.first == 10000000L - 7200000L })
     }
 
     // endregion
@@ -287,186 +283,6 @@ class AlarmUtilsTest {
         val result = AlarmUtils.shouldShowAlarm(alarm, currentTimeMillis = 5000L)
 
         assertTrue(result)
-    }
-
-    // endregion
-
-    // region calculateEffectiveNotifyTime tests
-
-    @Test
-    fun `calculateEffectiveNotifyTime returns notifyTime when set`() {
-        val notifyTime = Timestamp(Date(1000000L))
-        val alarm = Alarm(
-            notifyTime = notifyTime,
-            alarmTime = Timestamp(Date(2000000L))
-        )
-
-        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-
-        assertEquals(1000000L, result)
-    }
-
-    @Test
-    fun `calculateEffectiveNotifyTime returns 3 hours before alarmTime when notifyTime not set`() {
-        val alarmTimeMillis = 10000000L
-        val alarm = Alarm(
-            notifyTime = null,
-            alarmTime = Timestamp(Date(alarmTimeMillis))
-        )
-
-        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-
-        val expectedTime = alarmTimeMillis - (3 * 60 * 60 * 1000L)
-        assertEquals(expectedTime, result)
-    }
-
-    @Test
-    fun `calculateEffectiveNotifyTime returns null when neither notifyTime nor alarmTime set`() {
-        val alarm = Alarm(
-            notifyTime = null,
-            alarmTime = null,
-            urgentTime = Timestamp(Date(1000000L)) // urgentTime alone shouldn't trigger notify
-        )
-
-        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-
-        assertNull(result)
-    }
-
-    @Test
-    fun `calculateEffectiveNotifyTime prefers notifyTime over calculated time`() {
-        val notifyTime = Timestamp(Date(5000000L))
-        val alarmTime = Timestamp(Date(10000000L))
-        val alarm = Alarm(
-            notifyTime = notifyTime,
-            alarmTime = alarmTime
-        )
-
-        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-
-        // Should use explicit notifyTime, not 3 hours before alarm
-        assertEquals(5000000L, result)
-    }
-
-    @Test
-    fun `calculateEffectiveNotifyTime handles alarmTime only scenario`() {
-        // Alarm at 12:00, should notify at 09:00
-        val noonMillis = 12 * 60 * 60 * 1000L // 12 hours in millis
-        val alarm = Alarm(
-            alarmTime = Timestamp(Date(noonMillis))
-        )
-
-        val result = AlarmUtils.calculateEffectiveNotifyTime(alarm)
-
-        val expected = 9 * 60 * 60 * 1000L // 9 hours in millis
-        assertEquals(expected, result)
-    }
-
-    // endregion
-
-    // region calculateEffectiveUrgentTime tests
-
-    @Test
-    fun `calculateEffectiveUrgentTime returns urgentTime when set`() {
-        val urgentTime = Timestamp(Date(1000000L))
-        val alarm = Alarm(
-            urgentTime = urgentTime,
-            alarmTime = Timestamp(Date(2000000L))
-        )
-
-        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-
-        assertEquals(1000000L, result)
-    }
-
-    @Test
-    fun `calculateEffectiveUrgentTime returns 30 minutes before alarmTime when urgentTime not set`() {
-        val alarmTimeMillis = 10000000L
-        val alarm = Alarm(
-            urgentTime = null,
-            alarmTime = Timestamp(Date(alarmTimeMillis))
-        )
-
-        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-
-        val expectedTime = alarmTimeMillis - (30 * 60 * 1000L)
-        assertEquals(expectedTime, result)
-    }
-
-    @Test
-    fun `calculateEffectiveUrgentTime returns null when neither urgentTime nor alarmTime set`() {
-        val alarm = Alarm(
-            urgentTime = null,
-            alarmTime = null,
-            notifyTime = Timestamp(Date(1000000L)) // notifyTime alone shouldn't trigger urgent
-        )
-
-        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-
-        assertNull(result)
-    }
-
-    @Test
-    fun `calculateEffectiveUrgentTime prefers urgentTime over calculated time`() {
-        val urgentTime = Timestamp(Date(5000000L))
-        val alarmTime = Timestamp(Date(10000000L))
-        val alarm = Alarm(
-            urgentTime = urgentTime,
-            alarmTime = alarmTime
-        )
-
-        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-
-        // Should use explicit urgentTime, not 30 minutes before alarm
-        assertEquals(5000000L, result)
-    }
-
-    @Test
-    fun `calculateEffectiveUrgentTime handles alarmTime only scenario`() {
-        // Alarm at 60 minutes, should urgent at 30 minutes
-        val sixtyMinutesMillis = 60 * 60 * 1000L
-        val alarm = Alarm(
-            alarmTime = Timestamp(Date(sixtyMinutesMillis))
-        )
-
-        val result = AlarmUtils.calculateEffectiveUrgentTime(alarm)
-
-        val expected = 30 * 60 * 1000L // 30 minutes in millis
-        assertEquals(expected, result)
-    }
-
-    // endregion
-
-    // region isNotifyTimeInPast tests
-
-    @Test
-    fun `isNotifyTimeInPast returns true when time is before current time`() {
-        val result = AlarmUtils.isNotifyTimeInPast(
-            effectiveNotifyTime = 1000L,
-            currentTimeMillis = 2000L
-        )
-
-        assertTrue(result)
-    }
-
-    @Test
-    fun `isNotifyTimeInPast returns true when time equals current time`() {
-        val result = AlarmUtils.isNotifyTimeInPast(
-            effectiveNotifyTime = 1000L,
-            currentTimeMillis = 1000L
-        )
-
-        assertTrue(result)
-    }
-
-    @Test
-    fun `isNotifyTimeInPast returns false when time is after current time`() {
-        val result = AlarmUtils.isNotifyTimeInPast(
-            effectiveNotifyTime = 2000L,
-            currentTimeMillis = 1000L
-        )
-
-        assertFalse(result)
     }
 
     // endregion

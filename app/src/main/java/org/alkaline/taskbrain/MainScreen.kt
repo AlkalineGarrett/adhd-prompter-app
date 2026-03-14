@@ -121,10 +121,10 @@ fun MainScreen(
                         )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = colorResource(R.color.brand_color),
-                        titleContentColor = colorResource(R.color.brand_text_color),
-                        actionIconContentColor = colorResource(R.color.brand_text_color),
-                        navigationIconContentColor = colorResource(R.color.brand_text_color)
+                        containerColor = colorResource(R.color.titlebar_background),
+                        titleContentColor = colorResource(R.color.titlebar_text),
+                        actionIconContentColor = colorResource(R.color.titlebar_text),
+                        navigationIconContentColor = colorResource(R.color.titlebar_text)
                     ),
                     actions = {
                         Box(modifier = Modifier.wrapContentSize(Alignment.TopEnd)) {

@@ -22,7 +22,7 @@ object NotificationChannels {
     fun createChannels(context: Context) {
         val notificationManager = context.getSystemService(NotificationManager::class.java)
 
-        // Regular notification (notifyTime)
+        // Regular notification (NOTIFICATION stage)
         val reminderChannel = NotificationChannel(
             REMINDER_CHANNEL_ID,
             "Reminders",
@@ -31,7 +31,7 @@ object NotificationChannels {
             description = "Notification reminders for your tasks"
         }
 
-        // Urgent notification (urgentTime) - higher priority with lights
+        // Urgent notification (LOCK_SCREEN stage) - higher priority with lights
         val urgentChannel = NotificationChannel(
             URGENT_CHANNEL_ID,
             "Urgent Reminders",
@@ -42,7 +42,7 @@ object NotificationChannels {
             lightColor = android.graphics.Color.RED
         }
 
-        // Alarm (alarmTime) - full screen intent with alarm sound
+        // Alarm (SOUND_ALARM stage) - full screen intent with alarm sound
         val alarmChannel = NotificationChannel(
             ALARM_CHANNEL_ID,
             "Alarms",

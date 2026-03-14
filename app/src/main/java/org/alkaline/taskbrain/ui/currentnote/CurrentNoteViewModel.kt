@@ -21,6 +21,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
@@ -517,7 +518,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val result = alarmRepository.getAlarmsForNote(noteId)
             result.fold(
                 onSuccess = { alarms ->
-                    _lineAlarms.value = alarms.filter { it.status == org.alkaline.taskbrain.data.AlarmStatus.PENDING }
+                    _lineAlarms.value = alarms
                 },
                 onFailure = { e ->
                     Log.e("CurrentNoteViewModel", "Error fetching alarms for line", e)
@@ -628,10 +629,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         content: String,
         lineContent: String,
         lineIndex: Int? = null,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?
+        dueTime: Timestamp?,
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES
     ) {
         viewModelScope.launch {
             // First, save the content to ensure line tracker has correct note IDs
@@ -651,7 +650,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     markAsSaved()
 
                     // Now create the alarm with correct note ID
-                    createAlarmInternal(lineContent, lineIndex, upcomingTime, notifyTime, urgentTime, alarmTime)
+                    createAlarmInternal(lineContent, lineIndex, dueTime, stages)
                 },
                 onFailure = { e ->
                     _saveStatus.value = SaveStatus.Error(e)
@@ -667,10 +666,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         content: String,
         lineContent: String,
         lineIndex: Int? = null,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES,
         recurrenceConfig: RecurrenceConfig
     ) {
         viewModelScope.launch {
@@ -690,8 +687,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     markAsSaved()
 
                     createRecurringAlarmInternal(
-                        lineContent, lineIndex, upcomingTime, notifyTime,
-                        urgentTime, alarmTime, recurrenceConfig
+                        lineContent, lineIndex, dueTime, stages, recurrenceConfig
                     )
                 },
                 onFailure = { e ->
@@ -704,10 +700,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private suspend fun createRecurringAlarmInternal(
         lineContent: String,
         lineIndex: Int?,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>,
         recurrenceConfig: RecurrenceConfig
     ) {
         val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
@@ -717,10 +711,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val recurringAlarm = RecurrenceConfigMapper.toRecurringAlarm(
             noteId = noteId,
             lineContent = lineContent,
-            upcomingTime = upcomingTime,
-            notifyTime = notifyTime,
-            urgentTime = urgentTime,
-            alarmTime = alarmTime,
+            dueTime = dueTime,
+            stages = stages,
             config = recurrenceConfig
         )
 
@@ -734,15 +726,12 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             return
         }
 
-        // Compute the first instance time (use the threshold times from the dialog directly)
-        val effectiveUpcomingTime = resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
+        // Create the first alarm instance directly with the dialog's due time and stages
         val firstAlarm = Alarm(
             noteId = noteId,
             lineContent = lineContent,
-            upcomingTime = effectiveUpcomingTime,
-            notifyTime = notifyTime,
-            urgentTime = urgentTime,
-            alarmTime = alarmTime,
+            dueTime = dueTime,
+            stages = stages,
             recurringAlarmId = recurringId
         )
 
@@ -772,10 +761,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     id = alarmId,
                     noteId = firstAlarm.noteId,
                     lineContent = firstAlarm.lineContent,
-                    upcomingTime = firstAlarm.upcomingTime,
-                    notifyTime = firstAlarm.notifyTime,
-                    urgentTime = firstAlarm.urgentTime,
-                    alarmTime = firstAlarm.alarmTime
+                    dueTime = firstAlarm.dueTime,
+                    stages = firstAlarm.stages
                 )
 
                 _alarmCreated.value = AlarmCreatedEvent(alarmId, lineContent, alarmSnapshot)
@@ -796,36 +783,28 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     fun createAlarm(
         lineContent: String,
         lineIndex: Int? = null,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?
+        dueTime: Timestamp?,
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES
     ) {
         viewModelScope.launch {
-            createAlarmInternal(lineContent, lineIndex, upcomingTime, notifyTime, urgentTime, alarmTime)
+            createAlarmInternal(lineContent, lineIndex, dueTime, stages)
         }
     }
 
     private suspend fun createAlarmInternal(
         lineContent: String,
         lineIndex: Int?,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>
     ) {
         // Use the note ID from line tracker if available
         val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else currentNoteId
 
-        val effectiveUpcomingTime = resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
-
         val alarm = Alarm(
             noteId = noteId,
             lineContent = lineContent,
-            upcomingTime = effectiveUpcomingTime,
-            notifyTime = notifyTime,
-            urgentTime = urgentTime,
-            alarmTime = alarmTime
+            dueTime = dueTime,
+            stages = stages
         )
 
         val result = alarmRepository.createAlarm(alarm)
@@ -854,10 +833,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     id = alarmId,
                     noteId = alarm.noteId,
                     lineContent = alarm.lineContent,
-                    upcomingTime = alarm.upcomingTime,
-                    notifyTime = alarm.notifyTime,
-                    urgentTime = alarm.urgentTime,
-                    alarmTime = alarm.alarmTime
+                    dueTime = alarm.dueTime,
+                    stages = alarm.stages
                 )
 
                 // Signal to insert alarm symbol (even if scheduling partially failed,
@@ -1853,31 +1830,18 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
     companion object {
         private const val TAG = "CurrentNoteViewModel"
-
-        /**
-         * If upcomingTime is not explicitly set, default to the earliest of the other alarm times.
-         */
-        internal fun resolveUpcomingTime(
-            upcomingTime: Timestamp?,
-            notifyTime: Timestamp?,
-            urgentTime: Timestamp?,
-            alarmTime: Timestamp?
-        ): Timestamp? = AlarmStateManager.resolveUpcomingTime(upcomingTime, notifyTime, urgentTime, alarmTime)
-
     }
 
     /**
-     * Updates an existing alarm's times and reschedules it.
+     * Updates an existing alarm's due time and stages, then reschedules it.
      */
     fun updateAlarm(
         alarm: Alarm,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?
+        dueTime: Timestamp?,
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES
     ) {
         viewModelScope.launch {
-            alarmStateManager.update(alarm, upcomingTime, notifyTime, urgentTime, alarmTime).fold(
+            alarmStateManager.update(alarm, dueTime, stages).fold(
                 onSuccess = { scheduleResult ->
                     if (!scheduleResult.success) {
                         _schedulingWarning.value = scheduleResult.message
@@ -1897,17 +1861,15 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      */
     fun updateRecurringAlarm(
         alarm: Alarm,
-        upcomingTime: Timestamp?,
-        notifyTime: Timestamp?,
-        urgentTime: Timestamp?,
-        alarmTime: Timestamp?,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage> = Alarm.DEFAULT_STAGES,
         recurrenceConfig: RecurrenceConfig
     ) {
         viewModelScope.launch {
             val recurringAlarmId = alarm.recurringAlarmId
             if (recurringAlarmId == null) {
                 // Not actually recurring — fall back to normal update
-                updateAlarm(alarm, upcomingTime, notifyTime, urgentTime, alarmTime)
+                updateAlarm(alarm, dueTime, stages)
                 return@launch
             }
 
@@ -1923,10 +1885,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val updatedTemplate = RecurrenceConfigMapper.toRecurringAlarm(
                 noteId = alarm.noteId,
                 lineContent = alarm.lineContent,
-                upcomingTime = upcomingTime,
-                notifyTime = notifyTime,
-                urgentTime = urgentTime,
-                alarmTime = alarmTime,
+                dueTime = dueTime,
+                stages = stages,
                 config = recurrenceConfig
             ).copy(
                 id = existing.id,
@@ -1942,7 +1902,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             recurringRepo.update(updatedTemplate).fold(
                 onSuccess = {
                     // Also update the current alarm instance
-                    alarmStateManager.update(alarm, upcomingTime, notifyTime, urgentTime, alarmTime).fold(
+                    alarmStateManager.update(alarm, dueTime, stages).fold(
                         onSuccess = { scheduleResult ->
                             if (!scheduleResult.success) {
                                 _schedulingWarning.value = scheduleResult.message
@@ -1975,6 +1935,15 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     fun cancelAlarm(alarmId: String) {
         viewModelScope.launch {
             alarmStateManager.markCancelled(alarmId).fold(
+                onSuccess = { loadAlarmStates() },
+                onFailure = { e -> _alarmError.value = e }
+            )
+        }
+    }
+
+    fun reactivateAlarm(alarmId: String) {
+        viewModelScope.launch {
+            alarmStateManager.reactivate(alarmId).fold(
                 onSuccess = { loadAlarmStates() },
                 onFailure = { e -> _alarmError.value = e }
             )
@@ -2023,10 +1992,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val alarm = Alarm(
                 noteId = alarmSnapshot.noteId,
                 lineContent = alarmSnapshot.lineContent,
-                upcomingTime = alarmSnapshot.upcomingTime,
-                notifyTime = alarmSnapshot.notifyTime,
-                urgentTime = alarmSnapshot.urgentTime,
-                alarmTime = alarmSnapshot.alarmTime
+                dueTime = alarmSnapshot.dueTime,
+                stages = alarmSnapshot.stages
             )
 
             val result = alarmRepository.createAlarm(alarm)
