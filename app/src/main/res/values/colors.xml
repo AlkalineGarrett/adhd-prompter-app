@@ -16,4 +16,7 @@
     <color name="action_button_text">#FFFFFFFF</color>
 
     <color name="destructive_text">#FFB71C1C</color>
+
+    <color name="deleted_note_background">#FFF0F0F0</color>
+    <color name="deleted_note_text">#FF666666</color>
 </resources>

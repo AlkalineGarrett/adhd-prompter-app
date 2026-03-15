@@ -72,8 +72,9 @@
   --color-disabled-bg: #E0E0E0;
   --color-disabled-text: #9E9E9E;
 
-  /* Deleted note */
-  --color-deleted-bg: #f5f5f5;
+  /* Deleted note — Android: deleted_note_background, deleted_note_text */
+  --color-deleted-bg: #f0f0f0;
+  --color-deleted-text: #666666;
 }
 
 *,
