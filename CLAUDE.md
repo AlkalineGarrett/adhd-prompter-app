@@ -118,6 +118,13 @@ This principle applies especially to:
 - Automatic rollbacks or cleanup after failures
 - Permission issues that affect functionality
 
+**Never silently swallow errors:**
+- Do not use empty `catch` blocks, `/* ignore */` comments, or `.getOrNull()` without handling the failure case
+- Every `.onFailure` / `catch` must either propagate the error to a caller that surfaces it, or surface it directly
+- In ViewModels: set error state (e.g., `_alarmError.value`) that the UI observes
+- In BroadcastReceivers / background services: use `AlarmErrorActivity.show(context, title, message)` to display errors
+- Logging (`Log.e`) alone is not sufficient — errors must be user-visible
+
 ### Cross-Platform Consistency (Android ↔ Web)
 
 The Android and web apps share the same Firebase backend and should present a consistent UI. Two pairs of files are the source of truth for keeping them in sync:

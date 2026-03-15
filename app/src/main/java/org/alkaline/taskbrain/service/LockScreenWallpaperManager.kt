@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Build
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -65,6 +66,7 @@ class LockScreenWallpaperManager(private val context: Context) {
             updateWallpaper()
             return true
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to set urgent wallpaper for alarm $alarmId", e)
             return false
         }
     }
@@ -101,6 +103,7 @@ class LockScreenWallpaperManager(private val context: Context) {
                 return false
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore wallpaper for alarm $alarmId", e)
             return false
         }
     }
@@ -167,6 +170,7 @@ class LockScreenWallpaperManager(private val context: Context) {
                 return true
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to restore wallpaper from backup", e)
             clearActiveAlarms()
             return false
         }
@@ -202,7 +206,7 @@ class LockScreenWallpaperManager(private val context: Context) {
             }
             bitmap.recycle()
         } catch (e: Exception) {
-            // Ignore backup failures
+            Log.e(TAG, "Failed to back up current wallpaper", e)
         }
     }
 
@@ -221,6 +225,7 @@ class LockScreenWallpaperManager(private val context: Context) {
                 )
             }
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to parse active alarms JSON", e)
             emptyList()
         }
     }
@@ -246,6 +251,7 @@ class LockScreenWallpaperManager(private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "LockScreenWallpaperMgr"
         private const val PREFS_NAME = "lock_screen_wallpaper_prefs"
         private const val KEY_ACTIVE_ALARMS = "active_alarms"
         private const val BACKUP_FILENAME = "wallpaper_backup.png"

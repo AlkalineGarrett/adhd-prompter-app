@@ -17,8 +17,8 @@ import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
-import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmStateManager
+import org.alkaline.taskbrain.service.UrgentStateManager
 import org.alkaline.taskbrain.service.RecurrenceConfigMapper
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 
@@ -175,20 +175,30 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Update the recurring alarm template
+        // Update or create the recurring alarm template
         val recurringAlarmId = alarm.recurringAlarmId
-        if (recurringAlarmId == null) {
-            Log.w(TAG, "updateAlarmAndRecurrence called but alarm has no recurringAlarmId: ${alarm.id}")
-            return@executeAlarmOperation Result.success(Unit)
-        }
-        val existing = recurringRepository.get(recurringAlarmId).getOrNull()
-        if (existing == null) {
-            Log.w(TAG, "Recurring alarm template not found: $recurringAlarmId")
-            return@executeAlarmOperation Result.success(Unit)
+        if (recurringAlarmId != null) {
+            val existing = recurringRepository.get(recurringAlarmId).getOrNull()
+            if (existing != null) {
+                val updated = applyRecurrenceConfig(existing, dueTime, stages, recurrenceConfig)
+                return@executeAlarmOperation recurringRepository.update(updated)
+            }
         }
 
-        val updated = applyRecurrenceConfig(existing, dueTime, stages, recurrenceConfig)
-        recurringRepository.update(updated)
+        // No existing template — create one and link the alarm to it
+        val template = RecurrenceConfigMapper.toRecurringAlarm(
+            noteId = alarm.noteId,
+            lineContent = alarm.lineContent,
+            dueTime = dueTime,
+            stages = stages,
+            config = recurrenceConfig
+        )
+        val createResult = recurringRepository.create(template)
+        createResult.onSuccess { newRecurringId ->
+            repository.linkToRecurringAlarm(alarm.id, newRecurringId)
+            recurringRepository.updateCurrentAlarmId(newRecurringId, alarm.id)
+        }
+        createResult.map { }
     }
 
     fun updateRecurrence(
@@ -246,19 +256,22 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun deleteAllAlarms() = executeAlarmOperation {
-        repository.deleteAllAlarms().also { result ->
-            result.onSuccess { alarmIds ->
-                // Cancel AlarmManager PendingIntents for each deleted alarm
-                val scheduler = AlarmScheduler(getApplication())
-                for (alarmId in alarmIds) {
-                    scheduler.cancelAlarm(alarmId)
-                }
-                recurringRepository.deleteAll().onFailure {
-                    Log.e(TAG, "Failed to delete recurring alarm templates", it)
-                }
-            }
+    fun deleteAllRecurringAlarms() = executeAlarmOperation {
+        // Delete all recurring alarm instances (alarms with recurringAlarmId set)
+        val instanceIds = repository.deleteRecurringAlarmInstances().getOrDefault(emptyList())
+
+        // Deactivate each instance (cancel PendingIntents, exit urgent, dismiss notification)
+        for (alarmId in instanceIds) {
+            alarmStateManager.deactivate(alarmId)
         }
+
+        // Force-clear urgent wallpaper in case zombie alarm IDs don't match
+        UrgentStateManager(getApplication()).forceExitAllUrgentStates()
+
+        // Delete all recurring alarm templates from server
+        recurringRepository.deleteAll()
+
+        Result.success(Unit)
     }
 
     fun clearError() {

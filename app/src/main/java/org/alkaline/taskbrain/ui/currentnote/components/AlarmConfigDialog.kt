@@ -152,8 +152,8 @@ fun AlarmConfigDialog(
                         )
                     }
 
-                    // Recurrence config (for new alarms or existing recurring alarms)
-                    if (onSaveRecurring != null && (isNewAlarm || existingRecurrenceConfig != null)) {
+                    // Recurrence config
+                    if (onSaveRecurring != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         HorizontalDivider()
                         Spacer(modifier = Modifier.height(8.dp))

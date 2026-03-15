@@ -64,6 +64,23 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error updating alarm", it) }
 
     /**
+     * Links an existing alarm to a recurring alarm template.
+     */
+    suspend fun linkToRecurringAlarm(alarmId: String, recurringAlarmId: String): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            alarmRef(userId, alarmId).update(
+                mapOf(
+                    "recurringAlarmId" to recurringAlarmId,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Log.d(TAG, "Linked alarm $alarmId to recurring alarm $recurringAlarmId")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error linking alarm to recurring alarm", it) }
+
+    /**
      * Deletes an alarm permanently.
      */
     suspend fun deleteAlarm(alarmId: String): Result<Unit> = runCatching {
@@ -95,6 +112,30 @@ class AlarmRepository(
             alarmIds
         }
     }.onFailure { Log.e(TAG, "Error deleting all alarms", it) }
+
+    /**
+     * Deletes all alarm instances that belong to a recurring alarm.
+     * Returns the IDs of deleted alarms for deactivation.
+     */
+    suspend fun deleteRecurringAlarmInstances(): Result<List<String>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = alarmsCollection(userId)
+                .whereNotEqualTo("recurringAlarmId", null)
+                .get()
+                .await()
+            val alarmIds = result.documents.map { it.id }
+            for (chunk in result.documents.chunked(500)) {
+                val batch = db.batch()
+                for (doc in chunk) {
+                    batch.delete(doc.reference)
+                }
+                batch.commit().await()
+            }
+            Log.d(TAG, "Deleted ${alarmIds.size} recurring alarm instances")
+            alarmIds
+        }
+    }.onFailure { Log.e(TAG, "Error deleting recurring alarm instances", it) }
 
     /**
      * Gets a single alarm by ID.
@@ -482,6 +523,28 @@ class AlarmRepository(
             } catch (e: Exception) { null }
         }.ifEmpty { Alarm.DEFAULT_STAGES }
     }
+
+    /**
+     * Gets all pending alarm instances for a given recurring alarm template.
+     */
+    suspend fun getPendingInstancesForRecurring(recurringAlarmId: String): Result<List<Alarm>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = alarmsCollection(userId)
+                .whereEqualTo("recurringAlarmId", recurringAlarmId)
+                .whereEqualTo("status", AlarmStatus.PENDING.name)
+                .get()
+                .await()
+            result.documents.mapNotNull { doc ->
+                try {
+                    mapToAlarm(doc.id, doc.data ?: emptyMap())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing alarm", e)
+                    null
+                }
+            }
+        }
+    }.onFailure { Log.e(TAG, "Error getting pending instances for recurring alarm", it) }
 
     companion object {
         private const val TAG = "AlarmRepository"

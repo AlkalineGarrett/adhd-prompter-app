@@ -55,6 +55,18 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && userOwnsPath(userId);
     }
 
+    // ==================== Schedules Collection ====================
+
+    match /users/{userId}/schedules/{scheduleId} {
+      allow read, write: if isAuthenticated() && userOwnsPath(userId);
+    }
+
+    // ==================== Schedule Executions Collection ====================
+
+    match /users/{userId}/scheduleExecutions/{executionId} {
+      allow read, write: if isAuthenticated() && userOwnsPath(userId);
+    }
+
     // ==================== Open Tabs Collection ====================
 
     match /users/{userId}/openTabs/{tabId} {

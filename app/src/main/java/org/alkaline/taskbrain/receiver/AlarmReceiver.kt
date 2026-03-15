@@ -87,6 +87,8 @@ class AlarmReceiver : BroadcastReceiver() {
                                 RecurrenceScheduler(context).onFixedInstanceTriggered(alarm)
                             } catch (e: Exception) {
                                 Log.e(TAG, "Error scheduling next recurrence", e)
+                                showErrorDialogOnMain(context, "Recurrence Error",
+                                    "Failed to schedule next recurring instance for alarm ${alarm.displayName}: ${e.message}")
                             }
                         }
 
@@ -155,6 +157,8 @@ class AlarmReceiver : BroadcastReceiver() {
             Log.d(TAG, "Showed $alarmType notification for alarm: ${alarm.id}")
         } else {
             Log.e(TAG, "Failed to show $alarmType notification for alarm: ${alarm.id}")
+            showErrorDialog(context, "Notification Error",
+                "Failed to show $alarmType notification for alarm: ${alarm.displayName}")
         }
     }
 

@@ -7,12 +7,9 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
 import org.alkaline.taskbrain.data.SnoozeDuration
-import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmStateManager
-import org.alkaline.taskbrain.service.AlarmUtils
 
 /**
  * Handles notification action buttons (Done, Snooze, Cancel).
@@ -54,32 +51,8 @@ class AlarmActionReceiver : BroadcastReceiver() {
         Log.d(TAG, "Snoozing alarm for ${duration.minutes} minutes: $alarmId")
 
         CoroutineScope(Dispatchers.IO).launch {
-            val stateManager = AlarmStateManager(context)
-            val repository = AlarmRepository()
-            val result = repository.getAlarm(alarmId)
-
-            result.fold(
-                onSuccess = { alarm ->
-                    if (alarm == null) return@fold
-
-                    // Update snooze time in database
-                    repository.snoozeAlarm(alarmId, duration)
-
-                    // Deactivate current state (cancel triggers, exit urgent, dismiss notification)
-                    stateManager.deactivate(alarmId)
-
-                    // Schedule a new alarm for the snooze time
-                    val scheduler = AlarmScheduler(context)
-                    val snoozeTime = AlarmUtils.calculateSnoozeEndTime(duration.minutes)
-                    val alarmType = AlarmUtils.determineAlarmTypeForSnooze(alarm)
-                    scheduler.scheduleSnooze(alarmId, snoozeTime, alarmType)
-
-                    AlarmUpdateEvent.notifyAlarmUpdated()
-                },
-                onFailure = { e ->
-                    Log.e(TAG, "Error snoozing alarm", e)
-                }
-            )
+            AlarmStateManager(context).snooze(alarmId, duration)
+            AlarmUpdateEvent.notifyAlarmUpdated()
         }
     }
 

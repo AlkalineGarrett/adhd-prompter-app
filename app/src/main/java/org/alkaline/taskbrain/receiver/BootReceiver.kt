@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.RecurrenceScheduler
+import org.alkaline.taskbrain.ui.alarm.AlarmErrorActivity
 
 /**
  * Reschedules all pending alarms after device boot.
@@ -41,6 +42,8 @@ class BootReceiver : BroadcastReceiver() {
                     },
                     onFailure = { e ->
                         Log.e(TAG, "Error fetching pending alarms", e)
+                        AlarmErrorActivity.show(context, "Boot Reschedule Error",
+                            "Failed to fetch pending alarms after boot: ${e.message}")
                     }
                 )
 
@@ -50,6 +53,8 @@ class BootReceiver : BroadcastReceiver() {
                     Log.d(TAG, "Bootstrapped recurring alarms")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error bootstrapping recurring alarms", e)
+                    AlarmErrorActivity.show(context, "Recurring Alarm Error",
+                        "Failed to bootstrap recurring alarms after boot: ${e.message}")
                 }
             } catch (e: Exception) {
                 // User may not be signed in yet after boot

@@ -7,6 +7,7 @@ import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStage
+import org.alkaline.taskbrain.data.SnoozeDuration
 
 /**
  * Centralizes all alarm state transition side effects.
@@ -44,6 +45,51 @@ class AlarmStateManager(
         notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
     }
 
+    /**
+     * Creates a new alarm: persists to DB, fetches with server-set fields, schedules triggers.
+     *
+     * @return (alarmId, scheduleResult) on success.
+     */
+    suspend fun create(alarm: Alarm): Result<Pair<String, AlarmScheduleResult>> {
+        return repository.createAlarm(alarm).mapCatching { alarmId ->
+            val createdAlarm = repository.getAlarm(alarmId).getOrNull()
+                ?: alarm.copy(id = alarmId)
+            val scheduleResult = scheduler.scheduleAlarm(createdAlarm)
+            alarmId to scheduleResult
+        }.also { result ->
+            result.onFailure { Log.e(TAG, "Error creating alarm", it) }
+        }
+    }
+
+    /**
+     * Snoozes an alarm: updates DB, deactivates current state, schedules snooze trigger.
+     */
+    suspend fun snooze(alarmId: String, duration: SnoozeDuration): Result<Unit> {
+        return runCatching {
+            val alarm = repository.getAlarm(alarmId).getOrThrow()
+                ?: throw IllegalStateException("Alarm not found: $alarmId")
+
+            repository.snoozeAlarm(alarmId, duration).getOrThrow()
+            deactivate(alarmId)
+
+            val snoozeTime = AlarmUtils.calculateSnoozeEndTime(duration.minutes)
+            val alarmType = AlarmUtils.determineAlarmTypeForSnooze(alarm)
+            scheduler.scheduleSnooze(alarmId, snoozeTime, alarmType)
+            Unit
+        }.also { result ->
+            result.onFailure { Log.e(TAG, "Error snoozing alarm: $alarmId", it) }
+        }
+    }
+
+    /**
+     * Dismisses an alarm's active presentation: exits urgent state and dismisses notification.
+     * Does NOT cancel future PendingIntents (the alarm remains scheduled).
+     */
+    fun dismiss(alarmId: String) {
+        urgentStateManager.exitUrgentState(alarmId)
+        notificationManager?.cancel(AlarmUtils.getNotificationId(alarmId))
+    }
+
     suspend fun markDone(alarmId: String): Result<Unit> {
         deactivate(alarmId)
         return repository.markDone(alarmId).also { result ->
@@ -65,7 +111,9 @@ class AlarmStateManager(
      */
     private suspend fun scheduleNextRecurrence(alarmId: String, completed: Boolean) {
         val scheduler = recurrenceScheduler ?: return
-        val alarm = repository.getAlarm(alarmId).getOrNull() ?: return
+        val alarm = repository.getAlarm(alarmId)
+            .onFailure { Log.e(TAG, "Failed to fetch alarm $alarmId for next recurrence", it) }
+            .getOrNull() ?: return
         if (alarm.recurringAlarmId == null) return
 
         try {
@@ -75,6 +123,8 @@ class AlarmStateManager(
                 scheduler.onInstanceCancelled(alarm)
             }
         } catch (e: Exception) {
+            // RecurrenceScheduler surfaces errors to the user internally via AlarmErrorActivity.
+            // Catch here to prevent crashing the markDone/markCancelled caller.
             Log.e(TAG, "Error scheduling next recurrence for $alarmId", e)
         }
     }

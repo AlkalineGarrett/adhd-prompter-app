@@ -126,11 +126,11 @@ fun AlarmsScreen(
             onSave = { dueTime, stages ->
                 alarmsViewModel.updateAlarm(alarm, dueTime, stages)
             },
-            onSaveRecurring = if (recurringAlarm != null) { dueTime, stages, config ->
+            onSaveRecurring = { dueTime, stages, config ->
                 alarmsViewModel.updateAlarmAndRecurrence(
                     alarm, dueTime, stages, recurrenceConfig = config
                 )
-            } else null,
+            },
             onMarkDone = { alarmsViewModel.markDone(alarm.id) },
             onMarkCancelled = { alarmsViewModel.markCancelled(alarm.id) },
             onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) },
@@ -143,12 +143,12 @@ fun AlarmsScreen(
     if (showDeleteAllDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteAllDialog = false },
-            title = { Text(stringResource(R.string.alarm_delete_all)) },
-            text = { Text(stringResource(R.string.alarm_delete_all_confirm)) },
+            title = { Text(stringResource(R.string.alarm_delete_all_recurring)) },
+            text = { Text(stringResource(R.string.alarm_delete_all_recurring_confirm)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        alarmsViewModel.deleteAllAlarms()
+                        alarmsViewModel.deleteAllRecurringAlarms()
                         showDeleteAllDialog = false
                     }
                 ) {
@@ -313,7 +313,7 @@ fun AlarmsScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Text(stringResource(R.string.alarm_delete_all))
+                            Text(stringResource(R.string.alarm_delete_all_recurring))
                         }
                     }
                 }

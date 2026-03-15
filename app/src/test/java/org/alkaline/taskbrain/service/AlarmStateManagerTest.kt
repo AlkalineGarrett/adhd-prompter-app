@@ -8,6 +8,8 @@ import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStageType
+import org.alkaline.taskbrain.data.AlarmType
+import org.alkaline.taskbrain.data.SnoozeDuration
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -92,6 +94,162 @@ class AlarmStateManagerTest {
         manager.deactivate("alarm1")
 
         verify { mockScheduler.cancelAlarm("alarm1") }
+        verify { mockUrgentStateManager.exitUrgentState("alarm1") }
+    }
+
+    // endregion
+
+    // region create
+
+    @Test
+    fun `create persists alarm and schedules triggers`() = runTest {
+        val alarm = createTestAlarm()
+        val scheduleResult = AlarmScheduleResult(
+            alarmId = "new_id",
+            scheduledTriggers = listOf(AlarmType.NOTIFY),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        coEvery { mockRepository.createAlarm(alarm) } returns Result.success("new_id")
+        coEvery { mockRepository.getAlarm("new_id") } returns Result.success(alarm.copy(id = "new_id"))
+        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
+
+        val result = stateManager.create(alarm)
+
+        assertTrue(result.isSuccess)
+        val (alarmId, returnedScheduleResult) = result.getOrThrow()
+        assertEquals("new_id", alarmId)
+        assertEquals(scheduleResult, returnedScheduleResult)
+        coVerify { mockRepository.createAlarm(alarm) }
+        coVerify { mockRepository.getAlarm("new_id") }
+        verify { mockScheduler.scheduleAlarm(any()) }
+    }
+
+    @Test
+    fun `create returns failure when repository create fails`() = runTest {
+        val alarm = createTestAlarm()
+        coEvery { mockRepository.createAlarm(alarm) } returns Result.failure(RuntimeException("db error"))
+
+        val result = stateManager.create(alarm)
+
+        assertTrue(result.isFailure)
+        verify(exactly = 0) { mockScheduler.scheduleAlarm(any()) }
+    }
+
+    @Test
+    fun `create falls back to alarm copy when getAlarm returns null`() = runTest {
+        val alarm = createTestAlarm()
+        val scheduleResult = AlarmScheduleResult(
+            alarmId = "new_id",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        coEvery { mockRepository.createAlarm(alarm) } returns Result.success("new_id")
+        coEvery { mockRepository.getAlarm("new_id") } returns Result.success(null)
+        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
+
+        val result = stateManager.create(alarm)
+
+        assertTrue(result.isSuccess)
+        // Should schedule with the alarm copy (id = "new_id")
+        verify { mockScheduler.scheduleAlarm(match { it.id == "new_id" }) }
+    }
+
+    // endregion
+
+    // region snooze
+
+    @Test
+    fun `snooze updates DB, deactivates, and schedules snooze trigger`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1")
+
+        coEvery { mockRepository.getAlarm("alarm1") } returns Result.success(alarm)
+        coEvery { mockRepository.snoozeAlarm("alarm1", SnoozeDuration.TEN_MINUTES) } returns Result.success(Unit)
+        every { mockScheduler.scheduleSnooze(any(), any(), any()) } returns true
+
+        val result = stateManager.snooze("alarm1", SnoozeDuration.TEN_MINUTES)
+
+        assertTrue(result.isSuccess)
+        coVerify { mockRepository.snoozeAlarm("alarm1", SnoozeDuration.TEN_MINUTES) }
+        verify { mockScheduler.cancelAlarm("alarm1") }
+        verify { mockUrgentStateManager.exitUrgentState("alarm1") }
+        verify { mockNotificationManager.cancel(any()) }
+        verify { mockScheduler.scheduleSnooze(eq("alarm1"), any(), any()) }
+    }
+
+    @Test
+    fun `snooze fails when alarm not found`() = runTest {
+        coEvery { mockRepository.getAlarm("alarm1") } returns Result.success(null)
+
+        val result = stateManager.snooze("alarm1", SnoozeDuration.TEN_MINUTES)
+
+        assertTrue(result.isFailure)
+        coVerify(exactly = 0) { mockRepository.snoozeAlarm(any(), any()) }
+        verify(exactly = 0) { mockScheduler.cancelAlarm(any()) }
+    }
+
+    @Test
+    fun `snooze fails when getAlarm fails`() = runTest {
+        coEvery { mockRepository.getAlarm("alarm1") } returns Result.failure(RuntimeException("network"))
+
+        val result = stateManager.snooze("alarm1", SnoozeDuration.TEN_MINUTES)
+
+        assertTrue(result.isFailure)
+        coVerify(exactly = 0) { mockRepository.snoozeAlarm(any(), any()) }
+    }
+
+    @Test
+    fun `snooze fails when snoozeAlarm DB write fails`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1")
+
+        coEvery { mockRepository.getAlarm("alarm1") } returns Result.success(alarm)
+        coEvery { mockRepository.snoozeAlarm("alarm1", SnoozeDuration.TEN_MINUTES) } returns Result.failure(RuntimeException("write fail"))
+
+        val result = stateManager.snooze("alarm1", SnoozeDuration.TEN_MINUTES)
+
+        assertTrue(result.isFailure)
+        // Should not deactivate or schedule if DB write failed
+        verify(exactly = 0) { mockScheduler.cancelAlarm(any()) }
+        verify(exactly = 0) { mockScheduler.scheduleSnooze(any(), any(), any()) }
+    }
+
+    // endregion
+
+    // region dismiss
+
+    @Test
+    fun `dismiss exits urgent state and dismisses notification`() {
+        val notificationId = AlarmUtils.getNotificationId("alarm1")
+
+        stateManager.dismiss("alarm1")
+
+        verify { mockUrgentStateManager.exitUrgentState("alarm1") }
+        verify { mockNotificationManager.cancel(notificationId) }
+    }
+
+    @Test
+    fun `dismiss does not cancel scheduled triggers`() {
+        stateManager.dismiss("alarm1")
+
+        verify(exactly = 0) { mockScheduler.cancelAlarm(any()) }
+    }
+
+    @Test
+    fun `dismiss handles null notification manager`() {
+        val manager = AlarmStateManager(
+            repository = mockRepository,
+            scheduler = mockScheduler,
+            urgentStateManager = mockUrgentStateManager,
+            notificationManager = null
+        )
+
+        manager.dismiss("alarm1")
+
         verify { mockUrgentStateManager.exitUrgentState("alarm1") }
     }
 
@@ -371,6 +529,32 @@ class AlarmStateManagerTest {
         verify(exactly = 1) { mockUrgentStateManager.exitUrgentState("alarm2") }
         verify(exactly = 1) { mockUrgentStateManager.exitUrgentState("alarm3") }
         verify(exactly = 3) { mockNotificationManager.cancel(any()) }
+    }
+
+    @Test
+    fun `dismiss does not deactivate - only exits urgent and dismisses notification`() {
+        stateManager.dismiss("alarm1")
+
+        verify { mockUrgentStateManager.exitUrgentState("alarm1") }
+        verify { mockNotificationManager.cancel(AlarmUtils.getNotificationId("alarm1")) }
+        verify(exactly = 0) { mockScheduler.cancelAlarm(any()) }
+    }
+
+    @Test
+    fun `snooze deactivates then reschedules`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1")
+        coEvery { mockRepository.getAlarm("alarm1") } returns Result.success(alarm)
+        coEvery { mockRepository.snoozeAlarm(any(), any()) } returns Result.success(Unit)
+        every { mockScheduler.scheduleSnooze(any(), any(), any()) } returns true
+
+        stateManager.snooze("alarm1", SnoozeDuration.TEN_MINUTES)
+
+        // Deactivation side effects
+        verify(exactly = 1) { mockScheduler.cancelAlarm("alarm1") }
+        verify(exactly = 1) { mockUrgentStateManager.exitUrgentState("alarm1") }
+        verify(exactly = 1) { mockNotificationManager.cancel(any()) }
+        // Then reschedule
+        verify(exactly = 1) { mockScheduler.scheduleSnooze(eq("alarm1"), any(), any()) }
     }
 
     // endregion

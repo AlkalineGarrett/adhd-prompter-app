@@ -117,8 +117,8 @@
     <string name="alarm_skipped">Skipped</string>
     <string name="alarm_reopen">Re-open</string>
     <string name="alarm_untitled">Untitled alarm</string>
-    <string name="alarm_delete_all">Delete all alarms</string>
-    <string name="alarm_delete_all_confirm">This will permanently delete all alarms and recurring alarm templates. This cannot be undone.</string>
+    <string name="alarm_delete_all_recurring">Delete all recurring alarms</string>
+    <string name="alarm_delete_all_recurring_confirm">This will permanently delete all recurring alarm templates, their instances, and clear the local cache. This cannot be undone.</string>
     <string name="alarm_completed_fmt">Completed: %s</string>
     <string name="alarm_urgent_fmt">Urgent: %s</string>
 

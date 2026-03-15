@@ -111,8 +111,7 @@ class AlarmActivity : ComponentActivity() {
     }
 
     private fun dismissNotification(alarmId: String) {
-        val notificationManager = getSystemService(android.app.NotificationManager::class.java)
-        notificationManager?.cancel(org.alkaline.taskbrain.service.AlarmUtils.getNotificationId(alarmId))
+        AlarmStateManager(this).dismiss(alarmId)
     }
 
     companion object {
@@ -131,6 +130,7 @@ fun AlarmScreen(
 ) {
     var alarm by remember { mutableStateOf<Alarm?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     // Load alarm data
     LaunchedEffect(alarmId) {
@@ -138,7 +138,7 @@ fun AlarmScreen(
             val result = AlarmRepository().getAlarm(alarmId)
             result.fold(
                 onSuccess = { alarm = it },
-                onFailure = { /* ignore */ }
+                onFailure = { loadError = "Failed to load alarm: ${it.message}" }
             )
             isLoading = false
         }
@@ -191,11 +191,11 @@ fun AlarmScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Line content
+            // Line content or error
             Text(
-                text = alarm?.displayName ?: stringResource(R.string.action_loading),
+                text = loadError ?: alarm?.displayName ?: stringResource(R.string.action_loading),
                 style = MaterialTheme.typography.headlineMedium,
-                color = contentColor,
+                color = if (loadError != null) Color(0xFFFF8A80) else contentColor,
                 textAlign = TextAlign.Center
             )
 

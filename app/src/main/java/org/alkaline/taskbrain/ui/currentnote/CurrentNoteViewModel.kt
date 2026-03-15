@@ -737,28 +737,23 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             recurringAlarmId = recurringId
         )
 
-        val alarmResult = alarmRepository.createAlarm(firstAlarm)
-        alarmResult.fold(
-            onSuccess = { alarmId ->
+        // Check permissions
+        if (!alarmScheduler.canScheduleExactAlarms()) {
+            _alarmPermissionWarning.value = true
+        }
+        if (!PermissionHelper.hasNotificationPermission(context)) {
+            _notificationPermissionWarning.value = true
+        }
+
+        alarmStateManager.create(firstAlarm).fold(
+            onSuccess = { (alarmId, scheduleResult) ->
                 // Update recurring alarm with current instance ID
                 recurringRepo.updateCurrentAlarmId(recurringId, alarmId)
 
-                // Check permissions
-                if (!alarmScheduler.canScheduleExactAlarms()) {
-                    _alarmPermissionWarning.value = true
-                }
-                if (!PermissionHelper.hasNotificationPermission(context)) {
-                    _notificationPermissionWarning.value = true
-                }
-
-                // Schedule the first instance
-                val createdAlarm = firstAlarm.copy(id = alarmId)
-                val scheduleResult = alarmScheduler.scheduleAlarm(createdAlarm)
                 if (!scheduleResult.success) {
                     _schedulingWarning.value = scheduleResult.message
                 }
 
-                // Create alarm snapshot for undo/redo
                 val alarmSnapshot = AlarmSnapshot(
                     id = alarmId,
                     noteId = firstAlarm.noteId,
@@ -809,28 +804,21 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             stages = stages
         )
 
-        val result = alarmRepository.createAlarm(alarm)
-        result.fold(
-            onSuccess = { alarmId ->
-                // Check permissions and show warnings
-                val context = getApplication<Application>()
-                if (!alarmScheduler.canScheduleExactAlarms()) {
-                    _alarmPermissionWarning.value = true
-                }
-                if (!PermissionHelper.hasNotificationPermission(context)) {
-                    _notificationPermissionWarning.value = true
-                }
+        // Check permissions and show warnings
+        val context = getApplication<Application>()
+        if (!alarmScheduler.canScheduleExactAlarms()) {
+            _alarmPermissionWarning.value = true
+        }
+        if (!PermissionHelper.hasNotificationPermission(context)) {
+            _notificationPermissionWarning.value = true
+        }
 
-                // Schedule the alarm
-                val createdAlarm = alarm.copy(id = alarmId)
-                val scheduleResult = alarmScheduler.scheduleAlarm(createdAlarm)
-
-                // Handle schedule result
+        alarmStateManager.create(alarm).fold(
+            onSuccess = { (alarmId, scheduleResult) ->
                 if (!scheduleResult.success) {
                     _schedulingWarning.value = scheduleResult.message
                 }
 
-                // Create alarm snapshot for undo/redo
                 val alarmSnapshot = AlarmSnapshot(
                     id = alarmId,
                     noteId = alarm.noteId,
@@ -1998,12 +1986,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 stages = alarmSnapshot.stages
             )
 
-            val result = alarmRepository.createAlarm(alarm)
-            result.fold(
-                onSuccess = { newAlarmId ->
-                    // Schedule the recreated alarm
-                    val createdAlarm = alarm.copy(id = newAlarmId)
-                    alarmScheduler.scheduleAlarm(createdAlarm)
+            alarmStateManager.create(alarm).fold(
+                onSuccess = { (newAlarmId, _) ->
                     // Notify caller of new ID for future undo/redo cycles
                     onAlarmCreated(newAlarmId)
                 },
