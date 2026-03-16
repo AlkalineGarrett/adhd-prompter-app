@@ -35,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
@@ -115,9 +116,24 @@ fun AlarmsScreen(
     }
 
     // Instance edit dialog (with recurrence section for recurring alarms)
+    // Sibling instances for recurring alarm navigation
+    var siblingInstances by remember { mutableStateOf<List<Alarm>>(emptyList()) }
+    val selectedRecurringId = selectedAlarm?.recurringAlarmId
+
+    LaunchedEffect(selectedRecurringId) {
+        siblingInstances = if (selectedRecurringId != null) {
+            alarmsViewModel.getInstancesForRecurring(selectedRecurringId)
+        } else {
+            emptyList()
+        }
+    }
+
     selectedAlarm?.let { alarm ->
         val recurringAlarm = alarm.recurringAlarmId?.let { recurringAlarms[it] }
         val recurrenceConfig = recurringAlarm?.let { RecurrenceConfigMapper.toRecurrenceConfig(it) }
+        val currentIndex = siblingInstances.indexOfFirst { it.id == alarm.id }
+        val hasPrevious = currentIndex > 0
+        val hasNext = currentIndex >= 0 && currentIndex < siblingInstances.lastIndex
 
         AlarmConfigDialog(
             lineContent = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
@@ -135,6 +151,14 @@ fun AlarmsScreen(
             onMarkCancelled = { alarmsViewModel.markCancelled(alarm.id) },
             onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) },
             onDelete = { alarmsViewModel.deleteAlarm(alarm.id) },
+            onNavigatePrevious = if (recurringAlarm != null) {{
+                if (hasPrevious) selectedAlarm = siblingInstances[currentIndex - 1]
+            }} else null,
+            onNavigateNext = if (recurringAlarm != null) {{
+                if (hasNext) selectedAlarm = siblingInstances[currentIndex + 1]
+            }} else null,
+            hasPrevious = hasPrevious,
+            hasNext = hasNext,
             onDismiss = { selectedAlarm = null }
         )
     }

@@ -547,6 +547,12 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
     }
 
+    suspend fun getInstancesForRecurring(recurringAlarmId: String): List<Alarm> {
+        return alarmRepository.getInstancesForRecurring(recurringAlarmId)
+            .onFailure { _alarmError.value = it }
+            .getOrDefault(emptyList())
+    }
+
     // Per-noteId alarm list for rendering symbol overlays
     private val _noteAlarms = MutableLiveData<Map<String, List<Alarm>>>(emptyMap())
     val noteAlarms: LiveData<Map<String, List<Alarm>>> = _noteAlarms

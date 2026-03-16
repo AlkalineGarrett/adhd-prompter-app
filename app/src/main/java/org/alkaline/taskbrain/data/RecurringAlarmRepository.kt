@@ -190,14 +190,7 @@ class RecurringAlarmRepository(
         "rrule" to ra.rrule,
         "relativeIntervalMs" to ra.relativeIntervalMs,
         "dueOffsetMs" to ra.dueOffsetMs,
-        "stages" to ra.stages.map { stage ->
-            mapOf(
-                "type" to stage.type.name,
-                "offsetMs" to stage.offsetMs,
-                "enabled" to stage.enabled,
-                "absoluteTime" to stage.absoluteTime
-            )
-        },
+        "stages" to ra.stages.map { it.toMap() },
         "endDate" to ra.endDate,
         "repeatCount" to ra.repeatCount,
         "completionCount" to ra.completionCount,
@@ -232,20 +225,7 @@ class RecurringAlarmRepository(
         updatedAt = data["updatedAt"] as? Timestamp
     )
 
-    private fun parseStages(raw: Any?): List<AlarmStage> {
-        val list = raw as? List<*> ?: return Alarm.DEFAULT_STAGES
-        return list.mapNotNull { item ->
-            val map = item as? Map<*, *> ?: return@mapNotNull null
-            try {
-                AlarmStage(
-                    type = AlarmStageType.valueOf(map["type"] as? String ?: return@mapNotNull null),
-                    offsetMs = (map["offsetMs"] as? Number)?.toLong() ?: 0,
-                    enabled = map["enabled"] as? Boolean ?: true,
-                    absoluteTime = map["absoluteTime"] as? Timestamp
-                )
-            } catch (e: Exception) { null }
-        }.ifEmpty { Alarm.DEFAULT_STAGES }
-    }
+    private fun parseStages(raw: Any?): List<AlarmStage> = AlarmStage.fromMapList(raw)
 
     companion object {
         private const val TAG = "RecurringAlarmRepo"

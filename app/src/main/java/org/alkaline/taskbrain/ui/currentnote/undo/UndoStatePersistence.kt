@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStageType
+import org.alkaline.taskbrain.data.TimeOfDay
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -206,7 +207,8 @@ object UndoStatePersistence {
                         put("type", stage.type.name)
                         put("offsetMs", stage.offsetMs)
                         put("enabled", stage.enabled)
-                        put("absoluteTime", stage.absoluteTime?.toDate()?.time ?: JSONObject.NULL)
+                        put("absoluteTimeHour", stage.absoluteTimeOfDay?.hour ?: JSONObject.NULL)
+                        put("absoluteTimeMinute", stage.absoluteTimeOfDay?.minute ?: JSONObject.NULL)
                     })
                 }
             })
@@ -223,8 +225,7 @@ object UndoStatePersistence {
                         type = AlarmStageType.valueOf(stageJson.getString("type")),
                         offsetMs = stageJson.getLong("offsetMs"),
                         enabled = stageJson.getBoolean("enabled"),
-                        absoluteTime = if (stageJson.isNull("absoluteTime")) null
-                            else Timestamp(Date(stageJson.getLong("absoluteTime")))
+                        absoluteTimeOfDay = deserializeTimeOfDay(stageJson)
                     )
                 } catch (e: Exception) { null }
             }
@@ -240,6 +241,13 @@ object UndoStatePersistence {
                 else Timestamp(Date(json.getLong("dueTime"))),
             stages = stages
         )
+    }
+
+    private fun deserializeTimeOfDay(json: JSONObject): TimeOfDay? {
+        if (!json.isNull("absoluteTimeHour") && !json.isNull("absoluteTimeMinute")) {
+            return TimeOfDay(json.getInt("absoluteTimeHour"), json.getInt("absoluteTimeMinute"))
+        }
+        return null
     }
 }
 

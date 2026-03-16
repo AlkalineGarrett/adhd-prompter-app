@@ -274,6 +274,12 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         Result.success(Unit)
     }
 
+    suspend fun getInstancesForRecurring(recurringAlarmId: String): List<Alarm> {
+        return repository.getInstancesForRecurring(recurringAlarmId)
+            .onFailure { _error.value = it }
+            .getOrDefault(emptyList())
+    }
+
     fun clearError() {
         _error.value = null
     }

@@ -175,11 +175,24 @@ fun CurrentNoteScreen(
     var alarmDialogSymbolIndex by remember { mutableStateOf(0) }
     val lineAlarms by currentNoteViewModel.lineAlarms.observeAsState(emptyList())
     val noteAlarmsForOverlay by currentNoteViewModel.noteAlarms.observeAsState(emptyMap())
-    val alarmDialogExistingAlarm = lineAlarms
+    // When navigating between recurring instances, this overrides the line-based alarm
+    var alarmDialogOverride by remember { mutableStateOf<Alarm?>(null) }
+    val alarmDialogExistingAlarm = alarmDialogOverride ?: lineAlarms
         .sortedWith(compareByDescending<Alarm> { it.status == AlarmStatus.PENDING }
             .thenBy { it.createdAt?.toDate()?.time ?: 0L })
         .getOrNull(alarmDialogSymbolIndex)
     val alarmDialogRecurrenceConfig by currentNoteViewModel.recurrenceConfig.observeAsState()
+
+    // Sibling instances for recurring alarm navigation in the dialog
+    var alarmDialogSiblings by remember { mutableStateOf<List<Alarm>>(emptyList()) }
+    val alarmDialogRecurringId = alarmDialogExistingAlarm?.recurringAlarmId
+    LaunchedEffect(alarmDialogRecurringId, showAlarmDialog) {
+        alarmDialogSiblings = if (showAlarmDialog && alarmDialogRecurringId != null) {
+            currentNoteViewModel.getInstancesForRecurring(alarmDialogRecurringId)
+        } else {
+            emptyList()
+        }
+    }
 
     // --- Effects ---
     LifecycleAutoSaveEffect(
@@ -278,9 +291,20 @@ fun CurrentNoteScreen(
         onAlarmMarkCancelled = alarmDialogExistingAlarm?.let { alarm -> { currentNoteViewModel.cancelAlarm(alarm.id) } },
         onAlarmReactivate = alarmDialogExistingAlarm?.let { alarm -> { currentNoteViewModel.reactivateAlarm(alarm.id) } },
         onAlarmDelete = alarmDialogExistingAlarm?.let { alarm -> { currentNoteViewModel.deleteAlarmPermanently(alarm.id) } },
+        onAlarmNavigatePrevious = if (alarmDialogRecurringId != null) {{
+            val idx = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }
+            if (idx > 0) alarmDialogOverride = alarmDialogSiblings[idx - 1]
+        }} else null,
+        onAlarmNavigateNext = if (alarmDialogRecurringId != null) {{
+            val idx = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }
+            if (idx in 0 until alarmDialogSiblings.lastIndex) alarmDialogOverride = alarmDialogSiblings[idx + 1]
+        }} else null,
+        alarmHasPrevious = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id } > 0,
+        alarmHasNext = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }.let { it in 0 until alarmDialogSiblings.lastIndex },
         onAlarmDismiss = {
             showAlarmDialog = false
             alarmDialogLineIndex = null
+            alarmDialogOverride = null
             currentNoteViewModel.fetchRecurrenceConfig(null)
         },
         onFetchRecurrenceConfig = { currentNoteViewModel.fetchRecurrenceConfig(it) }

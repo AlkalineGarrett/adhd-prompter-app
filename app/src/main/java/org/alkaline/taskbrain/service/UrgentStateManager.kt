@@ -27,8 +27,6 @@ class UrgentStateManager(private val context: Context) {
      * @return true if urgent state was entered successfully
      */
     fun enterUrgentState(alarm: Alarm, silent: Boolean = false): Boolean {
-        Log.d(TAG, "Entering urgent state for alarm: ${alarm.id}, silent=$silent")
-
         // Set the lock screen wallpaper
         val displayText = AlarmUtils.formatDisplayText(context, alarm)
         val alarmTimeMillis = alarm.dueTime?.toDate()?.time ?: System.currentTimeMillis()

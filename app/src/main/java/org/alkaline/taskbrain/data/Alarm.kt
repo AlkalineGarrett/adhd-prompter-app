@@ -1,25 +1,89 @@
 package org.alkaline.taskbrain.data
 
 import com.google.firebase.Timestamp
+import java.util.Calendar
 import java.util.Date
 
 /**
+ * A time-of-day without a date, representing user intent (e.g., "trigger at 05:00").
+ * Stored as hour (0-23) and minute (0-59) to be date-independent and DST-safe.
+ * When resolved to an actual trigger time, the time-of-day is combined with the
+ * alarm's due date in the device's local timezone, so DST transitions are handled correctly.
+ */
+data class TimeOfDay(val hour: Int, val minute: Int) {
+    init {
+        require(hour in 0..23) { "Hour must be 0-23, got $hour" }
+        require(minute in 0..59) { "Minute must be 0-59, got $minute" }
+    }
+
+    /** Resolves this time-of-day to a [Timestamp] on the same calendar date as [referenceDate]. */
+    fun onSameDateAs(referenceDate: Date): Timestamp {
+        val cal = Calendar.getInstance()
+        cal.time = referenceDate
+        cal.set(Calendar.HOUR_OF_DAY, hour)
+        cal.set(Calendar.MINUTE, minute)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return Timestamp(cal.time)
+    }
+
+    companion object {
+        /** Parses a [TimeOfDay] from a Firestore-style map (absoluteTimeHour/absoluteTimeMinute). */
+        fun fromMap(map: Map<*, *>): TimeOfDay? {
+            val hour = (map["absoluteTimeHour"] as? Number)?.toInt()
+            val minute = (map["absoluteTimeMinute"] as? Number)?.toInt()
+            if (hour != null && minute != null) return TimeOfDay(hour, minute)
+            return null
+        }
+    }
+}
+
+/**
  * A single stage of an alarm (e.g., sound alarm, lock screen, notification).
- * Times are expressed as offsets before dueTime, or optionally as absolute times.
+ * Times are expressed as offsets before dueTime, or optionally as a time-of-day.
  */
 data class AlarmStage(
     val type: AlarmStageType,
     /** Milliseconds before dueTime (positive = before due, 0 = at due). */
     val offsetMs: Long = 0,
     val enabled: Boolean = true,
-    /** If non-null, overrides offset-based time computation. */
-    val absoluteTime: Timestamp? = null
+    /** If non-null, overrides offset-based time computation with a specific time-of-day. */
+    val absoluteTimeOfDay: TimeOfDay? = null
 ) {
     /** Resolves this stage's trigger time given the alarm's dueTime. */
     fun resolveTime(dueTime: Timestamp): Timestamp {
-        absoluteTime?.let { return it }
+        absoluteTimeOfDay?.let { return it.onSameDateAs(dueTime.toDate()) }
         val dueMs = dueTime.toDate().time
         return Timestamp(Date(dueMs - offsetMs))
+    }
+
+    /** Serializes this stage to a Firestore-compatible map. */
+    fun toMap(): Map<String, Any?> = buildMap {
+        put("type", type.name)
+        put("offsetMs", offsetMs)
+        put("enabled", enabled)
+        if (absoluteTimeOfDay != null) {
+            put("absoluteTimeHour", absoluteTimeOfDay.hour)
+            put("absoluteTimeMinute", absoluteTimeOfDay.minute)
+        }
+    }
+
+    companion object {
+        /** Parses a list of stages from Firestore data, falling back to [Alarm.DEFAULT_STAGES]. */
+        fun fromMapList(raw: Any?): List<AlarmStage> {
+            val list = raw as? List<*> ?: return Alarm.DEFAULT_STAGES
+            return list.mapNotNull { item ->
+                val map = item as? Map<*, *> ?: return@mapNotNull null
+                try {
+                    AlarmStage(
+                        type = AlarmStageType.valueOf(map["type"] as? String ?: return@mapNotNull null),
+                        offsetMs = (map["offsetMs"] as? Number)?.toLong() ?: 0,
+                        enabled = map["enabled"] as? Boolean ?: true,
+                        absoluteTimeOfDay = TimeOfDay.fromMap(map)
+                    )
+                } catch (e: Exception) { null }
+            }.ifEmpty { Alarm.DEFAULT_STAGES }
+        }
     }
 }
 

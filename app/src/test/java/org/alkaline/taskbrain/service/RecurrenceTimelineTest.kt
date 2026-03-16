@@ -13,10 +13,12 @@ import org.alkaline.taskbrain.data.RecurrenceType
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.data.RecurringAlarmStatus
+import org.alkaline.taskbrain.data.TimeOfDay
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import java.util.Calendar
 import java.util.Date
 
 /**
@@ -859,7 +861,7 @@ class RecurrenceTimelineTest {
 
         scheduler.bootstrapRecurringAlarms()
 
-        // rec1: rescheduled, no new alarm
+        // rec1: rescheduled (no past stage notifications), no new alarm
         verify { mockAlarmScheduler.scheduleAlarm(a1) }
         // rec2: new alarm created
         coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
@@ -941,6 +943,66 @@ class RecurrenceTimelineTest {
         // Neither a1 nor b1 cancelled
         coVerify(exactly = 0) { mockAlarmRepo.markCancelled("a1") }
         coVerify(exactly = 0) { mockAlarmRepo.markCancelled("b1") }
+    }
+
+    // endregion
+
+    // region absoluteTimeOfDay stage handling
+
+    @Test
+    fun `FIXED - absoluteTimeOfDay resolves to correct date on each instance`() = runTest {
+        // Notification set to 05:00 (time-of-day), other stages use offsets
+        val stagesWithTimeOfDay = listOf(
+            AlarmStage(type = AlarmStageType.NOTIFICATION, offsetMs = 0, enabled = true,
+                absoluteTimeOfDay = TimeOfDay(5, 0)),
+            AlarmStage(type = AlarmStageType.LOCK_SCREEN, offsetMs = 2 * HOUR_MS, enabled = true),
+            AlarmStage(type = AlarmStageType.SOUND_ALARM, offsetMs = 10 * 60 * 1000L, enabled = true)
+        )
+        val recurring = RecurringAlarm(
+            id = "rec1",
+            noteId = "note1",
+            lineContent = "Morning routine",
+            recurrenceType = RecurrenceType.FIXED,
+            rrule = "FREQ=DAILY",
+            dueOffsetMs = 0,
+            stages = stagesWithTimeOfDay,
+            currentAlarmId = "d1",
+            status = RecurringAlarmStatus.ACTIVE,
+            createdAt = Timestamp.now()
+        )
+        val d1 = alarm("d1", dueTimeMs = day1_9am, stages = stagesWithTimeOfDay)
+
+        coEvery { mockRecurringRepo.get("rec1") } returns Result.success(recurring)
+
+        // Capture the alarm passed to createAlarm
+        val createdAlarmSlot = slot<Alarm>()
+        coEvery { mockAlarmRepo.createAlarm(capture(createdAlarmSlot)) } returns Result.success("d2")
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(null)
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(alarm("d2", dueTimeMs = day2_9am)))
+
+        scheduler.onFixedInstanceTriggered(d1)
+
+        // The created alarm should carry over the same TimeOfDay — it's date-independent
+        assertTrue("Alarm should have been created", createdAlarmSlot.isCaptured)
+        val createdAlarm = createdAlarmSlot.captured
+        val notifStage = createdAlarm.stages.first { it.type == AlarmStageType.NOTIFICATION }
+        assertEquals(TimeOfDay(5, 0), notifStage.absoluteTimeOfDay)
+
+        // When resolved against day 2's due time, it should produce 05:00 on day 2
+        val day2Due = ts(day2_9am)
+        val resolved = notifStage.resolveTime(day2Due)
+        val resolvedCal = Calendar.getInstance().apply { time = resolved.toDate() }
+        assertEquals(5, resolvedCal.get(Calendar.HOUR_OF_DAY))
+        assertEquals(0, resolvedCal.get(Calendar.MINUTE))
+
+        val day2Cal = Calendar.getInstance().apply { time = Date(day2_9am) }
+        assertEquals(day2Cal.get(Calendar.DAY_OF_MONTH), resolvedCal.get(Calendar.DAY_OF_MONTH))
+
+        // Offset-based stages should be unchanged
+        val lockStage = createdAlarm.stages.first { it.type == AlarmStageType.LOCK_SCREEN }
+        assertNull(lockStage.absoluteTimeOfDay)
+        assertEquals(2 * HOUR_MS, lockStage.offsetMs)
     }
 
     // endregion

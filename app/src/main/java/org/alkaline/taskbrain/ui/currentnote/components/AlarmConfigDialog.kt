@@ -3,6 +3,8 @@ package org.alkaline.taskbrain.ui.currentnote.components
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +48,7 @@ import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStageType
+import org.alkaline.taskbrain.data.TimeOfDay
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.ui.components.DateTimePickerRow
 import org.alkaline.taskbrain.ui.components.DialogTitleBar
@@ -84,11 +87,17 @@ fun AlarmConfigDialog(
     onMarkCancelled: (() -> Unit)? = null,
     onReactivate: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onNavigatePrevious: (() -> Unit)? = null,
+    onNavigateNext: (() -> Unit)? = null,
+    hasPrevious: Boolean = false,
+    hasNext: Boolean = false,
     onDismiss: () -> Unit
 ) {
-    var dueTime by remember { mutableStateOf(existingAlarm?.dueTime) }
-    var stages by remember { mutableStateOf(existingAlarm?.stages ?: Alarm.DEFAULT_STAGES) }
-    var recurrenceConfig by remember(existingRecurrenceConfig) {
+    // Key on alarm ID so state resets when navigating between instances
+    val alarmKey = existingAlarm?.id
+    var dueTime by remember(alarmKey) { mutableStateOf(existingAlarm?.dueTime) }
+    var stages by remember(alarmKey) { mutableStateOf(existingAlarm?.stages ?: Alarm.DEFAULT_STAGES) }
+    var recurrenceConfig by remember(alarmKey, existingRecurrenceConfig) {
         mutableStateOf(existingRecurrenceConfig ?: RecurrenceConfig())
     }
 
@@ -117,6 +126,10 @@ fun AlarmConfigDialog(
                         onMarkDone = onMarkDone,
                         onMarkCancelled = onMarkCancelled,
                         onReactivate = onReactivate,
+                        onNavigatePrevious = onNavigatePrevious,
+                        onNavigateNext = onNavigateNext,
+                        hasPrevious = hasPrevious,
+                        hasNext = hasNext,
                         onDismiss = onDismiss
                     )
                     HorizontalDivider()
@@ -189,6 +202,9 @@ fun AlarmConfigDialog(
 
 private val StatusButtonFontSize = 12.sp
 private val StatusButtonPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+private val NavButtonFontSize = 12.sp
+private val NavButtonPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp)
+private val NavButtonWidth = 32.dp
 
 @Composable
 private fun StatusButtons(
@@ -196,14 +212,30 @@ private fun StatusButtons(
     onMarkDone: (() -> Unit)?,
     onMarkCancelled: (() -> Unit)?,
     onReactivate: (() -> Unit)?,
+    onNavigatePrevious: (() -> Unit)?,
+    onNavigateNext: (() -> Unit)?,
+    hasPrevious: Boolean,
+    hasNext: Boolean,
     onDismiss: () -> Unit
 ) {
+    val showNavigation = onNavigatePrevious != null || onNavigateNext != null
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
+        if (showNavigation) {
+            OutlinedButton(
+                onClick = { onNavigatePrevious?.invoke() },
+                enabled = hasPrevious,
+                modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp).width(NavButtonWidth),
+                contentPadding = NavButtonPadding
+            ) {
+                Text("<", fontSize = NavButtonFontSize)
+            }
+        }
         OutlinedButton(
             onClick = {
                 onReactivate?.invoke()
@@ -213,7 +245,7 @@ private fun StatusButtons(
             modifier = Modifier.weight(1f),
             contentPadding = StatusButtonPadding
         ) {
-            Text(stringResource(R.string.alarm_reopen), fontSize = StatusButtonFontSize)
+            Text(stringResource(R.string.alarm_reopen), fontSize = StatusButtonFontSize, maxLines = 1)
         }
         OutlinedButton(
             onClick = {
@@ -224,7 +256,7 @@ private fun StatusButtons(
             modifier = Modifier.weight(1f),
             contentPadding = StatusButtonPadding
         ) {
-            Text(stringResource(R.string.alarm_skipped), fontSize = StatusButtonFontSize)
+            Text(stringResource(R.string.alarm_skipped), fontSize = StatusButtonFontSize, maxLines = 1)
         }
         Button(
             onClick = {
@@ -239,7 +271,17 @@ private fun StatusButtons(
                 contentColor = colorResource(R.color.action_button_text)
             )
         ) {
-            Text(stringResource(R.string.alarm_done), fontSize = StatusButtonFontSize)
+            Text(stringResource(R.string.alarm_done), fontSize = StatusButtonFontSize, maxLines = 1)
+        }
+        if (showNavigation) {
+            OutlinedButton(
+                onClick = { onNavigateNext?.invoke() },
+                enabled = hasNext,
+                modifier = Modifier.defaultMinSize(minWidth = 1.dp, minHeight = 1.dp).width(NavButtonWidth),
+                contentPadding = NavButtonPadding
+            ) {
+                Text(">", fontSize = NavButtonFontSize)
+            }
         }
     }
 }
@@ -299,7 +341,7 @@ private fun StageRow(
                     DropdownMenuItem(
                         text = { Text(formatOffset(offsetMs)) },
                         onClick = {
-                            onStageChange(stage.copy(offsetMs = offsetMs, absoluteTime = null))
+                            onStageChange(stage.copy(offsetMs = offsetMs, absoluteTimeOfDay = null))
                             showOffsetMenu = false
                         }
                     )
@@ -322,8 +364,8 @@ private fun StageRow(
             stage = stage,
             dueTime = dueTime,
             is24Hour = is24Hour,
-            onConfirm = { absoluteTime ->
-                onStageChange(stage.copy(absoluteTime = absoluteTime))
+            onConfirm = { timeOfDay ->
+                onStageChange(stage.copy(absoluteTimeOfDay = timeOfDay))
                 showTimePicker = false
             },
             onDismiss = { showTimePicker = false }
@@ -337,19 +379,26 @@ private fun StageTimePicker(
     stage: AlarmStage,
     dueTime: Timestamp?,
     is24Hour: Boolean,
-    onConfirm: (Timestamp) -> Unit,
+    onConfirm: (TimeOfDay) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val calendar = Calendar.getInstance()
-    if (stage.absoluteTime != null) {
-        calendar.time = stage.absoluteTime.toDate()
-    } else if (dueTime != null) {
-        calendar.time = java.util.Date(dueTime.toDate().time - stage.offsetMs)
+    val initialHour: Int
+    val initialMinute: Int
+    if (stage.absoluteTimeOfDay != null) {
+        initialHour = stage.absoluteTimeOfDay.hour
+        initialMinute = stage.absoluteTimeOfDay.minute
+    } else {
+        val calendar = Calendar.getInstance()
+        if (dueTime != null) {
+            calendar.time = java.util.Date(dueTime.toDate().time - stage.offsetMs)
+        }
+        initialHour = calendar.get(Calendar.HOUR_OF_DAY)
+        initialMinute = calendar.get(Calendar.MINUTE)
     }
 
     val timePickerState = rememberTimePickerState(
-        initialHour = calendar.get(Calendar.HOUR_OF_DAY),
-        initialMinute = calendar.get(Calendar.MINUTE),
+        initialHour = initialHour,
+        initialMinute = initialMinute,
         is24Hour = is24Hour
     )
 
@@ -383,15 +432,7 @@ private fun StageTimePicker(
                     }
                     TextButton(
                         onClick = {
-                            val dateCal = Calendar.getInstance()
-                            if (dueTime != null) {
-                                dateCal.time = dueTime.toDate()
-                            }
-                            dateCal.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-                            dateCal.set(Calendar.MINUTE, timePickerState.minute)
-                            dateCal.set(Calendar.SECOND, 0)
-                            dateCal.set(Calendar.MILLISECOND, 0)
-                            onConfirm(Timestamp(dateCal.time))
+                            onConfirm(TimeOfDay(timePickerState.hour, timePickerState.minute))
                         }
                     ) {
                         Text(stringResource(R.string.action_ok))
@@ -465,9 +506,13 @@ private fun stageTypeLabel(type: AlarmStageType): String = when (type) {
 
 @Composable
 private fun formatStageTime(stage: AlarmStage, is24Hour: Boolean): String {
-    if (stage.absoluteTime != null) {
+    if (stage.absoluteTimeOfDay != null) {
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, stage.absoluteTimeOfDay.hour)
+            set(Calendar.MINUTE, stage.absoluteTimeOfDay.minute)
+        }
         val pattern = if (is24Hour) "HH:mm" else "h:mm a"
-        return SimpleDateFormat(pattern, Locale.getDefault()).format(stage.absoluteTime.toDate())
+        return SimpleDateFormat(pattern, Locale.getDefault()).format(cal.time)
     }
     return formatOffset(stage.offsetMs)
 }

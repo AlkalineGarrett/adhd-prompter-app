@@ -199,6 +199,14 @@ class NotificationHelper(private val context: Context) {
     }
 
     /**
+     * Checks if a notification for the given alarm is already active (posted and not dismissed).
+     */
+    fun isNotificationActive(alarmId: String): Boolean {
+        val notificationId = AlarmUtils.getNotificationId(alarmId)
+        return notificationManager?.activeNotifications?.any { it.id == notificationId } ?: false
+    }
+
+    /**
      * Checks if the app has notification permission.
      */
     fun hasNotificationPermission(): Boolean {

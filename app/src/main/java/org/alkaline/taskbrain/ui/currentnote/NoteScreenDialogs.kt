@@ -44,6 +44,10 @@ fun NoteScreenDialogs(
     onAlarmMarkCancelled: (() -> Unit)?,
     onAlarmReactivate: (() -> Unit)?,
     onAlarmDelete: (() -> Unit)?,
+    onAlarmNavigatePrevious: (() -> Unit)?,
+    onAlarmNavigateNext: (() -> Unit)?,
+    alarmHasPrevious: Boolean,
+    alarmHasNext: Boolean,
     onAlarmDismiss: () -> Unit,
     onFetchRecurrenceConfig: (Alarm?) -> Unit,
 ) {
@@ -143,6 +147,10 @@ fun NoteScreenDialogs(
             onMarkCancelled = onAlarmMarkCancelled,
             onReactivate = onAlarmReactivate,
             onDelete = onAlarmDelete,
+            onNavigatePrevious = onAlarmNavigatePrevious,
+            onNavigateNext = onAlarmNavigateNext,
+            hasPrevious = alarmHasPrevious,
+            hasNext = alarmHasNext,
             onDismiss = onAlarmDismiss
         )
     }

@@ -478,14 +478,7 @@ class AlarmRepository(
         "createdAt" to alarm.createdAt,
         "updatedAt" to alarm.updatedAt,
         "dueTime" to alarm.dueTime,
-        "stages" to alarm.stages.map { stage ->
-            mapOf(
-                "type" to stage.type.name,
-                "offsetMs" to stage.offsetMs,
-                "enabled" to stage.enabled,
-                "absoluteTime" to stage.absoluteTime
-            )
-        },
+        "stages" to alarm.stages.map { it.toMap() },
         "status" to alarm.status.name,
         "snoozedUntil" to alarm.snoozedUntil,
         "recurringAlarmId" to alarm.recurringAlarmId
@@ -509,20 +502,30 @@ class AlarmRepository(
         recurringAlarmId = data["recurringAlarmId"] as? String
     )
 
-    private fun parseStages(raw: Any?): List<AlarmStage> {
-        val list = raw as? List<*> ?: return Alarm.DEFAULT_STAGES
-        return list.mapNotNull { item ->
-            val map = item as? Map<*, *> ?: return@mapNotNull null
-            try {
-                AlarmStage(
-                    type = AlarmStageType.valueOf(map["type"] as? String ?: return@mapNotNull null),
-                    offsetMs = (map["offsetMs"] as? Number)?.toLong() ?: 0,
-                    enabled = map["enabled"] as? Boolean ?: true,
-                    absoluteTime = map["absoluteTime"] as? Timestamp
-                )
-            } catch (e: Exception) { null }
-        }.ifEmpty { Alarm.DEFAULT_STAGES }
-    }
+    private fun parseStages(raw: Any?): List<AlarmStage> = AlarmStage.fromMapList(raw)
+
+    /**
+     * Gets all alarm instances for a given recurring alarm template, ordered by dueTime.
+     * Includes all statuses (PENDING, DONE, CANCELLED).
+     */
+    suspend fun getInstancesForRecurring(recurringAlarmId: String): Result<List<Alarm>> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val result = alarmsCollection(userId)
+                .whereEqualTo("recurringAlarmId", recurringAlarmId)
+                .orderBy("dueTime", Query.Direction.ASCENDING)
+                .get()
+                .await()
+            result.documents.mapNotNull { doc ->
+                try {
+                    mapToAlarm(doc.id, doc.data ?: emptyMap())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error parsing alarm", e)
+                    null
+                }
+            }
+        }
+    }.onFailure { Log.e(TAG, "Error getting instances for recurring alarm", it) }
 
     /**
      * Gets all pending alarm instances for a given recurring alarm template.

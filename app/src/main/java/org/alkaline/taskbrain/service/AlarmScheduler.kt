@@ -8,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmStageType
+import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.receiver.AlarmReceiver
 
@@ -50,11 +51,23 @@ class AlarmScheduler(private val context: Context) {
     /**
      * Schedules all enabled stages for an alarm.
      * Each enabled stage gets its own scheduled alarm trigger.
+     * Only schedules/shows triggers for PENDING alarms — non-PENDING alarms are skipped entirely.
      *
      * Returns a result indicating what was scheduled.
      */
     fun scheduleAlarm(alarm: Alarm): AlarmScheduleResult {
-        Log.d(TAG, "scheduleAlarm called for ${alarm.id}, dueTime=${alarm.dueTime}")
+        Log.d(TAG, "scheduleAlarm called for ${alarm.id}, dueTime=${alarm.dueTime}, status=${alarm.status}")
+
+        if (alarm.status != AlarmStatus.PENDING) {
+            Log.w(TAG, "Skipping scheduleAlarm for non-PENDING alarm ${alarm.id} (status=${alarm.status})")
+            return AlarmScheduleResult(
+                alarmId = alarm.id,
+                scheduledTriggers = emptyList(),
+                skippedPastTriggers = emptyList(),
+                noTriggersConfigured = false,
+                usedExactAlarm = false
+            )
+        }
 
         if (alarmManager == null) {
             Log.e(TAG, "AlarmManager is null - cannot schedule alarms")
@@ -85,14 +98,17 @@ class AlarmScheduler(private val context: Context) {
         var usedExactAlarm = false
         var immediateNotificationShown = false
         val now = System.currentTimeMillis()
+        val alreadyNotified = notificationHelper.isNotificationActive(alarm.id)
 
         for (stage in enabledStages) {
             val triggerTime = stage.resolveTime(due).toDate().time
             val alarmType = stage.type.toAlarmType()
 
             if (triggerTime <= now) {
-                // Past trigger — take immediate action based on type
-                when (stage.type) {
+                // Skip if notification/urgent state is already active (e.g., boot/redeploy rescheduling)
+                if (alreadyNotified) {
+                    skippedPastTriggers.add(alarmType)
+                } else when (stage.type) {
                     AlarmStageType.NOTIFICATION -> {
                         val shown = notificationHelper.showNotification(alarm, alarmType, silent = true)
                         if (shown) {

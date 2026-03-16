@@ -211,6 +211,7 @@ class RecurrenceScheduler(
     /**
      * Builds an [Alarm] instance from a recurring alarm template and a base time.
      * Computes the due time from the base time + dueOffsetMs and carries over stages.
+     * Stages with absoluteTimeOfDay are date-independent, so no recomputation is needed.
      */
     private fun buildAlarmFromTemplate(recurring: RecurringAlarm, baseTime: Date): Alarm {
         val baseMs = baseTime.time
