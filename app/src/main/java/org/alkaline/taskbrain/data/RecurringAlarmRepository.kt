@@ -139,12 +139,17 @@ class RecurringAlarmRepository(
         }
     }.onFailure { Log.e(TAG, "Error recording completion", it) }
 
-    suspend fun updateCurrentAlarmId(id: String, alarmId: String?): Result<Unit> = runCatching {
+    suspend fun updateCurrentAlarmId(
+        id: String,
+        alarmId: String?,
+        lastInstanceDueTime: Timestamp?
+    ): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
             docRef(userId, id).update(
                 mapOf(
                     "currentAlarmId" to alarmId,
+                    "lastInstanceDueTime" to lastInstanceDueTime,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
             ).await()
@@ -196,6 +201,7 @@ class RecurringAlarmRepository(
         "completionCount" to ra.completionCount,
         "lastCompletionDate" to ra.lastCompletionDate,
         "currentAlarmId" to ra.currentAlarmId,
+        "lastInstanceDueTime" to ra.lastInstanceDueTime,
         "status" to ra.status.name,
         "createdAt" to ra.createdAt,
         "updatedAt" to ra.updatedAt
@@ -218,6 +224,7 @@ class RecurringAlarmRepository(
         completionCount = (data["completionCount"] as? Number)?.toInt() ?: 0,
         lastCompletionDate = data["lastCompletionDate"] as? Timestamp,
         currentAlarmId = data["currentAlarmId"] as? String,
+        lastInstanceDueTime = data["lastInstanceDueTime"] as? Timestamp,
         status = try {
             RecurringAlarmStatus.valueOf(data["status"] as? String ?: RecurringAlarmStatus.ACTIVE.name)
         } catch (e: IllegalArgumentException) { RecurringAlarmStatus.ACTIVE },

@@ -382,7 +382,7 @@ class RecurrenceTimelineTest {
         scheduler.onInstanceCancelled(d1)
 
         coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "d2") }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "d2", any()) }
     }
 
     // endregion
@@ -480,7 +480,7 @@ class RecurrenceTimelineTest {
         scheduler.bootstrapRecurringAlarms()
 
         coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "d2") }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "d2", any()) }
     }
 
     // endregion
@@ -504,6 +504,70 @@ class RecurrenceTimelineTest {
         scheduler.bootstrapRecurringAlarms()
 
         coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
+    }
+
+    // endregion
+
+    // region Fixed: Bootstrap uses alarm dueTime, not lastCompletionDate
+
+    @Test
+    fun `FIXED - bootstrap uses alarm dueTime not completion time for next instance`() = runTest {
+        // Bug scenario: user set alarm for 9:00 PM, completed it at 10:28 AM next morning.
+        // lastCompletionDate = 10:28 AM, but the next alarm should be at 9:00 PM (not 10:28 AM).
+        // Bootstrap must use the completed alarm's dueTime as the RRULE base.
+
+        val completionTime = day1_9am + 13 * HOUR_MS + 28 * 60 * 1000L  // 10:28 AM next day
+        val recurring = dailyRecurring(
+            currentAlarmId = "d1",
+            lastCompletionDate = ts(completionTime)
+        )
+        val d1Done = alarm("d1", dueTimeMs = day1_9am, status = AlarmStatus.DONE)
+
+        coEvery { mockRecurringRepo.getActiveRecurringAlarms() } returns Result.success(listOf(recurring))
+        coEvery { mockAlarmRepo.getAlarm("d1") } returns Result.success(d1Done)
+
+        val createdAlarms = mutableListOf<Alarm>()
+        coEvery { mockAlarmRepo.createAlarm(capture(createdAlarms)) } returns Result.success("d2")
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(alarm("d2", dueTimeMs = day2_9am))
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(alarm("d2", dueTimeMs = day2_9am)))
+
+        scheduler.bootstrapRecurringAlarms()
+
+        // Next alarm should be computed from day1_9am + 1 day = day2_9am, NOT completionTime + 1 day
+        assertEquals(1, createdAlarms.size)
+        val nextDueTime = createdAlarms[0].dueTime!!.toDate().time
+        assertEquals("Next alarm should be at day2 9am, not completion time + 1 day",
+            day2_9am, nextDueTime)
+    }
+
+    @Test
+    fun `FIXED - bootstrap falls back to lastInstanceDueTime when alarm fetch fails`() = runTest {
+        // When the current alarm can't be fetched from Firestore, bootstrap should
+        // use lastInstanceDueTime (preserved on the template) instead of lastCompletionDate.
+
+        val completionTime = day1_9am + 13 * HOUR_MS + 28 * 60 * 1000L  // 10:28 AM
+        val recurring = dailyRecurring(
+            currentAlarmId = "d1",
+            lastCompletionDate = ts(completionTime)
+        ).copy(lastInstanceDueTime = ts(day1_9am))
+
+        // Alarm fetch fails — can't get d1
+        coEvery { mockRecurringRepo.getActiveRecurringAlarms() } returns Result.success(listOf(recurring))
+        coEvery { mockAlarmRepo.getAlarm("d1") } returns Result.success(null)
+
+        val createdAlarms = mutableListOf<Alarm>()
+        coEvery { mockAlarmRepo.createAlarm(capture(createdAlarms)) } returns Result.success("d2")
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(alarm("d2", dueTimeMs = day2_9am))
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(alarm("d2", dueTimeMs = day2_9am)))
+
+        scheduler.bootstrapRecurringAlarms()
+
+        assertEquals(1, createdAlarms.size)
+        val nextDueTime = createdAlarms[0].dueTime!!.toDate().time
+        assertEquals("Should use lastInstanceDueTime, not lastCompletionDate",
+            day2_9am, nextDueTime)
     }
 
     // endregion
@@ -865,7 +929,7 @@ class RecurrenceTimelineTest {
         verify { mockAlarmScheduler.scheduleAlarm(a1) }
         // rec2: new alarm created
         coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec2", "b2") }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec2", "b2", any()) }
     }
 
     // endregion
@@ -883,7 +947,7 @@ class RecurrenceTimelineTest {
         scheduler.onFixedInstanceTriggered(d1)
 
         // Should NOT update currentAlarmId if alarm creation failed
-        coVerify(exactly = 0) { mockRecurringRepo.updateCurrentAlarmId(any(), any()) }
+        coVerify(exactly = 0) { mockRecurringRepo.updateCurrentAlarmId(any(), any(), any()) }
         // Should NOT try to schedule
         verify(exactly = 0) { mockAlarmScheduler.scheduleAlarm(any()) }
     }
@@ -937,8 +1001,8 @@ class RecurrenceTimelineTest {
 
         // 2 alarms total (one per recurring)
         coVerify(exactly = 2) { mockAlarmRepo.createAlarm(any()) }
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "a2") }
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec2", "b2") }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec1", "a2", any()) }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("rec2", "b2", any()) }
 
         // Neither a1 nor b1 cancelled
         coVerify(exactly = 0) { mockAlarmRepo.markCancelled("a1") }

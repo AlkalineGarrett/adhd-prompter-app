@@ -46,6 +46,11 @@ data class RecurringAlarm(
     /** The ID of the currently active alarm instance (if any). */
     val currentAlarmId: String? = null,
 
+    /** Due time of the most recently created instance.
+     *  Used by bootstrap to preserve the correct time-of-day for FIXED recurrences
+     *  when the current alarm instance can't be fetched. */
+    val lastInstanceDueTime: Timestamp? = null,
+
     val status: RecurringAlarmStatus = RecurringAlarmStatus.ACTIVE,
     val createdAt: Timestamp? = null,
     val updatedAt: Timestamp? = null

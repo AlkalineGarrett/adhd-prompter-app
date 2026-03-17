@@ -129,7 +129,7 @@ class RecurrenceSchedulerTest {
 
         scheduler.createFirstInstance(recurring, tomorrowDate)
 
-        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("recurring1", "alarm1") }
+        coVerify(exactly = 1) { mockRecurringRepo.updateCurrentAlarmId("recurring1", "alarm1", any()) }
     }
 
     // endregion

@@ -779,7 +779,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         alarmStateManager.create(firstAlarm).fold(
             onSuccess = { (alarmId, scheduleResult) ->
                 // Update recurring alarm with current instance ID
-                recurringRepo.updateCurrentAlarmId(recurringId, alarmId)
+                recurringRepo.updateCurrentAlarmId(recurringId, alarmId, firstAlarm.dueTime)
 
                 if (!scheduleResult.success) {
                     _schedulingWarning.value = scheduleResult.message

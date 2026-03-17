@@ -196,7 +196,7 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         val createResult = recurringRepository.create(template)
         createResult.onSuccess { newRecurringId ->
             repository.linkToRecurringAlarm(alarm.id, newRecurringId)
-            recurringRepository.updateCurrentAlarmId(newRecurringId, alarm.id)
+            recurringRepository.updateCurrentAlarmId(newRecurringId, alarm.id, alarm.dueTime)
         }
         createResult.map { }
     }

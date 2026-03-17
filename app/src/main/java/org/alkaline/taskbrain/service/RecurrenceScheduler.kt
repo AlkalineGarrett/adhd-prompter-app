@@ -144,7 +144,7 @@ class RecurrenceScheduler(
             .onFailure { showError("Failed to create next instance for recurring alarm ${recurring.id}: ${it.message}") }
             .getOrNull() ?: return
 
-        recurringRepo.updateCurrentAlarmId(recurring.id, alarmId)
+        recurringRepo.updateCurrentAlarmId(recurring.id, alarmId, alarm.dueTime)
             .onFailure { showError("Failed to update currentAlarmId for recurring alarm ${recurring.id}: ${it.message}") }
 
         val createdAlarm = alarmRepo.getAlarm(alarmId)
@@ -251,6 +251,7 @@ class RecurrenceScheduler(
         }
 
         val currentAlarmId = recurring.currentAlarmId
+        var completedAlarmDueTime: Date? = null
         if (currentAlarmId != null) {
             val currentAlarm = alarmRepo.getAlarm(currentAlarmId)
                 .onFailure { showError("Failed to fetch current alarm $currentAlarmId for recurring alarm ${recurring.id}: ${it.message}") }
@@ -265,17 +266,41 @@ class RecurrenceScheduler(
                     org.alkaline.taskbrain.data.AlarmStatus.DONE,
                     org.alkaline.taskbrain.data.AlarmStatus.CANCELLED -> {
                         // Instance completed/cancelled but next wasn't created (crash?)
-                        // Fall through to create next
+                        completedAlarmDueTime = currentAlarm.dueTime?.toDate()
                     }
                 }
             }
         }
 
-        // No valid current instance — create the next one
-        val afterDate = recurring.lastCompletionDate?.toDate()
-            ?: recurring.createdAt?.toDate()
-            ?: return
+        // For FIXED recurrences, use the alarm's dueTime (not lastCompletionDate) so
+        // RRuleParser.nextOccurrence preserves the correct time-of-day.
+        val afterDate = bootstrapAfterDate(recurring, completedAlarmDueTime) ?: return
         createNextInstance(recurring, afterDate)
+    }
+
+    /**
+     * Determines the reference date for computing the next instance during bootstrap.
+     *
+     * For FIXED recurrences, the RRULE preserves time-of-day from the input date,
+     * so we must use the previous alarm's due time — not the completion time.
+     * For RELATIVE recurrences, the completion time is the correct anchor.
+     */
+    private fun bootstrapAfterDate(
+        recurring: RecurringAlarm,
+        completedAlarmDueTime: Date?
+    ): Date? {
+        return when (recurring.recurrenceType) {
+            RecurrenceType.FIXED -> {
+                completedAlarmDueTime
+                    ?: recurring.lastInstanceDueTime?.toDate()
+                    ?: recurring.lastCompletionDate?.toDate()
+                    ?: recurring.createdAt?.toDate()
+            }
+            RecurrenceType.RELATIVE -> {
+                recurring.lastCompletionDate?.toDate()
+                    ?: recurring.createdAt?.toDate()
+            }
+        }
     }
 
     /**
@@ -287,7 +312,7 @@ class RecurrenceScheduler(
             .onFailure { showError("Failed to create first instance for recurring alarm ${recurring.id}: ${it.message}") }
             .getOrNull() ?: return null
 
-        recurringRepo.updateCurrentAlarmId(recurring.id, alarmId)
+        recurringRepo.updateCurrentAlarmId(recurring.id, alarmId, alarm.dueTime)
             .onFailure { showError("Failed to update currentAlarmId for recurring alarm ${recurring.id}: ${it.message}") }
 
         val createdAlarm = alarmRepo.getAlarm(alarmId)
