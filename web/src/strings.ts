@@ -160,6 +160,12 @@ export const RECURRENCE_AFTER = 'After'
 export const RECURRENCE_TIMES = 'times'
 export const RECURRENCE_EDIT = 'Edit recurrence'
 
+// Alarm mode toggle (Android: alarm_mode_instance, alarm_mode_recurrence, alarm_also_update_next, alarm_also_update_recurrence)
+export const ALARM_MODE_INSTANCE = 'This instance'
+export const ALARM_MODE_RECURRENCE = 'Recurrence'
+export const ALARM_ALSO_UPDATE_NEXT = 'Also update next instance'
+export const ALARM_ALSO_UPDATE_RECURRENCE = 'Also update recurrence'
+
 // Recurrence descriptions (Android: recurrence_desc_daily, recurrence_desc_weekdays, etc.)
 export const RECURRENCE_DESC_DAILY = 'Repeats daily'
 export const RECURRENCE_DESC_WEEKDAYS = 'Repeats on weekdays'

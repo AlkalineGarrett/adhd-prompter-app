@@ -14,6 +14,7 @@ import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.data.RecurringAlarmStatus
 import org.alkaline.taskbrain.data.TimeOfDay
+import org.alkaline.taskbrain.data.toTimeOfDay
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -49,8 +50,16 @@ class RecurrenceTimelineTest {
     private val HOUR_MS = 60 * 60 * 1000L
     private val DAY_MS = 24 * HOUR_MS
 
-    // Base time: tomorrow at 9:00 AM
-    private val day1_9am = System.currentTimeMillis() + DAY_MS
+    // Base time: tomorrow at exactly 9:00 AM (clean hour/minute so TimeOfDay round-trips)
+    private val day1_9am: Long = run {
+        val cal = Calendar.getInstance()
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 9)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        cal.timeInMillis
+    }
     private val day2_9am = day1_9am + DAY_MS
     private val day3_9am = day1_9am + 2 * DAY_MS
 
@@ -81,6 +90,11 @@ class RecurrenceTimelineTest {
     // --- Helpers ---
 
     private fun ts(millis: Long) = Timestamp(Date(millis))
+
+    private fun timeOfDay(millis: Long): TimeOfDay {
+        val cal = Calendar.getInstance().apply { time = Date(millis) }
+        return TimeOfDay(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+    }
 
     private val threeStageConfig = listOf(
         AlarmStage(type = AlarmStageType.NOTIFICATION, offsetMs = 2 * HOUR_MS, enabled = true),
@@ -360,6 +374,65 @@ class RecurrenceTimelineTest {
 
     // endregion
 
+    // region Fixed: currentAlarmId points to deleted instance — creates next instead of skipping
+
+    @Test
+    fun `FIXED - dedup guard creates next instance when currentAlarmId points to deleted alarm`() = runTest {
+        // Scenario: duplicate future instances were created, user manually deleted them
+        // from the DB. currentAlarmId still points to a deleted alarm.
+        // When user completes the current instance, the scheduler should detect that the
+        // "next instance" is missing and create a new one.
+
+        val recurring = dailyRecurring(currentAlarmId = "d1")
+        val d1 = alarm("d1", dueTimeMs = day1_9am)
+
+        // Notification fires → creates d2
+        coEvery { mockRecurringRepo.get("rec1") } returns Result.success(recurring)
+        trackAlarmCreation("d2", "d3")
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(alarm("d2", dueTimeMs = day2_9am))
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(d1, alarm("d2", dueTimeMs = day2_9am)))
+
+        scheduler.onFixedInstanceTriggered(d1)
+        coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) }
+
+        // User manually deletes d2 from the DB. Template still has currentAlarmId="d2".
+        val afterTrigger = recurring.copy(currentAlarmId = "d2")
+        coEvery { mockRecurringRepo.get("rec1") } returns Result.success(afterTrigger)
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(null) // deleted!
+        coEvery { mockAlarmRepo.getAlarm("d3") } returns Result.success(alarm("d3", dueTimeMs = day2_9am))
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(emptyList())
+
+        // User completes d1 — scheduler should detect d2 is missing and create d3
+        scheduler.onInstanceCompleted(d1)
+
+        coVerify(exactly = 1) { mockRecurringRepo.recordCompletion(eq("rec1"), any()) }
+        coVerify(exactly = 2) { mockAlarmRepo.createAlarm(any()) } // d2 + d3
+    }
+
+    @Test
+    fun `FIXED - trigger dedup guard creates next instance when currentAlarmId points to deleted alarm`() = runTest {
+        // Similar scenario but for onFixedInstanceTriggered: a stage fires for d1,
+        // currentAlarmId points to a deleted d2, so a new instance should be created.
+
+        val recurring = dailyRecurring(currentAlarmId = "d2") // already points to deleted d2
+        val d1 = alarm("d1", dueTimeMs = day1_9am)
+
+        coEvery { mockRecurringRepo.get("rec1") } returns Result.success(recurring)
+        coEvery { mockAlarmRepo.getAlarm("d2") } returns Result.success(null) // deleted!
+        trackAlarmCreation("d3")
+        coEvery { mockAlarmRepo.getAlarm("d3") } returns Result.success(alarm("d3", dueTimeMs = day2_9am))
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(d1))
+
+        scheduler.onFixedInstanceTriggered(d1)
+
+        coVerify(exactly = 1) { mockAlarmRepo.createAlarm(any()) } // d3 created
+    }
+
+    // endregion
+
     // region Fixed: User cancels BEFORE any stage fires
 
     @Test
@@ -542,15 +615,15 @@ class RecurrenceTimelineTest {
     }
 
     @Test
-    fun `FIXED - bootstrap falls back to lastInstanceDueTime when alarm fetch fails`() = runTest {
+    fun `FIXED - bootstrap falls back to anchorTimeOfDay when alarm fetch fails`() = runTest {
         // When the current alarm can't be fetched from Firestore, bootstrap should
-        // use lastInstanceDueTime (preserved on the template) instead of lastCompletionDate.
+        // use anchorTimeOfDay (preserved on the template) instead of lastCompletionDate.
 
         val completionTime = day1_9am + 13 * HOUR_MS + 28 * 60 * 1000L  // 10:28 AM
         val recurring = dailyRecurring(
             currentAlarmId = "d1",
             lastCompletionDate = ts(completionTime)
-        ).copy(lastInstanceDueTime = ts(day1_9am))
+        ).copy(anchorTimeOfDay = timeOfDay(day1_9am))
 
         // Alarm fetch fails — can't get d1
         coEvery { mockRecurringRepo.getActiveRecurringAlarms() } returns Result.success(listOf(recurring))
@@ -566,7 +639,7 @@ class RecurrenceTimelineTest {
 
         assertEquals(1, createdAlarms.size)
         val nextDueTime = createdAlarms[0].dueTime!!.toDate().time
-        assertEquals("Should use lastInstanceDueTime, not lastCompletionDate",
+        assertEquals("Should use anchorTimeOfDay, not lastCompletionDate",
             day2_9am, nextDueTime)
     }
 
@@ -1067,6 +1140,201 @@ class RecurrenceTimelineTest {
         val lockStage = createdAlarm.stages.first { it.type == AlarmStageType.LOCK_SCREEN }
         assertNull(lockStage.absoluteTimeOfDay)
         assertEquals(2 * HOUR_MS, lockStage.offsetMs)
+    }
+
+    // endregion
+
+    // region timesMatchInstance
+
+    @Test
+    fun `timesMatchInstance returns true when instance matches template`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = TimeOfDay(9, 0),
+            stages = threeStageConfig
+        )
+        val instance = alarm("alarm1", dueTimeMs = day1_9am, stages = threeStageConfig)
+        assertTrue(recurring.timesMatchInstance(instance))
+    }
+
+    @Test
+    fun `timesMatchInstance returns false when instance time differs`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = TimeOfDay(9, 0),
+            stages = threeStageConfig
+        )
+        // Instance due at 10:00 instead of 9:00
+        val instance = alarm("alarm1", dueTimeMs = day1_9am + HOUR_MS, stages = threeStageConfig)
+        assertFalse(recurring.timesMatchInstance(instance))
+    }
+
+    @Test
+    fun `timesMatchInstance returns false when instance stages differ`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = TimeOfDay(9, 0),
+            stages = threeStageConfig
+        )
+        val customStages = listOf(
+            AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+            AlarmStage(AlarmStageType.LOCK_SCREEN, offsetMs = 15 * 60 * 1000L, enabled = true),
+            AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 2 * HOUR_MS, enabled = false)
+        )
+        val instance = alarm("alarm1", dueTimeMs = day1_9am, stages = customStages)
+        assertFalse(recurring.timesMatchInstance(instance))
+    }
+
+    @Test
+    fun `timesMatchInstance returns false when anchor is null`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = null,
+            stages = threeStageConfig
+        )
+        val instance = alarm("alarm1", dueTimeMs = day1_9am, stages = threeStageConfig)
+        assertFalse(recurring.timesMatchInstance(instance))
+    }
+
+    // endregion
+
+    // region getMatchingPendingInstances
+
+    private suspend fun getMatchingPendingInstances(
+        recurringAlarmId: String,
+        anchorTimeOfDay: TimeOfDay?,
+        stages: List<AlarmStage>,
+    ): List<Alarm> {
+        val pending = mockAlarmRepo.getPendingInstancesForRecurring(recurringAlarmId)
+            .getOrDefault(emptyList())
+        return pending.filter { alarm ->
+            alarm.dueTime?.toTimeOfDay() == anchorTimeOfDay && alarm.stages == stages
+        }
+    }
+
+    @Test
+    fun `getMatchingPendingInstances returns only instances matching anchor and stages`() = runTest {
+        val anchor = TimeOfDay(9, 0)
+        val matchingInstance1 = alarm("a1", dueTimeMs = day1_9am, stages = threeStageConfig)
+        val matchingInstance2 = alarm("a2", dueTimeMs = day2_9am, stages = threeStageConfig)
+        // Different time (10:00 instead of 9:00)
+        val differentTimeInstance = alarm("a3", dueTimeMs = day1_9am + HOUR_MS, stages = threeStageConfig)
+        // Different stages
+        val differentStagesInstance = alarm("a4", dueTimeMs = day1_9am, stages = Alarm.DEFAULT_STAGES)
+
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(matchingInstance1, matchingInstance2, differentTimeInstance, differentStagesInstance))
+
+        val result = getMatchingPendingInstances("rec1", anchor, threeStageConfig)
+
+        assertEquals(2, result.size)
+        assertEquals(listOf("a1", "a2"), result.map { it.id })
+    }
+
+    @Test
+    fun `getMatchingPendingInstances returns empty list when no instances match`() = runTest {
+        val anchor = TimeOfDay(9, 0)
+        val differentTimeInstance = alarm("a1", dueTimeMs = day1_9am + HOUR_MS, stages = threeStageConfig)
+
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(differentTimeInstance))
+
+        val result = getMatchingPendingInstances("rec1", anchor, threeStageConfig)
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `getMatchingPendingInstances returns empty list when repo fails`() = runTest {
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.failure(RuntimeException("network error"))
+
+        val result = getMatchingPendingInstances("rec1", TimeOfDay(9, 0), threeStageConfig)
+
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `getMatchingPendingInstances with null anchor matches only null-anchor instances`() = runTest {
+        val instanceWithTime = alarm("a1", dueTimeMs = day1_9am, stages = threeStageConfig)
+        val instanceWithoutTime = Alarm(
+            id = "a2", noteId = "note1", lineContent = "test",
+            dueTime = null, stages = threeStageConfig, recurringAlarmId = "rec1"
+        )
+
+        coEvery { mockAlarmRepo.getPendingInstancesForRecurring("rec1") } returns
+                Result.success(listOf(instanceWithTime, instanceWithoutTime))
+
+        val result = getMatchingPendingInstances("rec1", null, threeStageConfig)
+
+        assertEquals(1, result.size)
+        assertEquals("a2", result[0].id)
+    }
+
+    // endregion
+
+    // region TimeOfDay.onSameDateAs (used by updateMatchingPendingInstances logic)
+
+    @Test
+    fun `onSameDateAs preserves date but changes time`() {
+        val newTime = TimeOfDay(14, 30)
+        val referenceDate = Date(day1_9am) // day1 at 9:00 AM
+
+        val result = newTime.onSameDateAs(referenceDate)
+        val resultCal = Calendar.getInstance().apply { time = result.toDate() }
+        val referenceCal = Calendar.getInstance().apply { time = referenceDate }
+
+        assertEquals(referenceCal.get(Calendar.YEAR), resultCal.get(Calendar.YEAR))
+        assertEquals(referenceCal.get(Calendar.DAY_OF_YEAR), resultCal.get(Calendar.DAY_OF_YEAR))
+        assertEquals(14, resultCal.get(Calendar.HOUR_OF_DAY))
+        assertEquals(30, resultCal.get(Calendar.MINUTE))
+        assertEquals(0, resultCal.get(Calendar.SECOND))
+    }
+
+    @Test
+    fun `onSameDateAs works across different dates`() {
+        val newTime = TimeOfDay(8, 0)
+        val day1Date = Date(day1_9am)
+        val day2Date = Date(day2_9am)
+
+        val result1 = newTime.onSameDateAs(day1Date)
+        val result2 = newTime.onSameDateAs(day2Date)
+
+        val cal1 = Calendar.getInstance().apply { time = result1.toDate() }
+        val cal2 = Calendar.getInstance().apply { time = result2.toDate() }
+
+        // Same time-of-day
+        assertEquals(8, cal1.get(Calendar.HOUR_OF_DAY))
+        assertEquals(8, cal2.get(Calendar.HOUR_OF_DAY))
+        // Different dates
+        assertEquals(1, cal2.get(Calendar.DAY_OF_YEAR) - cal1.get(Calendar.DAY_OF_YEAR))
+    }
+
+    // endregion
+
+    // region timesMatchInstance edge cases
+
+    @Test
+    fun `timesMatchInstance returns false when instance dueTime is null`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = TimeOfDay(9, 0),
+            stages = threeStageConfig
+        )
+        val instance = Alarm(
+            id = "alarm1", noteId = "note1", lineContent = "test",
+            dueTime = null, stages = threeStageConfig, recurringAlarmId = "rec1"
+        )
+        assertFalse(recurring.timesMatchInstance(instance))
+    }
+
+    @Test
+    fun `timesMatchInstance returns true when both anchor and dueTime are null with matching stages`() {
+        val recurring = dailyRecurring(currentAlarmId = "alarm1").copy(
+            anchorTimeOfDay = null,
+            stages = threeStageConfig
+        )
+        val instance = Alarm(
+            id = "alarm1", noteId = "note1", lineContent = "test",
+            dueTime = null, stages = threeStageConfig, recurringAlarmId = "rec1"
+        )
+        // null == null → true, and stages match
+        assertTrue(recurring.timesMatchInstance(instance))
     }
 
     // endregion

@@ -5,6 +5,7 @@ import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.RecurrencePreset
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurrenceType
+import org.alkaline.taskbrain.data.toTimeOfDay
 import org.alkaline.taskbrain.ui.currentnote.components.CustomFrequency
 import org.alkaline.taskbrain.ui.currentnote.components.EndType
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
@@ -41,6 +42,9 @@ object RecurrenceConfigMapper {
             } else null,
             dueOffsetMs = 0,  // base time IS the due time for recurring alarms
             stages = stages,
+            anchorTimeOfDay = if (config.recurrenceType == RecurrenceType.FIXED) {
+                dueTime?.toTimeOfDay()
+            } else null,
             endDate = if (config.endType == EndType.ON_DATE) config.endDate else null,
             repeatCount = if (config.endType == EndType.AFTER_COUNT) config.repeatCount else null
         )

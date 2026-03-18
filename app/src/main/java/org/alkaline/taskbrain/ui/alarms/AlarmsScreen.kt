@@ -62,6 +62,7 @@ import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.service.RecurrenceConfigMapper
 import org.alkaline.taskbrain.ui.components.ErrorDialog
 import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
+import org.alkaline.taskbrain.ui.currentnote.components.AlarmDialogMode
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 import org.alkaline.taskbrain.util.PermissionHelper
 import java.text.SimpleDateFormat
@@ -83,9 +84,7 @@ fun AlarmsScreen(
 
     // Instance edit dialog state
     var selectedAlarm by remember { mutableStateOf<Alarm?>(null) }
-
-    // Recurrence-only edit dialog state
-    var recurrenceEditTarget by remember { mutableStateOf<RecurrenceEditTarget?>(null) }
+    var dialogInitialMode by remember { mutableStateOf(AlarmDialogMode.INSTANCE) }
 
     // Delete all confirmation dialog state
     var showDeleteAllDialog by remember { mutableStateOf(false) }
@@ -141,10 +140,18 @@ fun AlarmsScreen(
             lineContent = alarm.displayName.ifEmpty { stringResource(R.string.alarm_untitled) },
             existingAlarm = alarm,
             existingRecurrenceConfig = recurrenceConfig,
+            recurringAlarm = recurringAlarm,
             recurringInstanceCount = siblingInstances.size,
+            initialMode = dialogInitialMode,
             onSave = { dueTime, stages ->
                 alarmsViewModel.updateAlarm(alarm, dueTime, stages)
             },
+            onSaveInstance = if (recurringAlarm != null) { { a, dueTime, stages, alsoUpdateRecurrence ->
+                alarmsViewModel.updateInstanceTimes(a, dueTime, stages, alsoUpdateRecurrence)
+            } } else null,
+            onSaveRecurrenceTemplate = if (recurringAlarm != null) { { recId, dueTime, stages, config, alsoUpdateInstances ->
+                alarmsViewModel.updateRecurrenceTemplate(recId, dueTime, stages, config, alsoUpdateInstances)
+            } } else null,
             onSaveRecurring = { dueTime, stages, config ->
                 alarmsViewModel.updateAlarmAndRecurrence(
                     alarm, dueTime, stages, recurrenceConfig = config
@@ -163,14 +170,23 @@ fun AlarmsScreen(
             onReactivate = { alarmsViewModel.reactivateAlarm(alarm.id) },
             onDelete = { alarmsViewModel.deleteAlarm(alarm.id) },
             onNavigatePrevious = if (recurringAlarm != null) {{
-                if (hasPrevious) selectedAlarm = siblingInstances[currentIndex - 1]
+                if (hasPrevious) {
+                    selectedAlarm = siblingInstances[currentIndex - 1]
+                    dialogInitialMode = AlarmDialogMode.INSTANCE
+                }
             }} else null,
             onNavigateNext = if (recurringAlarm != null) {{
-                if (hasNext) selectedAlarm = siblingInstances[currentIndex + 1]
+                if (hasNext) {
+                    selectedAlarm = siblingInstances[currentIndex + 1]
+                    dialogInitialMode = AlarmDialogMode.INSTANCE
+                }
             }} else null,
             hasPrevious = hasPrevious,
             hasNext = hasNext,
-            onDismiss = { selectedAlarm = null }
+            onDismiss = {
+                selectedAlarm = null
+                dialogInitialMode = AlarmDialogMode.INSTANCE
+            }
         )
     }
 
@@ -201,20 +217,8 @@ fun AlarmsScreen(
         )
     }
 
-    // Recurrence-only edit dialog
-    recurrenceEditTarget?.let { target ->
-        RecurrenceEditDialog(
-            lineContent = target.displayName,
-            initialConfig = target.config,
-            onSave = { config ->
-                alarmsViewModel.updateRecurrence(target.recurringAlarmId, config)
-            },
-            onEndRecurrence = {
-                alarmsViewModel.endRecurrence(target.recurringAlarmId)
-            },
-            onDismiss = { recurrenceEditTarget = null }
-        )
-    }
+    // (RecurrenceEditDialog removed — recurrence editing is now handled via
+    // AlarmConfigDialog with initialMode = RECURRENCE)
 
     Column(
         modifier = Modifier.fillMaxSize()
@@ -248,7 +252,7 @@ fun AlarmsScreen(
                     if (pastDueAlarms.isNotEmpty() || upcomingAlarms.isNotEmpty()) {
                         item {
                             OutlinedButton(
-                                onClick = { alarmsViewModel.reshowNotifications() },
+                                onClick = { alarmsViewModel.refreshAlarms() },
                                 modifier = Modifier.fillMaxWidth(),
                             ) {
                                 Icon(
@@ -257,18 +261,15 @@ fun AlarmsScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text(stringResource(R.string.alarm_reshow_notifications))
+                                Text(stringResource(R.string.alarm_refresh))
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
 
-                    fun openRecurrenceEditor(alarm: Alarm, recurring: RecurringAlarm) {
-                        recurrenceEditTarget = RecurrenceEditTarget(
-                            recurringAlarmId = recurring.id,
-                            displayName = alarm.displayName,
-                            config = RecurrenceConfigMapper.toRecurrenceConfig(recurring)
-                        )
+                    fun openRecurrenceEditor(alarm: Alarm, @Suppress("UNUSED_PARAMETER") recurring: RecurringAlarm) {
+                        dialogInitialMode = AlarmDialogMode.RECURRENCE
+                        selectedAlarm = alarm
                     }
 
                     // Past Due section
@@ -379,14 +380,6 @@ fun AlarmsScreen(
     }
 }
 
-/**
- * State for the recurrence-only edit dialog.
- */
-private data class RecurrenceEditTarget(
-    val recurringAlarmId: String,
-    val displayName: String,
-    val config: RecurrenceConfig
-)
 
 @Composable
 private fun PermissionWarningBanner(permissionStatus: PermissionHelper.AlarmPermissionStatus) {

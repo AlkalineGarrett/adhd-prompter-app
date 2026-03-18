@@ -142,17 +142,18 @@ class RecurringAlarmRepository(
     suspend fun updateCurrentAlarmId(
         id: String,
         alarmId: String?,
-        lastInstanceDueTime: Timestamp?
+        anchorTimeOfDay: TimeOfDay?
     ): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
             val userId = requireUserId()
-            docRef(userId, id).update(
-                mapOf(
-                    "currentAlarmId" to alarmId,
-                    "lastInstanceDueTime" to lastInstanceDueTime,
-                    "updatedAt" to FieldValue.serverTimestamp()
-                )
-            ).await()
+            val data = mutableMapOf<String, Any?>(
+                "currentAlarmId" to alarmId,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            if (anchorTimeOfDay != null) {
+                data.putAll(anchorTimeOfDay.toAnchorFields())
+            }
+            docRef(userId, id).update(data).await()
             Log.d(TAG, "Updated currentAlarmId for $id to $alarmId")
             Unit
         }
@@ -171,6 +172,46 @@ class RecurringAlarmRepository(
             Unit
         }
     }.onFailure { Log.e(TAG, "Error ending recurring alarm", it) }
+
+    /**
+     * Updates the time-of-day anchor and stages on a recurring alarm template.
+     */
+    suspend fun updateTimes(
+        id: String,
+        anchorTimeOfDay: TimeOfDay?,
+        stages: List<AlarmStage>
+    ): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            val data = mutableMapOf<String, Any?>(
+                "stages" to stages.map { it.toMap() },
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            if (anchorTimeOfDay != null) {
+                data.putAll(anchorTimeOfDay.toAnchorFields())
+            }
+            docRef(userId, id).update(data).await()
+            Log.d(TAG, "Updated times for recurring alarm: $id")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error updating times for recurring alarm", it) }
+
+    /**
+     * Finds all PENDING alarm instances for a recurring alarm whose times match
+     * the given anchor time-of-day and stages (i.e., haven't been individually edited).
+     */
+    suspend fun getMatchingPendingInstances(
+        recurringAlarmId: String,
+        anchorTimeOfDay: TimeOfDay?,
+        stages: List<AlarmStage>,
+        alarmRepo: AlarmRepository
+    ): List<Alarm> {
+        val pending = alarmRepo.getPendingInstancesForRecurring(recurringAlarmId)
+            .getOrDefault(emptyList())
+        return pending.filter { alarm ->
+            alarm.dueTime?.toTimeOfDay() == anchorTimeOfDay && alarm.stages == stages
+        }
+    }
 
     suspend fun updateLineContentForNote(noteId: String, newContent: String): Result<Unit> = runCatching {
         withContext(Dispatchers.IO) {
@@ -201,7 +242,8 @@ class RecurringAlarmRepository(
         "completionCount" to ra.completionCount,
         "lastCompletionDate" to ra.lastCompletionDate,
         "currentAlarmId" to ra.currentAlarmId,
-        "lastInstanceDueTime" to ra.lastInstanceDueTime,
+        "anchorTimeHour" to ra.anchorTimeOfDay?.hour,
+        "anchorTimeMinute" to ra.anchorTimeOfDay?.minute,
         "status" to ra.status.name,
         "createdAt" to ra.createdAt,
         "updatedAt" to ra.updatedAt
@@ -224,7 +266,11 @@ class RecurringAlarmRepository(
         completionCount = (data["completionCount"] as? Number)?.toInt() ?: 0,
         lastCompletionDate = data["lastCompletionDate"] as? Timestamp,
         currentAlarmId = data["currentAlarmId"] as? String,
-        lastInstanceDueTime = data["lastInstanceDueTime"] as? Timestamp,
+        anchorTimeOfDay = run {
+            val hour = (data["anchorTimeHour"] as? Number)?.toInt()
+            val minute = (data["anchorTimeMinute"] as? Number)?.toInt()
+            if (hour != null && minute != null) TimeOfDay(hour, minute) else null
+        },
         status = try {
             RecurringAlarmStatus.valueOf(data["status"] as? String ?: RecurringAlarmStatus.ACTIVE.name)
         } catch (e: IllegalArgumentException) { RecurringAlarmStatus.ACTIVE },

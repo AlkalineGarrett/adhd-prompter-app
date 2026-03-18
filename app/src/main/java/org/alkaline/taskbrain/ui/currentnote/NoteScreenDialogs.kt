@@ -7,6 +7,7 @@ import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmStage
+import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.ui.components.ErrorDialog
 import org.alkaline.taskbrain.ui.components.WarningDialog
 import org.alkaline.taskbrain.ui.currentnote.components.AlarmConfigDialog
@@ -38,8 +39,12 @@ fun NoteScreenDialogs(
     alarmDialogLineContent: String,
     alarmDialogExistingAlarm: Alarm?,
     alarmDialogRecurrenceConfig: RecurrenceConfig?,
+    alarmDialogRecurringAlarm: RecurringAlarm? = null,
+    alarmDialogInstanceCount: Int = 0,
     onAlarmSave: (dueTime: Timestamp?, stages: List<AlarmStage>) -> Unit,
     onAlarmSaveRecurring: (dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig) -> Unit,
+    onAlarmSaveInstance: ((alarm: Alarm, dueTime: Timestamp?, stages: List<AlarmStage>, alsoUpdateRecurrence: Boolean) -> Unit)? = null,
+    onAlarmSaveRecurrenceTemplate: ((recurringAlarmId: String, dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig, alsoUpdateMatchingInstances: Boolean) -> Unit)? = null,
     onAlarmMarkDone: (() -> Unit)?,
     onAlarmMarkCancelled: (() -> Unit)?,
     onAlarmReactivate: (() -> Unit)?,
@@ -141,8 +146,12 @@ fun NoteScreenDialogs(
             lineContent = alarmDialogLineContent,
             existingAlarm = alarmDialogExistingAlarm,
             existingRecurrenceConfig = alarmDialogRecurrenceConfig,
+            recurringAlarm = alarmDialogRecurringAlarm,
+            recurringInstanceCount = alarmDialogInstanceCount,
             onSave = onAlarmSave,
             onSaveRecurring = onAlarmSaveRecurring,
+            onSaveInstance = onAlarmSaveInstance,
+            onSaveRecurrenceTemplate = onAlarmSaveRecurrenceTemplate,
             onMarkDone = onAlarmMarkDone,
             onMarkCancelled = onAlarmMarkCancelled,
             onReactivate = onAlarmReactivate,

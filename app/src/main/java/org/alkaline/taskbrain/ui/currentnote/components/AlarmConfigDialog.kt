@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -40,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
+import androidx.annotation.StringRes
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +53,7 @@ import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStageType
 import org.alkaline.taskbrain.data.TimeOfDay
 import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.ui.components.DateTimePickerRow
 import org.alkaline.taskbrain.ui.components.DialogTitleBar
 import org.alkaline.taskbrain.ui.components.ValueChip
@@ -72,18 +75,42 @@ private val OFFSET_PRESETS = listOf(
     3 * HOUR_MS
 )
 
+enum class AlarmDialogMode { INSTANCE, RECURRENCE }
+
+/**
+ * Encapsulates the save-related state for [BottomButtons] to avoid parameter sprawl.
+ */
+private data class SaveState(
+    val mode: AlarmDialogMode,
+    val isRecurring: Boolean,
+    val instanceDueTime: Timestamp?,
+    val instanceStages: List<AlarmStage>,
+    val recurrenceDueTime: Timestamp?,
+    val recurrenceStages: List<AlarmStage>,
+    val recurrenceConfig: RecurrenceConfig,
+    val alsoUpdateRecurrence: Boolean,
+    val alsoUpdateInstances: Boolean,
+    val recurringAlarm: RecurringAlarm?
+)
+
 /**
  * Dialog for configuring an alarm's due time, stages, and optional recurrence.
- * For existing alarms, shows status buttons (Done/Cancel/Re-open) above the form,
- * with the form grayed out when the alarm is not pending.
+ *
+ * For recurring alarms, supports two modes:
+ * - INSTANCE: edit this alarm instance's times (optionally propagate to recurrence template)
+ * - RECURRENCE: edit the recurrence template's times/pattern (optionally propagate to matching instances)
  */
 @Composable
 fun AlarmConfigDialog(
     lineContent: String,
     existingAlarm: Alarm?,
     existingRecurrenceConfig: RecurrenceConfig? = null,
+    recurringAlarm: RecurringAlarm? = null,
     recurringInstanceCount: Int = 0,
+    initialMode: AlarmDialogMode = AlarmDialogMode.INSTANCE,
     onSave: (dueTime: Timestamp?, stages: List<AlarmStage>) -> Unit,
+    onSaveInstance: ((alarm: Alarm, dueTime: Timestamp?, stages: List<AlarmStage>, alsoUpdateRecurrence: Boolean) -> Unit)? = null,
+    onSaveRecurrenceTemplate: ((recurringAlarmId: String, dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig, alsoUpdateMatchingInstances: Boolean) -> Unit)? = null,
     onSaveRecurring: ((dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig) -> Unit)? = null,
     onEndRecurrence: (() -> Unit)? = null,
     onMarkDone: (() -> Unit)? = null,
@@ -96,15 +123,50 @@ fun AlarmConfigDialog(
     hasNext: Boolean = false,
     onDismiss: () -> Unit
 ) {
-    // Key on alarm ID so state resets when navigating between instances
     val alarmKey = existingAlarm?.id
-    var dueTime by remember(alarmKey) { mutableStateOf(existingAlarm?.dueTime) }
-    var stages by remember(alarmKey) { mutableStateOf(existingAlarm?.stages ?: Alarm.DEFAULT_STAGES) }
+    val isRecurring = recurringAlarm != null
+    val timesMatchPreEdit = remember(alarmKey, recurringAlarm?.id) {
+        recurringAlarm != null && existingAlarm != null &&
+                recurringAlarm.timesMatchInstance(existingAlarm)
+    }
+
+    // Mode toggle state (only relevant for recurring alarms)
+    var mode by remember(alarmKey) { mutableStateOf(initialMode) }
+
+    // Instance state
+    var instanceDueTime by remember(alarmKey) { mutableStateOf(existingAlarm?.dueTime) }
+    var instanceStages by remember(alarmKey) {
+        mutableStateOf(existingAlarm?.stages ?: Alarm.DEFAULT_STAGES)
+    }
+
+    // Recurrence state — derive from template's anchor or fall back to instance.
+    // Keyed on recurringAlarm so these re-initialize when the template loads asynchronously.
+    var recurrenceDueTime by remember(alarmKey, recurringAlarm?.id) {
+        mutableStateOf(
+            recurringAlarm?.anchorTimeOfDay?.let { anchor ->
+                // Reconstruct a Timestamp from the anchor time on today's date
+                existingAlarm?.dueTime?.let { instanceDue ->
+                    anchor.onSameDateAs(instanceDue.toDate())
+                }
+            } ?: existingAlarm?.dueTime
+        )
+    }
+    var recurrenceStages by remember(alarmKey, recurringAlarm?.id) {
+        mutableStateOf(recurringAlarm?.stages ?: existingAlarm?.stages ?: Alarm.DEFAULT_STAGES)
+    }
     var recurrenceConfig by remember(alarmKey, existingRecurrenceConfig) {
         mutableStateOf(existingRecurrenceConfig ?: RecurrenceConfig())
     }
 
-    val hasDueTime = dueTime != null
+    // Checkbox state — keyed on recurringAlarm so defaults re-evaluate when template loads
+    var alsoUpdateRecurrence by remember(alarmKey, recurringAlarm?.id) { mutableStateOf(timesMatchPreEdit) }
+    var alsoUpdateInstances by remember(alarmKey, recurringAlarm?.id) { mutableStateOf(true) }
+
+    // Active due time / stages depend on mode
+    val activeDueTime = if (mode == AlarmDialogMode.RECURRENCE) recurrenceDueTime else instanceDueTime
+    val activeStages = if (mode == AlarmDialogMode.RECURRENCE) recurrenceStages else instanceStages
+
+    val hasDueTime = activeDueTime != null
     val isNewAlarm = existingAlarm == null
     val isPending = existingAlarm?.status == AlarmStatus.PENDING
     val formEnabled = isNewAlarm || isPending
@@ -122,7 +184,7 @@ fun AlarmConfigDialog(
             ) {
                 DialogTitleBar(title = lineContent, onClose = onDismiss)
 
-                // Status buttons for existing alarms (above the form)
+                // Status buttons for existing alarms
                 if (existingAlarm != null) {
                     StatusButtons(
                         status = existingAlarm.status,
@@ -138,6 +200,15 @@ fun AlarmConfigDialog(
                     HorizontalDivider()
                 }
 
+                // Mode toggle for recurring alarms
+                if (isRecurring && onSaveInstance != null && onSaveRecurrenceTemplate != null) {
+                    ModeToggle(
+                        mode = mode,
+                        onModeChange = { mode = it },
+                        enabled = formEnabled
+                    )
+                }
+
                 // Form section — grayed out when not pending
                 Column(
                     modifier = Modifier.alpha(if (formEnabled) 1f else 0.4f)
@@ -147,8 +218,15 @@ fun AlarmConfigDialog(
                     // Due time picker
                     DateTimePickerRow(
                         label = stringResource(R.string.alarm_due),
-                        value = dueTime,
-                        onValueChange = { if (formEnabled) dueTime = it },
+                        value = activeDueTime,
+                        onValueChange = { newTime ->
+                            if (!formEnabled) return@DateTimePickerRow
+                            if (mode == AlarmDialogMode.RECURRENCE) {
+                                recurrenceDueTime = newTime
+                            } else {
+                                instanceDueTime = newTime
+                            }
+                        },
                         showDelete = false
                     )
 
@@ -157,19 +235,70 @@ fun AlarmConfigDialog(
                     Spacer(modifier = Modifier.height(4.dp))
 
                     // Stage rows
-                    stages.forEachIndexed { index, stage ->
+                    activeStages.forEachIndexed { index, stage ->
                         StageRow(
                             stage = stage,
-                            dueTime = dueTime,
+                            dueTime = activeDueTime,
                             enabled = formEnabled,
                             onStageChange = { updated ->
-                                stages = stages.toMutableList().also { it[index] = updated }
+                                if (mode == AlarmDialogMode.RECURRENCE) {
+                                    recurrenceStages = recurrenceStages.toMutableList().also { it[index] = updated }
+                                } else {
+                                    instanceStages = instanceStages.toMutableList().also { it[index] = updated }
+                                }
                             }
                         )
                     }
 
+                    // Cross-propagation checkbox
+                    if (isRecurring && onSaveInstance != null && onSaveRecurrenceTemplate != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+
+                        if (mode == AlarmDialogMode.INSTANCE) {
+                            CrossPropagationCheckbox(
+                                checked = alsoUpdateRecurrence,
+                                onCheckedChange = { alsoUpdateRecurrence = it },
+                                label = stringResource(R.string.alarm_also_update_recurrence),
+                                enabled = formEnabled
+                            )
+                        } else {
+                            CrossPropagationCheckbox(
+                                checked = alsoUpdateInstances,
+                                onCheckedChange = { alsoUpdateInstances = it },
+                                label = stringResource(R.string.alarm_also_update_next),
+                                enabled = formEnabled
+                            )
+                        }
+                    }
+
                     // Recurrence config
-                    if (onSaveRecurring != null) {
+                    if (mode == AlarmDialogMode.RECURRENCE && isRecurring) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        RecurrenceConfigSection(
+                            config = recurrenceConfig,
+                            onConfigChange = { if (formEnabled) recurrenceConfig = it },
+                            showToggle = false
+                        )
+                        if (onEndRecurrence != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            EndRecurrenceButton(onEndRecurrence, onDismiss)
+                        }
+                    } else if (!isRecurring && onSaveRecurring != null) {
+                        // Non-recurring alarm: show recurrence toggle to enable recurrence
+                        Spacer(modifier = Modifier.height(4.dp))
+                        HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        RecurrenceConfigSection(
+                            config = recurrenceConfig,
+                            onConfigChange = { if (formEnabled) recurrenceConfig = it }
+                        )
+                    } else if (isRecurring && mode == AlarmDialogMode.INSTANCE) {
+                        // Instance mode for recurring — show recurrence config read-only style
                         val showRecurrenceToggle = recurringInstanceCount <= 1
                         Spacer(modifier = Modifier.height(4.dp))
                         HorizontalDivider()
@@ -203,10 +332,21 @@ fun AlarmConfigDialog(
                     existingAlarm = existingAlarm,
                     hasDueTime = hasDueTime,
                     formEnabled = formEnabled,
-                    dueTime = dueTime,
-                    stages = stages,
-                    recurrenceConfig = recurrenceConfig,
+                    saveState = SaveState(
+                        mode = mode,
+                        isRecurring = isRecurring,
+                        instanceDueTime = instanceDueTime,
+                        instanceStages = instanceStages,
+                        recurrenceDueTime = recurrenceDueTime,
+                        recurrenceStages = recurrenceStages,
+                        recurrenceConfig = recurrenceConfig,
+                        alsoUpdateRecurrence = alsoUpdateRecurrence,
+                        alsoUpdateInstances = alsoUpdateInstances,
+                        recurringAlarm = recurringAlarm
+                    ),
                     onSave = onSave,
+                    onSaveInstance = onSaveInstance,
+                    onSaveRecurrenceTemplate = onSaveRecurrenceTemplate,
                     onSaveRecurring = onSaveRecurring,
                     onEndRecurrence = onEndRecurrence,
                     onDelete = onDelete,
@@ -214,6 +354,82 @@ fun AlarmConfigDialog(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ModeToggle(
+    mode: AlarmDialogMode,
+    onModeChange: (AlarmDialogMode) -> Unit,
+    enabled: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        ModeButton(AlarmDialogMode.INSTANCE, mode, R.string.alarm_mode_instance, onModeChange, enabled)
+        ModeButton(AlarmDialogMode.RECURRENCE, mode, R.string.alarm_mode_recurrence, onModeChange, enabled)
+    }
+}
+
+@Composable
+private fun RowScope.ModeButton(
+    modeValue: AlarmDialogMode,
+    currentMode: AlarmDialogMode,
+    @StringRes labelRes: Int,
+    onModeChange: (AlarmDialogMode) -> Unit,
+    enabled: Boolean
+) {
+    val isSelected = currentMode == modeValue
+    OutlinedButton(
+        onClick = { if (enabled) onModeChange(modeValue) },
+        modifier = Modifier.weight(1f),
+        colors = if (isSelected) {
+            ButtonDefaults.outlinedButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        } else {
+            ButtonDefaults.outlinedButtonColors()
+        },
+        border = if (isSelected) {
+            BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        },
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(stringResource(labelRes), fontSize = 12.sp, maxLines = 1)
+    }
+}
+
+@Composable
+private fun CrossPropagationCheckbox(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    label: String,
+    enabled: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = checked,
+            onCheckedChange = { if (enabled) onCheckedChange(it) },
+            enabled = enabled,
+            modifier = Modifier.size(36.dp)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp)
+        )
     }
 }
 
@@ -465,10 +681,10 @@ private fun BottomButtons(
     existingAlarm: Alarm?,
     hasDueTime: Boolean,
     formEnabled: Boolean,
-    dueTime: Timestamp?,
-    stages: List<AlarmStage>,
-    recurrenceConfig: RecurrenceConfig,
+    saveState: SaveState,
     onSave: (dueTime: Timestamp?, stages: List<AlarmStage>) -> Unit,
+    onSaveInstance: ((alarm: Alarm, dueTime: Timestamp?, stages: List<AlarmStage>, alsoUpdateRecurrence: Boolean) -> Unit)?,
+    onSaveRecurrenceTemplate: ((recurringAlarmId: String, dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig, alsoUpdateMatchingInstances: Boolean) -> Unit)?,
     onSaveRecurring: ((dueTime: Timestamp?, stages: List<AlarmStage>, recurrenceConfig: RecurrenceConfig) -> Unit)?,
     onEndRecurrence: (() -> Unit)?,
     onDelete: (() -> Unit)?,
@@ -497,12 +713,31 @@ private fun BottomButtons(
 
         Button(
             onClick = {
-                if (recurrenceConfig.enabled && onSaveRecurring != null) {
-                    onSaveRecurring(dueTime, stages, recurrenceConfig)
-                } else {
-                    onSave(dueTime, stages)
-                    // If recurrence was toggled off, delete the template
-                    if (!recurrenceConfig.enabled) onEndRecurrence?.invoke()
+                with(saveState) {
+                    when {
+                        // Recurring alarm in INSTANCE mode
+                        isRecurring && mode == AlarmDialogMode.INSTANCE &&
+                                existingAlarm != null && onSaveInstance != null -> {
+                            onSaveInstance(existingAlarm, instanceDueTime, instanceStages, alsoUpdateRecurrence)
+                        }
+                        // Recurring alarm in RECURRENCE mode
+                        isRecurring && mode == AlarmDialogMode.RECURRENCE &&
+                                recurringAlarm != null && onSaveRecurrenceTemplate != null -> {
+                            onSaveRecurrenceTemplate(
+                                recurringAlarm.id, recurrenceDueTime, recurrenceStages,
+                                recurrenceConfig, alsoUpdateInstances
+                            )
+                        }
+                        // Legacy: recurring save (non-modal path)
+                        recurrenceConfig.enabled && onSaveRecurring != null -> {
+                            onSaveRecurring(instanceDueTime, instanceStages, recurrenceConfig)
+                        }
+                        // Non-recurring alarm
+                        else -> {
+                            onSave(instanceDueTime, instanceStages)
+                            if (!recurrenceConfig.enabled) onEndRecurrence?.invoke()
+                        }
+                    }
                 }
                 onDismiss()
             },

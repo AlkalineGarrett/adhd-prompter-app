@@ -15,12 +15,15 @@ import java.util.Calendar
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmUpdateEvent
+import org.alkaline.taskbrain.data.toTimeOfDay
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.service.AlarmStateManager
 import org.alkaline.taskbrain.service.NotificationHelper
+import org.alkaline.taskbrain.service.RecurrenceScheduler
 import org.alkaline.taskbrain.service.UrgentStateManager
 import org.alkaline.taskbrain.service.RecurrenceConfigMapper
+import org.alkaline.taskbrain.service.RecurrenceTemplateManager
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 
 class AlarmsViewModel(application: Application) : AndroidViewModel(application) {
@@ -29,6 +32,8 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
     private val recurringRepository = RecurringAlarmRepository()
     private val alarmStateManager = AlarmStateManager(application)
     private val notificationHelper = NotificationHelper(application)
+    private val recurrenceScheduler = RecurrenceScheduler(application)
+    private val templateManager = RecurrenceTemplateManager(recurringRepository, repository, alarmStateManager)
 
     private val _pastDueAlarms = MutableLiveData<List<Alarm>>(emptyList())
     val pastDueAlarms: LiveData<List<Alarm>> = _pastDueAlarms
@@ -149,11 +154,14 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
     fun reactivateAlarm(alarmId: String) = executeAlarmOperation { alarmStateManager.reactivate(alarmId) }
 
     /**
-     * Re-shows notifications for all pending alarms that have at least one stage
-     * whose time has already passed but whose notification is not currently active.
+     * Refreshes all alarms: ensures recurring alarm instances are up to date
+     * (creates missing next instances), then re-shows any missing notifications.
      */
-    fun reshowNotifications() {
+    fun refreshAlarms() {
         viewModelScope.launch {
+            recurrenceScheduler.bootstrapRecurringAlarms()
+            loadAlarms()
+
             val now = Timestamp.now()
             val allPending = (_pastDueAlarms.value.orEmpty() + _upcomingAlarms.value.orEmpty())
             for (alarm in allPending) {
@@ -199,7 +207,7 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         if (recurringAlarmId != null) {
             val existing = recurringRepository.get(recurringAlarmId).getOrNull()
             if (existing != null) {
-                val updated = applyRecurrenceConfig(existing, dueTime, stages, recurrenceConfig)
+                val updated = RecurrenceTemplateManager.mergeTemplate(existing, dueTime, stages, recurrenceConfig)
                 return@executeAlarmOperation recurringRepository.update(updated)
             }
         }
@@ -215,7 +223,7 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         val createResult = recurringRepository.create(template)
         createResult.onSuccess { newRecurringId ->
             repository.linkToRecurringAlarm(alarm.id, newRecurringId)
-            recurringRepository.updateCurrentAlarmId(newRecurringId, alarm.id, alarm.dueTime)
+            recurringRepository.updateCurrentAlarmId(newRecurringId, alarm.id, alarm.dueTime?.toTimeOfDay())
         }
         createResult.map { }
     }
@@ -232,39 +240,46 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
         // Use the existing alarm's current instance to get threshold times for offset calculation
         val currentAlarm = existing.currentAlarmId?.let { repository.getAlarm(it).getOrNull() }
 
-        val updated = applyRecurrenceConfig(
+        val updated = RecurrenceTemplateManager.mergeTemplate(
             existing,
             currentAlarm?.dueTime,
             currentAlarm?.stages ?: org.alkaline.taskbrain.data.Alarm.DEFAULT_STAGES,
             recurrenceConfig
+        ).copy(
+            // Preserve the existing anchor — this path only changes the recurrence
+            // pattern, not the time-of-day.
+            anchorTimeOfDay = existing.anchorTimeOfDay
         )
         recurringRepository.update(updated)
     }
 
     /**
-     * Builds an updated [RecurringAlarm] by applying new recurrence config and stage configuration
-     * while preserving the existing template's identity and state fields.
+     * Updates an instance's times, optionally propagating the change to the recurrence template.
      */
-    private fun applyRecurrenceConfig(
-        existing: RecurringAlarm,
+    fun updateInstanceTimes(
+        alarm: Alarm,
         dueTime: Timestamp?,
         stages: List<org.alkaline.taskbrain.data.AlarmStage>,
-        config: RecurrenceConfig
-    ): RecurringAlarm = RecurrenceConfigMapper.toRecurringAlarm(
-        noteId = existing.noteId,
-        lineContent = existing.lineContent,
-        dueTime = dueTime,
-        stages = stages,
-        config = config
-    ).copy(
-        id = existing.id,
-        userId = existing.userId,
-        completionCount = existing.completionCount,
-        lastCompletionDate = existing.lastCompletionDate,
-        currentAlarmId = existing.currentAlarmId,
-        status = existing.status,
-        createdAt = existing.createdAt
-    )
+        alsoUpdateRecurrence: Boolean
+    ) = executeAlarmOperation {
+        templateManager.updateInstanceTimes(alarm, dueTime, stages, alsoUpdateRecurrence)
+    }
+
+    /**
+     * Updates the recurrence template's times and pattern, optionally propagating
+     * time changes to all pending instances that still match the old template times.
+     */
+    fun updateRecurrenceTemplate(
+        recurringAlarmId: String,
+        dueTime: Timestamp?,
+        stages: List<org.alkaline.taskbrain.data.AlarmStage>,
+        recurrenceConfig: RecurrenceConfig,
+        alsoUpdateMatchingInstances: Boolean
+    ) = executeAlarmOperation {
+        templateManager.updateRecurrenceTemplate(
+            recurringAlarmId, dueTime, stages, recurrenceConfig, alsoUpdateMatchingInstances
+        )
+    }
 
     private fun executeAlarmOperation(operation: suspend () -> Result<*>) {
         viewModelScope.launch {

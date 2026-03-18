@@ -46,10 +46,10 @@ data class RecurringAlarm(
     /** The ID of the currently active alarm instance (if any). */
     val currentAlarmId: String? = null,
 
-    /** Due time of the most recently created instance.
-     *  Used by bootstrap to preserve the correct time-of-day for FIXED recurrences
-     *  when the current alarm instance can't be fetched. */
-    val lastInstanceDueTime: Timestamp? = null,
+    /** The time-of-day for this alarm (hour/minute), used by bootstrap to preserve
+     *  the correct time-of-day for FIXED recurrences when the current alarm instance
+     *  can't be fetched. Unlike a full timestamp, this can't go stale. */
+    val anchorTimeOfDay: TimeOfDay? = null,
 
     val status: RecurringAlarmStatus = RecurringAlarmStatus.ACTIVE,
     val createdAt: Timestamp? = null,
@@ -82,6 +82,15 @@ data class RecurringAlarm(
             if (result.endsWith(" ")) result = result.dropLast(1)
         }
         result.trim()
+    }
+
+    /**
+     * Returns true if the alarm instance's time-of-day and stages match the template's
+     * anchorTimeOfDay and stages. Used to detect individually-edited instances.
+     */
+    fun timesMatchInstance(alarm: Alarm): Boolean {
+        val instanceTimeOfDay = alarm.dueTime?.toTimeOfDay()
+        return instanceTimeOfDay == anchorTimeOfDay && alarm.stages == stages
     }
 
     companion object {

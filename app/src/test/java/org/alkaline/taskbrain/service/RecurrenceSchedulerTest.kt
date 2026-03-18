@@ -161,6 +161,8 @@ class RecurrenceSchedulerTest {
         val triggeredAlarm = createAlarmInstance("alarm1")
 
         coEvery { mockRecurringRepo.get("recurring1") } returns Result.success(recurring)
+        coEvery { mockAlarmRepo.getAlarm("alarm2") } returns
+                Result.success(createAlarmInstance("alarm2"))
 
         scheduler.onFixedInstanceTriggered(triggeredAlarm)
 

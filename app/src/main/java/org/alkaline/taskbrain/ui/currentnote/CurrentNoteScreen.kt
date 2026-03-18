@@ -189,6 +189,7 @@ fun CurrentNoteScreen(
             .thenBy { it.createdAt?.toDate()?.time ?: 0L })
         .getOrNull(alarmDialogSymbolIndex)
     val alarmDialogRecurrenceConfig by currentNoteViewModel.recurrenceConfig.observeAsState()
+    val alarmDialogRecurringAlarm by currentNoteViewModel.recurringAlarm.observeAsState()
 
     // Sibling instances for recurring alarm navigation in the dialog
     var alarmDialogSiblings by remember { mutableStateOf<List<Alarm>>(emptyList()) }
@@ -278,6 +279,8 @@ fun CurrentNoteScreen(
         alarmDialogLineContent = alarmDialogLineContent,
         alarmDialogExistingAlarm = alarmDialogExistingAlarm,
         alarmDialogRecurrenceConfig = alarmDialogRecurrenceConfig,
+        alarmDialogRecurringAlarm = alarmDialogRecurringAlarm,
+        alarmDialogInstanceCount = alarmDialogSiblings.size,
         onAlarmSave = { dueTime, stages ->
             val existing = alarmDialogExistingAlarm
             if (existing != null) {
@@ -292,6 +295,16 @@ fun CurrentNoteScreen(
                 currentNoteViewModel.updateRecurringAlarm(existing, dueTime, stages, recurrenceConfig)
             } else {
                 currentNoteViewModel.saveAndCreateRecurringAlarm(userContent, alarmDialogLineContent, alarmDialogLineIndex, dueTime, stages, recurrenceConfig)
+            }
+        },
+        onAlarmSaveInstance = alarmDialogRecurringAlarm?.let { _ ->
+            { alarm, dueTime, stages, alsoUpdateRecurrence ->
+                currentNoteViewModel.updateInstanceTimes(alarm, dueTime, stages, alsoUpdateRecurrence)
+            }
+        },
+        onAlarmSaveRecurrenceTemplate = alarmDialogRecurringAlarm?.let { _ ->
+            { recId, dueTime, stages, config, alsoUpdateInstances ->
+                currentNoteViewModel.updateRecurrenceTemplate(recId, dueTime, stages, config, alsoUpdateInstances)
             }
         },
         onAlarmMarkDone = alarmDialogExistingAlarm?.let { alarm -> { currentNoteViewModel.markAlarmDone(alarm.id) } },

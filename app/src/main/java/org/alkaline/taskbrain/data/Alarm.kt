@@ -27,6 +27,12 @@ data class TimeOfDay(val hour: Int, val minute: Int) {
         return Timestamp(cal.time)
     }
 
+    /** Returns Firestore field entries for this time-of-day (anchorTimeHour/anchorTimeMinute). */
+    fun toAnchorFields(): Map<String, Int> = mapOf(
+        "anchorTimeHour" to hour,
+        "anchorTimeMinute" to minute
+    )
+
     companion object {
         /** Parses a [TimeOfDay] from a Firestore-style map (absoluteTimeHour/absoluteTimeMinute). */
         fun fromMap(map: Map<*, *>): TimeOfDay? {
@@ -36,6 +42,12 @@ data class TimeOfDay(val hour: Int, val minute: Int) {
             return null
         }
     }
+}
+
+/** Extracts the time-of-day (hour/minute) from a [Timestamp]. */
+fun Timestamp.toTimeOfDay(): TimeOfDay {
+    val cal = Calendar.getInstance().apply { time = toDate() }
+    return TimeOfDay(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
 }
 
 /**

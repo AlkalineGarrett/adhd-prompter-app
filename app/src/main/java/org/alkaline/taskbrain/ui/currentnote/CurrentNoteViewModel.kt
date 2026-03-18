@@ -24,11 +24,15 @@ import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.Note
+import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
+import org.alkaline.taskbrain.data.toTimeOfDay
+
 import org.alkaline.taskbrain.service.AlarmScheduleResult
 import org.alkaline.taskbrain.service.AlarmScheduler
 import org.alkaline.taskbrain.service.AlarmStateManager
 import org.alkaline.taskbrain.service.RecurrenceConfigMapper
+import org.alkaline.taskbrain.service.RecurrenceTemplateManager
 import org.alkaline.taskbrain.service.RecurrenceScheduler
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 import org.alkaline.taskbrain.data.NoteLine
@@ -83,6 +87,9 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     // For testing: provide a way to override noteOperations without Firebase
     private val noteOperationsProvider: (() -> NoteRepositoryOperations?)? = null
 ) : AndroidViewModel(application) {
+
+    private val recurringAlarmRepository = RecurringAlarmRepository()
+    private val templateManager = RecurrenceTemplateManager(recurringAlarmRepository, alarmRepository, alarmStateManager)
 
     // Directive caching infrastructure (Phase 10 integration)
     private val directiveCacheManager = DirectiveCacheManager()
@@ -535,9 +542,12 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private val _lineAlarms = MutableLiveData<List<Alarm>>()
     val lineAlarms: LiveData<List<Alarm>> = _lineAlarms
 
-    // Recurrence config for the currently selected alarm (if recurring)
+    // Recurrence config and template for the currently selected alarm (if recurring)
     private val _recurrenceConfig = MutableLiveData<RecurrenceConfig?>()
     val recurrenceConfig: LiveData<RecurrenceConfig?> = _recurrenceConfig
+
+    private val _recurringAlarm = MutableLiveData<RecurringAlarm?>()
+    val recurringAlarm: LiveData<RecurringAlarm?> = _recurringAlarm
 
     fun fetchAlarmsForLine(lineIndex: Int, onComplete: (() -> Unit)? = null) {
         val noteId = getNoteIdForLine(lineIndex)
@@ -563,11 +573,13 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     fun fetchRecurrenceConfig(alarm: Alarm?) {
         if (alarm?.recurringAlarmId == null) {
             _recurrenceConfig.value = null
+            _recurringAlarm.value = null
             return
         }
         viewModelScope.launch {
-            val recurringRepo = RecurringAlarmRepository()
+            val recurringRepo = recurringAlarmRepository
             val recurring = recurringRepo.get(alarm.recurringAlarmId).getOrNull()
+            _recurringAlarm.value = recurring
             _recurrenceConfig.value = recurring?.let { RecurrenceConfigMapper.toRecurrenceConfig(it) }
         }
     }
@@ -749,7 +761,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             config = recurrenceConfig
         )
 
-        val recurringRepo = RecurringAlarmRepository()
+        val recurringRepo = recurringAlarmRepository
         val createResult = recurringRepo.create(recurringAlarm)
         val recurringId = createResult.getOrNull()
         if (recurringId == null) {
@@ -779,7 +791,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         alarmStateManager.create(firstAlarm).fold(
             onSuccess = { (alarmId, scheduleResult) ->
                 // Update recurring alarm with current instance ID
-                recurringRepo.updateCurrentAlarmId(recurringId, alarmId, firstAlarm.dueTime)
+                recurringRepo.updateCurrentAlarmId(recurringId, alarmId, null)
 
                 if (!scheduleResult.success) {
                     _schedulingWarning.value = scheduleResult.message
@@ -1894,7 +1906,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 return@launch
             }
 
-            val recurringRepo = RecurringAlarmRepository()
+            val recurringRepo = recurringAlarmRepository
             val existing = recurringRepo.get(recurringAlarmId).getOrNull()
             if (existing == null) {
                 Log.e(TAG, "Recurring alarm template not found: $recurringAlarmId")
@@ -1933,6 +1945,49 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                         onFailure = { e -> _alarmError.value = e }
                     )
                 },
+                onFailure = { e -> _alarmError.value = e }
+            )
+        }
+    }
+
+    /**
+     * Updates an instance's times, optionally propagating the change to the recurrence template.
+     */
+    fun updateInstanceTimes(
+        alarm: Alarm,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>,
+        alsoUpdateRecurrence: Boolean
+    ) {
+        viewModelScope.launch {
+            templateManager.updateInstanceTimes(alarm, dueTime, stages, alsoUpdateRecurrence).fold(
+                onSuccess = { scheduleResult ->
+                    if (!scheduleResult.success) {
+                        _schedulingWarning.value = scheduleResult.message
+                    }
+                    loadAlarmStates()
+                },
+                onFailure = { e -> _alarmError.value = e }
+            )
+        }
+    }
+
+    /**
+     * Updates the recurrence template's times and pattern, optionally propagating
+     * time changes to all pending instances that still match the old template times.
+     */
+    fun updateRecurrenceTemplate(
+        recurringAlarmId: String,
+        dueTime: Timestamp?,
+        stages: List<AlarmStage>,
+        recurrenceConfig: RecurrenceConfig,
+        alsoUpdateMatchingInstances: Boolean
+    ) {
+        viewModelScope.launch {
+            templateManager.updateRecurrenceTemplate(
+                recurringAlarmId, dueTime, stages, recurrenceConfig, alsoUpdateMatchingInstances
+            ).fold(
+                onSuccess = { loadAlarmStates() },
                 onFailure = { e -> _alarmError.value = e }
             )
         }
