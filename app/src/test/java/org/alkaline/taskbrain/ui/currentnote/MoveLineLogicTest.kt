@@ -439,12 +439,13 @@ class MoveLineLogicTest {
     }
 
     @Test
-    fun `findMoveUpTarget does not skip hidden block at deeper indent`() {
+    fun `findMoveUpTarget skips hidden block at same indent as mover`() {
         // Lines: \t☐ parent, \t☑ child (hidden), Root, \t☐ mover
-        // Moving mover up should swap with Root, not jump past hidden child
+        // Moving mover (indent 1) up past Root should also skip hidden \t☑ child (indent 1)
+        // so unchecked items end up above completed items (matching sort-on-save order)
         val l = lines("\t☐ parent", "\t☑ child", "Root", "\t☐ mover")
         val hidden = setOf(1)
-        assertEquals(2, MoveTargetFinder.findMoveUpTarget(l, 3..3, hidden))
+        assertEquals(1, MoveTargetFinder.findMoveUpTarget(l, 3..3, hidden))
     }
 
     @Test
@@ -469,6 +470,58 @@ class MoveLineLogicTest {
         val l = lines("unchecked1", "unchecked2", "\tchild", "☑ done", "")
         val hidden = setOf(3)
         assertEquals(3, MoveTargetFinder.findMoveDownTarget(l, 0..0, hidden))
+    }
+
+    @Test
+    fun `findMoveDownTarget does not expand shallower target block`() {
+        // Lines: \tL1 (indent 1, moving), L2 (indent 0), \tL3 (indent 1)
+        // Moving L1 down should land right after L2, not jump past L3
+        // Symmetric with move-up which doesn't expand blocks
+        val l = lines("\tL1", "L2", "\tL3")
+        assertEquals(2, MoveTargetFinder.findMoveDownTarget(l, 0..0))
+    }
+
+    @Test
+    fun `findMoveDownTarget does not expand shallower target block with multiple children`() {
+        // Lines: \tL1 (indent 1, moving), L2 (indent 0), \tL3, \tL4, \tL5
+        val l = lines("\tL1", "L2", "\tL3", "\tL4", "\tL5")
+        assertEquals(2, MoveTargetFinder.findMoveDownTarget(l, 0..0))
+    }
+
+    @Test
+    fun `findMoveDownTarget does not jump past hidden block at same indent as mover`() {
+        // Lines: \tA (indent 1, moving), B (indent 0), \t☑ done1 (hidden), \t☑ done2 (hidden)
+        // Moving A down should land right after B, not past the hidden block
+        val l = lines("\tA", "B", "\t☑ done1", "\t☑ done2")
+        val hidden = setOf(2, 3)
+        assertEquals(2, MoveTargetFinder.findMoveDownTarget(l, 0..0, hidden))
+    }
+
+    @Test
+    fun `findMoveDownTarget includes hidden children deeper than mover in block`() {
+        // Lines: A (indent 0, moving), B (indent 0), \t☑ hidden (indent 1)
+        // Hidden child is deeper than mover — should be included in B's block
+        val l = lines("A", "B", "\t☑ hidden")
+        val hidden = setOf(2)
+        assertEquals(3, MoveTargetFinder.findMoveDownTarget(l, 0..0, hidden))
+    }
+
+    @Test
+    fun `findMoveUpTarget skips hidden block at same indent as mover with no visible anchor`() {
+        // Lines: \t☑ done1 (hidden), \t☑ done2 (hidden), B (indent 0), \tC (indent 1, moving)
+        // Moving C up past B should also skip the hidden block (same indent as mover)
+        val l = lines("\t☑ done1", "\t☑ done2", "B", "\tC")
+        val hidden = setOf(0, 1)
+        assertEquals(0, MoveTargetFinder.findMoveUpTarget(l, 3..3, hidden))
+    }
+
+    @Test
+    fun `findMoveUpTarget does not skip hidden block deeper than mover`() {
+        // Lines: \t☑ hidden (indent 1), B (indent 0), C (indent 0, moving)
+        // Hidden block is deeper than mover — should NOT skip it
+        val l = lines("\t☑ hidden", "B", "C")
+        val hidden = setOf(0)
+        assertEquals(1, MoveTargetFinder.findMoveUpTarget(l, 2..2, hidden))
     }
 
     @Test

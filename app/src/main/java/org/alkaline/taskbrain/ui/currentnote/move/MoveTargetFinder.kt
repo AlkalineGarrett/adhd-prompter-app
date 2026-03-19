@@ -44,7 +44,7 @@ object MoveTargetFinder {
             probe--
             shallowest = minOf(shallowest, IndentationUtils.getIndentLevel(lines, probe))
         }
-        if (shallowest <= targetIndent) {
+        if (shallowest <= targetIndent || shallowest <= firstIndent) {
             target = probe
         }
 
@@ -70,8 +70,11 @@ object MoveTargetFinder {
         val firstIndent = IndentationUtils.getIndentLevel(lines, lineRange.first)
         val targetIndent = IndentationUtils.getIndentLevel(lines, target)
 
-        // Find end of target's logical block (children only — deeper indent)
-        if (targetIndent <= firstIndent) {
+        // Expand through the target's logical block (deeper-indented children) only
+        // when the target is a sibling (same indent) or deeper. When the target is
+        // shallower than the mover, the mover slots in right after the target —
+        // symmetric with move-up, which doesn't expand blocks either.
+        if (targetIndent >= firstIndent) {
             while (target < lines.lastIndex) {
                 val next = target + 1
                 if (IndentationUtils.getIndentLevel(lines, next) > targetIndent) {

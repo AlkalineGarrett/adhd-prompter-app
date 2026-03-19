@@ -29,7 +29,7 @@ export function findMoveUpTarget(lines: LineState[], rangeFirst: number, rangeLa
     probe--
     shallowest = Math.min(shallowest, IU.getIndentLevel(lines, probe))
   }
-  if (shallowest <= targetIndent) {
+  if (shallowest <= targetIndent || shallowest <= firstIndent) {
     target = probe
   }
 
@@ -47,8 +47,11 @@ export function findMoveDownTarget(lines: LineState[], rangeFirst: number, range
   const firstIndent = IU.getIndentLevel(lines, rangeFirst)
   const targetIndent = IU.getIndentLevel(lines, target)
 
-  // Find end of target's logical block (children only — deeper indent)
-  if (targetIndent <= firstIndent) {
+  // Expand through the target's logical block (deeper-indented children) only
+  // when the target is a sibling (same indent) or deeper. When the target is
+  // shallower than the mover, the mover slots in right after the target —
+  // symmetric with move-up, which doesn't expand blocks either.
+  if (targetIndent >= firstIndent) {
     while (target < lines.length - 1) {
       const next = target + 1
       if (IU.getIndentLevel(lines, next) > targetIndent) {

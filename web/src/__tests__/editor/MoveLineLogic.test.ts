@@ -290,12 +290,13 @@ describe('findMoveUpTarget skips hidden block above visible target', () => {
     expect(findMoveUpTarget(lines, 4, 4, hidden)).toBe(1)
   })
 
-  it('does not skip hidden block at deeper indent', () => {
+  it('skips hidden block at same indent as mover', () => {
     // Lines: ☐ parent (indent 1), ☑ child (hidden, indent 1), Root (indent 0), ☐ mover (indent 1)
-    // Moving mover up should swap with Root, not jump past the hidden child
+    // Moving mover (indent 1) up past Root should also skip hidden ☑ child (indent 1)
+    // so unchecked items end up above completed items (matching sort-on-save order)
     const lines = makeLines('\t☐ parent', '\t☑ child', 'Root', '\t☐ mover')
     const hidden = new Set([1])
-    expect(findMoveUpTarget(lines, 3, 3, hidden)).toBe(2)
+    expect(findMoveUpTarget(lines, 3, 3, hidden)).toBe(1)
   })
 
   it('skips hidden block with children above visible target', () => {
@@ -303,6 +304,56 @@ describe('findMoveUpTarget skips hidden block above visible target', () => {
     const lines = makeLines('unchecked1', '☑ parent', '\tchild', '', 'unchecked2')
     const hidden = new Set([1, 2])
     expect(findMoveUpTarget(lines, 4, 4, hidden)).toBe(1)
+  })
+})
+
+describe('findMoveDownTarget does not expand shallower target block', () => {
+  it('slots in right after shallower target', () => {
+    // Lines: \tL1 (indent 1, moving), L2 (indent 0), \tL3 (indent 1)
+    // Moving L1 down should land right after L2, not jump past L3
+    const lines = makeLines('\tL1', 'L2', '\tL3')
+    expect(findMoveDownTarget(lines, 0, 0)).toBe(2)
+  })
+
+  it('does not jump past multiple children of shallower target', () => {
+    const lines = makeLines('\tL1', 'L2', '\tL3', '\tL4', '\tL5')
+    expect(findMoveDownTarget(lines, 0, 0)).toBe(2)
+  })
+})
+
+describe('findMoveDownTarget does not jump past hidden block at same indent as mover', () => {
+  it('stops at hidden lines at same indent as mover', () => {
+    // Lines: \tA (indent 1, moving), B (indent 0), \t☑ done1 (hidden), \t☑ done2 (hidden)
+    // Moving A down should land right after B, not past the hidden block
+    const lines = makeLines('\tA', 'B', '\t☑ done1', '\t☑ done2')
+    const hidden = new Set([2, 3])
+    expect(findMoveDownTarget(lines, 0, 0, hidden)).toBe(2)
+  })
+
+  it('includes hidden children deeper than mover in block', () => {
+    // Lines: A (indent 0, moving), B (indent 0), \t☑ hidden (indent 1)
+    // Hidden child is deeper than mover — should be included in B's block
+    const lines = makeLines('A', 'B', '\t☑ hidden')
+    const hidden = new Set([2])
+    expect(findMoveDownTarget(lines, 0, 0, hidden)).toBe(3)
+  })
+})
+
+describe('findMoveUpTarget skips hidden block at same indent with no visible anchor', () => {
+  it('skips hidden block when no visible line anchors it from above', () => {
+    // Lines: \t☑ done1 (hidden), \t☑ done2 (hidden), B (indent 0), \tC (indent 1, moving)
+    // Moving C up past B should also skip the hidden block (same indent as mover)
+    const lines = makeLines('\t☑ done1', '\t☑ done2', 'B', '\tC')
+    const hidden = new Set([0, 1])
+    expect(findMoveUpTarget(lines, 3, 3, hidden)).toBe(0)
+  })
+
+  it('does not skip hidden block deeper than mover', () => {
+    // Lines: \t☑ hidden (indent 1), B (indent 0), C (indent 0, moving)
+    // Hidden block is deeper than mover — should NOT skip it
+    const lines = makeLines('\t☑ hidden', 'B', 'C')
+    const hidden = new Set([0])
+    expect(findMoveUpTarget(lines, 2, 2, hidden)).toBe(1)
   })
 })
 
