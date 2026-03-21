@@ -1,4 +1,4 @@
-import type { DirectiveSegment } from '@/dsl/directives/DirectiveSegmenter'
+import type { DirectiveSegment, DirectiveSegmentType } from '@/dsl/directives/DirectiveSegmenter'
 import { directiveResultToValue } from '@/dsl/directives/DirectiveResult'
 
 /** Measures text width using a canvas context for fast, accurate results. */
@@ -233,6 +233,14 @@ export function isOnLastVisualRow(element: HTMLElement, charIndex: number, total
   return Math.abs(cursorRect.top - lastRect.top) < VISUAL_ROW_TOLERANCE_PX
 }
 
+/** Compute the display length of a directive segment's chip. */
+function chipDisplayLength(segment: DirectiveSegmentType): number {
+  const value = segment.result ? directiveResultToValue(segment.result) : null
+  if (value?.kind === 'AlarmVal') return '⏰'.length
+  if (value?.kind === 'ButtonVal') return `▶ ${value.label}`.length
+  return segment.displayText.length
+}
+
 /**
  * Maps a character offset in the displayed directive content (text segments + chip text)
  * back to a character offset in the source content (with raw directive syntax).
@@ -253,24 +261,40 @@ export function mapDisplayOffsetToSource(
       }
       displayPos += segLen
     } else {
-      // Directive segment: compute the display length from what DirectiveChip renders
-      const value = segment.result ? directiveResultToValue(segment.result) : null
-      let chipDisplayLen: number
-      if (value?.kind === 'AlarmVal') {
-        chipDisplayLen = '⏰'.length
-      } else if (value?.kind === 'ButtonVal') {
-        chipDisplayLen = `▶ ${value.label}`.length
-      } else {
-        chipDisplayLen = segment.displayText.length
-      }
-      if (displayOffset <= displayPos + chipDisplayLen) {
-        // Click landed on a directive chip — place cursor after the directive
+      const chipLen = chipDisplayLength(segment)
+      if (displayOffset <= displayPos + chipLen) {
         return segment.rangeEnd
       }
-      displayPos += chipDisplayLen
+      displayPos += chipLen
     }
   }
-  // Past all segments — return end of content
   const last = segments[segments.length - 1]
   return last ? last.rangeEnd : 0
+}
+
+/**
+ * Maps a character offset in the source content to a display offset.
+ * Inverse of mapDisplayOffsetToSource. For offsets inside a directive's source range,
+ * maps to the start of the chip's display range.
+ */
+export function mapSourceOffsetToDisplay(
+  sourceOffset: number,
+  segments: DirectiveSegment[],
+): number {
+  let displayPos = 0
+  for (const segment of segments) {
+    if (segment.kind === 'Text') {
+      if (sourceOffset <= segment.rangeEnd) {
+        return displayPos + Math.max(0, sourceOffset - segment.rangeStart)
+      }
+      displayPos += segment.content.length
+    } else {
+      if (sourceOffset <= segment.rangeEnd) {
+        // Source offset is inside or at the start of this directive — map to chip boundary
+        return sourceOffset <= segment.rangeStart ? displayPos : displayPos + chipDisplayLength(segment)
+      }
+      displayPos += chipDisplayLength(segment)
+    }
+  }
+  return displayPos
 }

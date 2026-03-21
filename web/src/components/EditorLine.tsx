@@ -5,7 +5,7 @@ import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
 import { hasCheckbox } from '@/editor/LinePrefixes'
 import { hasDirectives, segmentLine } from '@/dsl/directives/DirectiveSegmenter'
 import { DirectiveLineContent } from './DirectiveLineContent'
-import { getCharOffsetFromPoint, getCharOffsetHidingTextarea, getWordBoundsAt, isOnFirstVisualRow, isOnLastVisualRow, mapDisplayOffsetToSource } from '@/editor/TextMeasure'
+import { getCharOffsetFromPoint, getCharOffsetHidingTextarea, getWordBoundsAt, isOnFirstVisualRow, isOnLastVisualRow, mapDisplayOffsetToSource, mapSourceOffsetToDisplay } from '@/editor/TextMeasure'
 import styles from './EditorLine.module.css'
 
 /**
@@ -71,16 +71,32 @@ export function EditorLine({
     : null
   const hasContentSelection = contentSelection && contentSelection[0] < contentSelection[1]
 
-  // Compute selection highlight rectangles from overlay text nodes
+  // Compute selection highlight rectangles from text nodes in either overlay or directive content
   const [selectionRects, setSelectionRects] = useState<DOMRect[]>([])
   useLayoutEffect(() => {
-    const overlay = overlayRef.current
-    if (!overlay || !hasContentSelection) {
+    if (!hasContentSelection) {
       if (selectionRects.length > 0) setSelectionRects([])
       return
     }
-    const walker = document.createTreeWalker(overlay, NodeFilter.SHOW_TEXT)
-    let remaining = contentSelection[0]
+
+    // Use overlay for regular lines, directive content for chip lines
+    const el = overlayRef.current ?? directiveContentRef.current
+    if (!el) {
+      if (selectionRects.length > 0) setSelectionRects([])
+      return
+    }
+
+    // Convert source-space selection to display-space for directive lines
+    let selStart = contentSelection[0]
+    let selEnd = contentSelection[1]
+    if (!overlayRef.current && directiveContentRef.current) {
+      const segments = segmentLine(content, lineIndex, directiveResults ?? new Map())
+      selStart = mapSourceOffsetToDisplay(selStart, segments)
+      selEnd = mapSourceOffsetToDisplay(selEnd, segments)
+    }
+
+    // Walk text nodes to find the range
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
     let startNode: Node | null = null
     let startOffset = 0
     let endNode: Node | null = null
@@ -89,13 +105,13 @@ export function EditorLine({
     let textNode = walker.nextNode()
     while (textNode) {
       const len = textNode.textContent?.length ?? 0
-      if (!startNode && accumulated + len > remaining) {
+      if (!startNode && accumulated + len > selStart) {
         startNode = textNode
-        startOffset = remaining - accumulated
+        startOffset = selStart - accumulated
       }
-      if (accumulated + len >= contentSelection[1]) {
+      if (accumulated + len >= selEnd) {
         endNode = textNode
-        endOffset = contentSelection[1] - accumulated
+        endOffset = selEnd - accumulated
         break
       }
       accumulated += len
@@ -108,9 +124,9 @@ export function EditorLine({
     const range = document.createRange()
     range.setStart(startNode, startOffset)
     range.setEnd(endNode, endOffset)
-    const overlayRect = overlay.getBoundingClientRect()
-    const parsedLineHeight = parseFloat(getComputedStyle(overlay).lineHeight)
-    const lineHeight = isNaN(parsedLineHeight) ? overlay.getBoundingClientRect().height : parsedLineHeight
+    const elRect = el.getBoundingClientRect()
+    const parsedLineHeight = parseFloat(getComputedStyle(el).lineHeight)
+    const lineHeight = isNaN(parsedLineHeight) ? el.getBoundingClientRect().height : parsedLineHeight
     const rects: DOMRect[] = []
     const rawRects = range.getClientRects()
     // Deduplicate rects (Range can return multiple rects per visual row)
@@ -123,14 +139,14 @@ export function EditorLine({
       const glyphCenter = r.top + r.height / 2
       const top = glyphCenter - lineHeight / 2
       rects.push(new DOMRect(
-        r.left - overlayRect.left,
-        top - overlayRect.top,
+        r.left - elRect.left,
+        top - elRect.top,
         r.right - r.left,
         lineHeight,
       ))
     }
     setSelectionRects(rects)
-  }, [contentSelection?.[0], contentSelection?.[1], content, hasContentSelection])
+  }, [contentSelection?.[0], contentSelection?.[1], content, hasContentSelection, lineIndex, directiveResults])
 
   // Auto-resize textarea to fit wrapped content
   useLayoutEffect(() => {
@@ -428,38 +444,46 @@ export function EditorLine({
     [controller],
   )
 
-  const getCharIndexFromEvent = useCallback(
+  /** Compute the source-space char index from a mouse event, using whichever element is rendered. */
+  const getSourceCharIndex = useCallback(
     (e: MouseEvent): number => {
+      // Try textarea overlay first (regular lines)
       const overlay = overlayRef.current
       const textarea = inputRef.current
       if (overlay && textarea) {
         const offset = getCharOffsetHidingTextarea(overlay, textarea, e.clientX, e.clientY)
         if (offset != null) return offset
       }
-      // Fallback: clicking past the end of content
+      // Try directive content (chip lines) — map display offset to source offset
+      const directiveEl = directiveContentRef.current
+      if (directiveEl) {
+        const displayOffset = getCharOffsetFromPoint(directiveEl, e.clientX, e.clientY)
+        if (displayOffset != null) {
+          const segments = segmentLine(content, lineIndex, directiveResults ?? new Map())
+          return mapDisplayOffsetToSource(displayOffset, segments)
+        }
+      }
       return content.length
     },
-    [content.length],
+    [content, lineIndex, directiveResults],
   )
 
   const handleContextMenu = useCallback(
-    (e: MouseEvent<HTMLTextAreaElement>) => {
-      // Position cursor at right-click location so native Cut/Copy/Paste operate on the right spot
-      const charIdx = getCharIndexFromEvent(e)
+    (e: MouseEvent<HTMLTextAreaElement | HTMLDivElement>) => {
+      const charIdx = getSourceCharIndex(e)
       const globalOffset = editorState.getLineStartOffset(lineIndex) + prefix.length + charIdx
       if (!editorState.hasSelection) {
         controller.setCursorFromGlobalOffset(globalOffset)
       }
     },
-    [getCharIndexFromEvent, controller, editorState, lineIndex, prefix.length],
+    [getSourceCharIndex, controller, editorState, lineIndex, prefix.length],
   )
 
   const handleMouseDown = useCallback(
     (e: MouseEvent<HTMLTextAreaElement | HTMLDivElement>) => {
-      // Prevent native textarea selection so we can handle cross-line drag
       e.preventDefault()
 
-      const charIdx = getCharIndexFromEvent(e)
+      const charIdx = getSourceCharIndex(e)
       const globalOffset = editorState.getLineStartOffset(lineIndex) + prefix.length + charIdx
 
       // Click inside existing selection: start drag-move
@@ -489,40 +513,16 @@ export function EditorLine({
         onDragStart?.(globalOffset)
       }
     },
-    [getCharIndexFromEvent, controller, editorState, lineIndex, prefix.length, content, line, onDragStart],
+    [getSourceCharIndex, controller, editorState, lineIndex, prefix.length, content, line, onDragStart, onMoveStart],
   )
 
   const handleFocus = useCallback(() => {
     if (lineIndex !== editorState.focusedLineIndex) {
-      // Don't clear selection on focus — shift+click and drag need it
       if (!editorState.hasSelection) {
         controller.focusLine(lineIndex)
       }
     }
   }, [controller, editorState, lineIndex])
-
-  /** Click on unfocused directive line: map click position to source offset and place cursor. */
-  const handleDirectiveContentMouseDown = useCallback(
-    (e: MouseEvent<HTMLDivElement>) => {
-      if (editorState.hasSelection) return
-      e.preventDefault()
-      const el = directiveContentRef.current
-      if (!el) {
-        controller.focusLine(lineIndex)
-        return
-      }
-      const displayOffset = getCharOffsetFromPoint(el, e.clientX, e.clientY)
-      if (displayOffset == null) {
-        controller.focusLine(lineIndex)
-        return
-      }
-      const segments = segmentLine(content, lineIndex, directiveResults ?? new Map())
-      const sourceOffset = mapDisplayOffsetToSource(displayOffset, segments)
-      const globalOffset = editorState.getLineStartOffset(lineIndex) + prefix.length + sourceOffset
-      controller.setCursorFromGlobalOffset(globalOffset)
-    },
-    [controller, editorState, lineIndex, content, prefix.length, directiveResults],
-  )
 
   const handleGutterClick = useCallback(() => {
     if (hasCheckbox(line.text)) {
@@ -575,7 +575,18 @@ export function EditorLine({
         </div>
       ) : null}
       {showDirectiveChips ? (
-        <div ref={directiveContentRef} className={styles.directiveContent} onMouseDown={handleDirectiveContentMouseDown}>
+        <div ref={directiveContentRef} className={`${styles.directiveContent}${hasContentSelection ? ` ${styles.grabbable}` : ''}`} data-directive-content onMouseDown={handleMouseDown} onContextMenu={handleContextMenu}>
+          {selectionRects.length > 0 && (
+            <div className={styles.highlightLayer} aria-hidden>
+              {selectionRects.map((r, i) => (
+                <div
+                  key={i}
+                  className={styles.selectionHighlight}
+                  style={{ left: r.x, top: r.y, width: r.width, height: r.height }}
+                />
+              ))}
+            </div>
+          )}
           <DirectiveLineContent
             content={content}
             lineIndex={lineIndex}

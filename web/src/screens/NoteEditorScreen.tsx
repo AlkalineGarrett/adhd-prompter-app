@@ -18,7 +18,7 @@ import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { computeHiddenIndices, computeDisplayItemsFromHidden, computeEffectiveHidden, computeFadedIndices, nearestVisibleLine } from '@/editor/CompletedLineUtils'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
-import { getCharOffsetHidingTextarea, getCharRectInElement } from '@/editor/TextMeasure'
+import { getCharOffsetFromPoint, getCharOffsetHidingTextarea, getCharRectInElement } from '@/editor/TextMeasure'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
@@ -373,8 +373,11 @@ export function NoteEditorScreen() {
     if (!targetLine) return null
 
     const lineEl = matchedLineEl
-    const overlayEl = lineEl?.querySelector('[data-text-overlay]') ?? null
-    if (!overlayEl) {
+    const overlayEl = lineEl?.querySelector('[data-text-overlay]') as HTMLElement | null
+    const directiveEl = lineEl?.querySelector('[data-directive-content]') as HTMLElement | null
+    const contentEl = overlayEl ?? directiveEl
+
+    if (!contentEl) {
       const lineStart = editorState.getLineStartOffset(targetLineIndex)
       const offset = clientX < (lineEl?.getBoundingClientRect().left ?? 100)
         ? lineStart
@@ -384,10 +387,10 @@ export function NoteEditorScreen() {
 
     const textareaEl = lineEl?.querySelector('textarea') as HTMLElement | null
     const charIdx = textareaEl
-      ? getCharOffsetHidingTextarea(overlayEl as HTMLElement, textareaEl, clientX, clientY) ?? targetLine.content.length
-      : targetLine.content.length
+      ? getCharOffsetHidingTextarea(contentEl, textareaEl, clientX, clientY) ?? targetLine.content.length
+      : getCharOffsetFromPoint(contentEl, clientX, clientY) ?? targetLine.content.length
     const globalOffset = editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
-    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl: overlayEl, lineEl }
+    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl: contentEl, lineEl }
   }, [editorState])
 
   const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
