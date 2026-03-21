@@ -174,30 +174,28 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error getting alarms for note", it) }
 
     /**
-     * Gets all alarms for multiple note IDs in a single query.
-     * Firestore whereIn supports up to 30 values; for larger sets,
-     * batches the queries automatically.
+     * Gets alarms by their document IDs.
+     * Fetches each alarm individually via getAlarm() and collects results.
+     * Firestore doesn't support whereIn on __name__ across subcollections,
+     * so we fetch each document directly.
      */
-    suspend fun getAlarmsForNotes(noteIds: List<String>): Result<List<Alarm>> = runCatching {
+    suspend fun getAlarmsByIds(alarmIds: List<String>): Result<Map<String, Alarm>> = runCatching {
         withContext(Dispatchers.IO) {
-            if (noteIds.isEmpty()) return@withContext emptyList()
+            if (alarmIds.isEmpty()) return@withContext emptyMap()
             val userId = requireUserId()
-            noteIds.chunked(30).flatMap { chunk ->
-                val result = alarmsCollection(userId)
-                    .whereIn("noteId", chunk)
-                    .get()
-                    .await()
-                result.documents.mapNotNull { doc ->
-                    try {
-                        mapToAlarm(doc.id, doc.data ?: emptyMap())
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing alarm", e)
-                        null
-                    }
+            alarmIds.mapNotNull { alarmId ->
+                try {
+                    val doc = alarmRef(userId, alarmId).get().await()
+                    if (doc.exists()) {
+                        alarmId to mapToAlarm(doc.id, doc.data ?: emptyMap())
+                    } else null
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error fetching alarm $alarmId", e)
+                    null
                 }
-            }
+            }.toMap()
         }
-    }.onFailure { Log.e(TAG, "Error getting alarms for notes", it) }
+    }.onFailure { Log.e(TAG, "Error getting alarms by IDs", it) }
 
     /**
      * Gets upcoming alarms (status=PENDING, dueTime != null, ordered by dueTime).

@@ -6,12 +6,12 @@ import {
 } from '../../../dsl/directives/DirectiveInstance'
 import type { DirectiveInstance, ParsedDirectiveLocation } from '../../../dsl/directives/DirectiveInstance'
 
-function loc(lineIndex: number, startOffset: number, sourceText: string): ParsedDirectiveLocation {
-  return { lineIndex, startOffset, sourceText }
+function loc(lineIndex: number, startOffset: number, sourceText: string, noteId?: string): ParsedDirectiveLocation {
+  return { lineIndex, startOffset, sourceText, noteId }
 }
 
-function instance(uuid: string, lineIndex: number, startOffset: number, sourceText: string): DirectiveInstance {
-  return { uuid, lineIndex, startOffset, sourceText }
+function instance(uuid: string, lineIndex: number, startOffset: number, sourceText: string, noteId?: string): DirectiveInstance {
+  return { uuid, lineIndex, startOffset, sourceText, noteId }
 }
 
 describe('createDirectiveInstance', () => {
@@ -148,5 +148,69 @@ describe('parseAllDirectiveLocations', () => {
   it('handles empty content', () => {
     const result = parseAllDirectiveLocations('')
     expect(result).toEqual([])
+  })
+})
+
+describe('parseAllDirectiveLocations with lineNoteIds', () => {
+  it('assigns noteIds from lineNoteIds', () => {
+    const content = 'Line [a]\nLine [b]\nLine [c]'
+    const lineNoteIds = ['note1', 'note2', undefined]
+    const result = parseAllDirectiveLocations(content, lineNoteIds)
+
+    expect(result).toHaveLength(3)
+    expect(result[0]!.noteId).toBe('note1')
+    expect(result[1]!.noteId).toBe('note2')
+    expect(result[2]!.noteId).toBeUndefined()
+  })
+
+  it('uses undefined when lineNoteIds is shorter than content', () => {
+    const content = 'Line [a]\nLine [b]'
+    const lineNoteIds: (string | undefined)[] = ['note1'] // shorter than 2 lines
+    const result = parseAllDirectiveLocations(content, lineNoteIds)
+
+    expect(result).toHaveLength(2)
+    expect(result[0]!.noteId).toBe('note1')
+    expect(result[1]!.noteId).toBeUndefined()
+  })
+})
+
+describe('matchDirectiveInstances noteId preservation', () => {
+  it('preserves noteId on exact match', () => {
+    const existing = [instance('uuid1', 0, 5, '[test]', 'oldNote')]
+    const newDirs = [loc(0, 5, '[test]', 'newNote')]
+    const result = matchDirectiveInstances(existing, newDirs)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.uuid).toBe('uuid1')
+    expect(result[0]!.noteId).toBe('newNote') // updated to new noteId
+  })
+
+  it('preserves noteId on same-line shift', () => {
+    const existing = [instance('uuid1', 0, 5, '[test]', 'note1')]
+    const newDirs = [loc(0, 10, '[test]', 'note1')]
+    const result = matchDirectiveInstances(existing, newDirs)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.uuid).toBe('uuid1')
+    expect(result[0]!.noteId).toBe('note1')
+    expect(result[0]!.startOffset).toBe(10)
+  })
+
+  it('preserves noteId on line move', () => {
+    const existing = [instance('uuid1', 0, 5, '[test]', 'note1')]
+    const newDirs = [loc(3, 5, '[test]', 'note1')]
+    const result = matchDirectiveInstances(existing, newDirs)
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.uuid).toBe('uuid1')
+    expect(result[0]!.noteId).toBe('note1')
+    expect(result[0]!.lineIndex).toBe(3)
+  })
+
+  it('sets noteId on new instances', () => {
+    const result = matchDirectiveInstances([], [loc(0, 0, '[test]', 'note1')])
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.noteId).toBe('note1')
   })
 })

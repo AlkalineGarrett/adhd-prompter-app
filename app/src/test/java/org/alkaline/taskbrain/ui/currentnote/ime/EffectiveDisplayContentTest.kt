@@ -114,7 +114,7 @@ class EffectiveDisplayContentTest {
 
         // The session has the correct computed result
         val sessionResults = mapOf(
-            "0:10" to DirectiveResult.success(NumberVal(2.0))  // [add(1,1)] = 2
+            "_line:0:10" to DirectiveResult.success(NumberVal(2.0))  // [add(1,1)] = 2
         )
 
         val result = getEffectiveDisplayContent(
@@ -137,8 +137,8 @@ class EffectiveDisplayContentTest {
 
         // Session has correct results for both directives
         val sessionResults = mapOf(
-            "0:8" to DirectiveResult.success(NumberVal(2.0)),   // Line 0: [add(1,1)] = 2
-            "1:8" to DirectiveResult.success(NumberVal(4.0))    // Line 1: [add(2,2)] = 4
+            "_line:0:8" to DirectiveResult.success(NumberVal(2.0)),   // Line 0: [add(1,1)] = 2
+            "_line:1:8" to DirectiveResult.success(NumberVal(4.0))    // Line 1: [add(2,2)] = 4
         )
 
         val result = getEffectiveDisplayContent(

@@ -53,6 +53,7 @@ export interface DisplayTextResult {
  */
 export function segmentLine(
   content: string,
+  noteId: string | undefined,
   lineIndex: number,
   results: Map<string, DirectiveResult>,
 ): DirectiveSegment[] {
@@ -75,7 +76,7 @@ export function segmentLine(
       })
     }
 
-    const key = directiveKey(lineIndex, directive.startOffset)
+    const key = directiveKey(noteId, lineIndex, directive.startOffset)
     const result = results.get(key) ?? null
     const computed = result ? isComputed(result) : false
     let displayText = directive.sourceText
@@ -110,10 +111,11 @@ export function segmentLine(
  */
 export function buildDisplayText(
   content: string,
+  noteId: string | undefined,
   lineIndex: number,
   results: Map<string, DirectiveResult>,
 ): DisplayTextResult {
-  const segments = segmentLine(content, lineIndex, results)
+  const segments = segmentLine(content, noteId, lineIndex, results)
 
   if (segments.length === 0) {
     return { displayText: '', segments: [], directiveDisplayRanges: [] }

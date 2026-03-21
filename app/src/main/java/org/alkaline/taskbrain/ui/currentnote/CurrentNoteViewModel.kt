@@ -70,7 +70,6 @@ import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 import org.alkaline.taskbrain.dsl.runtime.ViewVal
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.ui.currentnote.undo.AlarmSnapshot
-import org.alkaline.taskbrain.ui.currentnote.util.AlarmOverlayMapping
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 import org.alkaline.taskbrain.util.PermissionHelper
 
@@ -294,6 +293,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     /** Extracts noteIds from NoteLines for passing to EditorState via LoadStatus. */
     private fun noteLinesToNoteIds(lines: List<NoteLine>): List<List<String>> =
         lines.map { listOfNotNull(it.noteId) }
+
+    /** Returns per-line noteIds from the line tracker for directive key generation. */
+    private fun getLineNoteIds(): List<String?> =
+        lineTracker.getTrackedLines().map { it.noteId }
 
     /**
      * Starts a Firestore snapshot listener on the current note's parent document.
@@ -579,12 +582,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
     }
 
-    /**
-     * Fetches alarms for a specific line by its note ID.
-     */
-    private val _lineAlarms = MutableLiveData<List<Alarm>>()
-    val lineAlarms: LiveData<List<Alarm>> = _lineAlarms
-
     // Recurrence config and template for the currently selected alarm (if recurring)
     private val _recurrenceConfig = MutableLiveData<RecurrenceConfig?>()
     val recurrenceConfig: LiveData<RecurrenceConfig?> = _recurrenceConfig
@@ -592,41 +589,12 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private val _recurringAlarm = MutableLiveData<RecurringAlarm?>()
     val recurringAlarm: LiveData<RecurringAlarm?> = _recurringAlarm
 
-    fun fetchAlarmsForLine(lineIndex: Int, onComplete: (() -> Unit)? = null) {
-        val noteId = getNoteIdForLine(lineIndex)
-        viewModelScope.launch {
-            val result = alarmRepository.getAlarmsForNote(noteId)
-            result.fold(
-                onSuccess = { alarms ->
-                    _lineAlarms.value = alarms
-                },
-                onFailure = { e ->
-                    Log.e("CurrentNoteViewModel", "Error fetching alarms for line", e)
-                    _lineAlarms.value = emptyList()
-                }
-            )
-            onComplete?.invoke()
-        }
-    }
-
     /**
      * Fetches a specific alarm by its document ID.
-     * Also populates lineAlarms so the dialog has sibling context.
      */
     fun fetchAlarmById(alarmId: String, onComplete: (Alarm?) -> Unit) {
         viewModelScope.launch {
-            val result = alarmRepository.getAlarm(alarmId)
-            val alarm = result.getOrNull()
-            if (alarm != null) {
-                // Also fetch sibling alarms for the same note
-                val siblingsResult = alarmRepository.getAlarmsForNote(alarm.noteId)
-                siblingsResult.fold(
-                    onSuccess = { alarms -> _lineAlarms.value = alarms },
-                    onFailure = { _lineAlarms.value = listOfNotNull(alarm) }
-                )
-            } else {
-                _lineAlarms.value = emptyList()
-            }
+            val alarm = alarmRepository.getAlarm(alarmId).getOrNull()
             onComplete(alarm)
         }
     }
@@ -655,79 +623,39 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             .getOrDefault(emptyList())
     }
 
-    // Per-noteId alarm list for rendering symbol overlays
-    private val _noteAlarms = MutableLiveData<Map<String, List<Alarm>>>(emptyMap())
-    val noteAlarms: LiveData<Map<String, List<Alarm>>> = _noteAlarms
+    // Alarm data keyed by alarm document ID, for rendering symbol overlays
+    private val _alarmCache = MutableLiveData<Map<String, Alarm>>(emptyMap())
+    val alarmCache: LiveData<Map<String, Alarm>> = _alarmCache
 
     /**
-     * Loads all alarms for every noteId referenced by the current note's lines.
-     * Called after note load and after alarm state changes.
+     * Loads all alarms referenced by alarm directives in the current note's lines.
+     * Extracts alarm IDs from [alarm("id")] directives in line content.
      */
     fun loadAlarmStates() {
-        val noteIds = lineTracker.getTrackedLines()
-            .mapNotNull { it.noteId }
-            .distinct()
-        if (noteIds.isEmpty()) {
-            _noteAlarms.value = emptyMap()
+        val alarmIds = extractAlarmIds(lineTracker.getTrackedLines())
+        if (alarmIds.isEmpty()) {
+            _alarmCache.value = emptyMap()
             return
         }
         viewModelScope.launch {
-            alarmRepository.getAlarmsForNotes(noteIds).fold(
-                onSuccess = { alarms ->
-                    _noteAlarms.value = alarms.groupBy { it.noteId }
+            alarmRepository.getAlarmsByIds(alarmIds).fold(
+                onSuccess = { alarmsById ->
+                    _alarmCache.value = alarmsById
                 },
                 onFailure = { e ->
-                    Log.e(TAG, "Error loading alarm states", e)
-                    _noteAlarms.value = emptyMap()
+                    Log.e("CurrentNoteViewModel", "Error loading alarm states", e)
+                    _alarmCache.value = emptyMap()
                 }
             )
         }
     }
 
     /**
-     * Migrates plain ⏰ characters to [alarm("id")] directives.
-     *
-     * For each line with plain ⏰ characters, matches them to alarms for that line's
-     * noteId (sorted by createdAt, matching the existing overlay order). Returns the
-     * migrated content, or null if no migration was needed.
+     * Returns [SymbolOverlay] list for each alarm directive on the given line.
+     * Delegates to pure [computeSymbolOverlays] in ViewModelPureLogic.
      */
-    fun migrateAlarmSymbols(
-        content: String,
-        noteAlarms: Map<String, List<Alarm>>
-    ): String? {
-        val lines = content.lines()
-        val trackedLines = lineTracker.getTrackedLines()
-        val lineNoteIds = lines.indices.map { index ->
-            if (index < trackedLines.size) {
-                trackedLines[index].noteId ?: currentNoteId
-            } else {
-                currentNoteId
-            }
-        }
-
-        val result = migrateAlarmSymbolLines(lines, lineNoteIds, noteAlarms) ?: return null
-        return if (result.migrated) result.lines.joinToString("\n") else null
-    }
-
-    /**
-     * Returns [SymbolOverlay] list for each alarm symbol on the given line.
-     * The list is ordered by alarm creation time (matching symbol left-to-right order).
-     */
-    fun getSymbolOverlays(lineIndex: Int, noteAlarms: Map<String, List<Alarm>>): List<SymbolOverlay> {
-        val noteId = getNoteIdForLine(lineIndex)
-        val alarms = noteAlarms[noteId] ?: return emptyList()
-        val now = Timestamp.now()
-
-        // For recurring alarms, only show the most recent instance per recurringAlarmId
-        // (old DONE/CANCELLED instances should not produce separate overlays)
-        val filtered = filterToActiveRecurringInstances(alarms)
-
-        return filtered
-            .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
-            .map { alarm -> AlarmOverlayMapping.alarmToOverlay(alarm, now) }
-    }
-
-    // Delegated to package-level filterToActiveRecurringInstances() in ViewModelPureLogic.kt
+    fun getSymbolOverlays(lineIndex: Int, lineContent: String, alarmCache: Map<String, Alarm>): List<SymbolOverlay> =
+        computeSymbolOverlays(lineContent, alarmCache, Timestamp.now())
 
     // Scheduling failure warning
     private val _schedulingWarning = MutableLiveData<String?>()
@@ -1067,6 +995,20 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Uses UUID-based keys for stable identity across text edits.
      * UUIDs are preserved when directives move due to text insertions/deletions.
      */
+    /**
+     * Re-parses directive positions from content and updates [directiveInstances]
+     * to keep position keys in sync with current line indices. Does NOT execute
+     * any directives. Call this on every content change so existing results remain
+     * addressable by their position key even when lines shift.
+     */
+    fun updateDirectivePositions(content: String) {
+        if (!DirectiveFinder.containsDirectives(content)) return
+        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
+        directiveInstances = matchDirectiveInstances(directiveInstances, newLocations)
+        // Trigger recomposition so getResultsByPosition() uses updated positions
+        _directiveResults.value = _directiveResults.value
+    }
+
     fun executeDirectivesLive(content: String) {
         if (!DirectiveFinder.containsDirectives(content)) {
             return
@@ -1074,7 +1016,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
         viewModelScope.launch {
             // Parse all directive locations from content
-            val newLocations = parseAllDirectiveLocations(content)
+            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
 
             // Match to existing instances to preserve UUIDs
             val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
@@ -1157,7 +1099,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             Log.d("InlineEditCache", "forceRefreshAllDirectives: cache cleared")
 
             // 3. Parse and match directive instances
-            val newLocations = parseAllDirectiveLocations(content)
+            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
             val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
             directiveInstances = updatedInstances
             Log.d("InlineEditCache", "forceRefreshAllDirectives: found ${updatedInstances.size} directives to re-execute")
@@ -1223,7 +1165,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
         viewModelScope.launch {
             // Parse all directive locations and match to existing instances
-            val newLocations = parseAllDirectiveLocations(content)
+            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
             val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
             directiveInstances = updatedInstances
 
@@ -1314,9 +1256,9 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
 
         // Parse all directive locations and create fresh instances with UUIDs
-        val newLocations = parseAllDirectiveLocations(content)
+        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
         val newInstances = newLocations.map { loc ->
-            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText)
+            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
         }
         directiveInstances = newInstances
 
@@ -1583,6 +1525,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         return directiveInstances.find { it.lineIndex == lineIndex && it.startOffset == startOffset }?.uuid
     }
 
+    fun getDirectiveUuidByNoteId(noteId: String, startOffset: Int): String? {
+        return directiveInstances.find { it.noteId == noteId && it.startOffset == startOffset }?.uuid
+    }
+
     /**
      * Gets directive results keyed by position (lineIndex:startOffset) for UI display.
      * This converts from the internal UUID-keyed results to position-keyed results.
@@ -1610,7 +1556,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         if (positions.isEmpty()) return
 
         // Re-parse directives and match to existing instances
-        val newLocations = parseAllDirectiveLocations(content)
+        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
         val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
         directiveInstances = updatedInstances
 
@@ -1682,7 +1628,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
             val results = mutableMapOf<String, DirectiveResult>()
             for (loc in locations) {
-                val key = DirectiveFinder.directiveKey(loc.lineIndex, loc.startOffset)
+                val key = DirectiveFinder.directiveKey(loc.noteId, loc.lineIndex, loc.startOffset)
                 Log.d("InlineEditCache", "executeDirectivesForContent: executing '${loc.sourceText}' at key=$key")
                 // Execute directive (mutations are skipped for inline view - read-only context)
                 try {

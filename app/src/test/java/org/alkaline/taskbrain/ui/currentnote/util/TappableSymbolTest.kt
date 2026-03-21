@@ -120,27 +120,27 @@ class TappableSymbolTest {
             symbol = TappableSymbol.ALARM,
             charOffset = 5,
             lineIndex = 2,
-            symbolIndexOnLine = 0
+            alarmId = "abc123"
         )
 
         assertEquals(TappableSymbol.ALARM, info.symbol)
         assertEquals(5, info.charOffset)
         assertEquals(2, info.lineIndex)
-        assertEquals(0, info.symbolIndexOnLine)
+        assertEquals("abc123", info.alarmId)
     }
 
     @Test
     fun `SymbolTapInfo equals works for identical values`() {
-        val info1 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, 0)
-        val info2 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, 0)
+        val info1 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, alarmId = "abc")
+        val info2 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, alarmId = "abc")
 
         assertEquals(info1, info2)
     }
 
     @Test
-    fun `SymbolTapInfo equals distinguishes different symbol index`() {
-        val info1 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, 0)
-        val info2 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, 1)
+    fun `SymbolTapInfo equals distinguishes different alarm ID`() {
+        val info1 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, alarmId = "abc")
+        val info2 = SymbolTapInfo(TappableSymbol.ALARM, 5, 2, alarmId = "def")
 
         assertNotEquals(info1, info2)
     }

@@ -213,8 +213,9 @@ internal fun calculateHandlePosition(
     val textLayout = layoutInfo.textLayoutResult ?: return null
 
     // Build display text info to map between source and display coordinates
+    val noteId = lineState.noteIds.firstOrNull()
     val displayResult = DirectiveSegmenter.buildDisplayText(
-        lineState.content, lineIndex, directiveResults
+        lineState.content, noteId, lineIndex, directiveResults
     )
 
     // Convert to content-local offset (offset within the content, not including prefix)

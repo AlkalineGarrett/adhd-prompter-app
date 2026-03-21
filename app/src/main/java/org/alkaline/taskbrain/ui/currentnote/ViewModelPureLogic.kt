@@ -1,12 +1,16 @@
 package org.alkaline.taskbrain.ui.currentnote
 
+import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.data.Alarm
-import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.data.AlarmMarkers
 import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.ui.currentnote.util.AlarmOverlayMapping
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
 
 /**
  * Pure logic extracted from CurrentNoteViewModel for testability.
@@ -42,59 +46,44 @@ internal suspend fun findAlarmNoteIdUpdates(
     return updates
 }
 
-// ==================== Active recurring instance filter ====================
+// ==================== Alarm ID extraction ====================
 
 /**
- * For recurring alarms, keeps only the most recent instance per recurringAlarmId.
- * Prefers PENDING instances; falls back to most recently updated.
- * Non-recurring alarms are kept as-is.
+ * Extracts all distinct alarm IDs from directive markers in tracked lines.
  */
-internal fun filterToActiveRecurringInstances(alarms: List<Alarm>): List<Alarm> {
-    val nonRecurring = alarms.filter { it.recurringAlarmId == null }
-    val recurring = alarms.filter { it.recurringAlarmId != null }
-
-    val latestPerRecurring = recurring
-        .groupBy { it.recurringAlarmId }
-        .values
-        .mapNotNull { instances ->
-            instances.firstOrNull { it.status == AlarmStatus.PENDING }
-                ?: instances.maxByOrNull { it.updatedAt?.toDate()?.time ?: 0L }
+internal fun extractAlarmIds(trackedLines: List<NoteLine>): List<String> =
+    trackedLines
+        .flatMap { line ->
+            AlarmMarkers.ALARM_DIRECTIVE_REGEX.findAll(line.content)
+                .map { it.groupValues[1] }
+                .toList()
         }
+        .distinct()
 
-    return nonRecurring + latestPerRecurring
-}
-
-// ==================== Alarm symbol migration ====================
+// ==================== Symbol overlay computation ====================
 
 /**
- * Migrates plain alarm symbols to directives, given line-to-noteId mapping and alarm data.
- * Returns migrated lines and whether any migration occurred, or null if no symbols found.
+ * Computes [SymbolOverlay] list for alarm directives in a line.
+ * Returns one overlay per directive, in left-to-right order.
  */
-internal data class MigrationResult(val lines: List<String>, val migrated: Boolean)
+internal fun computeSymbolOverlays(
+    lineContent: String,
+    alarmCache: Map<String, Alarm>,
+    now: Timestamp
+): List<SymbolOverlay> {
+    val alarmIds = AlarmMarkers.ALARM_DIRECTIVE_REGEX.findAll(lineContent)
+        .map { it.groupValues[1] }
+        .toList()
+    if (alarmIds.isEmpty()) return emptyList()
 
-internal fun migrateAlarmSymbolLines(
-    lines: List<String>,
-    lineNoteIds: List<String?>,
-    noteAlarms: Map<String, List<Alarm>>
-): MigrationResult? {
-    if (lines.none { it.contains(AlarmSymbolUtils.ALARM_SYMBOL) }) return null
-
-    var migrated = false
-    val migratedLines = lines.mapIndexed { index, line ->
-        if (!line.contains(AlarmSymbolUtils.ALARM_SYMBOL)) return@mapIndexed line
-
-        val noteId = lineNoteIds.getOrElse(index) { null } ?: return@mapIndexed line
-        val alarms = noteAlarms[noteId] ?: return@mapIndexed line
-        val filtered = filterToActiveRecurringInstances(alarms)
-            .sortedBy { it.createdAt?.toDate()?.time ?: 0L }
-
-        val alarmIds = filtered.map { it.id }
-        val result = AlarmSymbolUtils.migrateLine(line, alarmIds)
-        if (result != line) migrated = true
-        result
+    return alarmIds.map { alarmId ->
+        val alarm = alarmCache[alarmId]
+        if (alarm != null) {
+            AlarmOverlayMapping.alarmToOverlay(alarm, now)
+        } else {
+            SymbolOverlay(symbol = AlarmMarkers.ALARM_SYMBOL, badge = SymbolBadge.None)
+        }
     }
-
-    return MigrationResult(migratedLines, migrated)
 }
 
 // ==================== Directive position ====================
@@ -117,7 +106,7 @@ internal fun mapResultsByPosition(
     val positionResults = mutableMapOf<String, DirectiveResult>()
     for (instance in instances) {
         val result = uuidResults[instance.uuid] ?: continue
-        val positionKey = DirectiveFinder.directiveKey(instance.lineIndex, instance.startOffset)
+        val positionKey = DirectiveFinder.directiveKey(instance.noteId, instance.lineIndex, instance.startOffset)
         positionResults[positionKey] = result
     }
     return positionResults

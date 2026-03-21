@@ -125,6 +125,26 @@ class DirectiveInstanceTest {
     }
 
     @Test
+    fun `matchDirectiveInstances prioritizes exact match over same-line shift`() {
+        val existing = listOf(
+            DirectiveInstance("uuid-exact", 0, 5, "[foo]"),
+            DirectiveInstance("uuid-shift", 0, 10, "[foo]")
+        )
+        val newDirectives = listOf(
+            ParsedDirectiveLocation(0, 5, "[foo]"),
+            ParsedDirectiveLocation(0, 10, "[foo]")
+        )
+
+        val result = matchDirectiveInstances(existing, newDirectives)
+
+        assertEquals(2, result.size)
+        val atOffset5 = result.find { it.startOffset == 5 }
+        val atOffset10 = result.find { it.startOffset == 10 }
+        assertEquals("uuid-exact", atOffset5?.uuid)
+        assertEquals("uuid-shift", atOffset10?.uuid)
+    }
+
+    @Test
     fun `matchDirectiveInstances avoids ambiguous line move matches`() {
         val existing = listOf(
             DirectiveInstance.create(0, 0, "[datetime]"),
@@ -187,6 +207,116 @@ class DirectiveInstanceTest {
         val locations = parseAllDirectiveLocations(content)
 
         assertTrue(locations.isEmpty())
+    }
+
+    @Test
+    fun `parseAllDirectiveLocations assigns noteIds from lineNoteIds`() {
+        val content = "Line [a]\nLine [b]\nLine [c]"
+        val lineNoteIds = listOf("note1", "note2", null)
+
+        val locations = parseAllDirectiveLocations(content, lineNoteIds)
+
+        assertEquals(3, locations.size)
+        assertEquals("note1", locations[0].noteId)
+        assertEquals("note2", locations[1].noteId)
+        assertNull(locations[2].noteId)
+    }
+
+    @Test
+    fun `parseAllDirectiveLocations uses null when lineNoteIds is shorter than content`() {
+        val content = "Line [a]\nLine [b]"
+        val lineNoteIds = listOf("note1") // shorter than 2 lines
+
+        val locations = parseAllDirectiveLocations(content, lineNoteIds)
+
+        assertEquals(2, locations.size)
+        assertEquals("note1", locations[0].noteId)
+        assertNull(locations[1].noteId) // no noteId available
+    }
+
+    @Test
+    fun `parseAllDirectiveLocations handles multiple directives on same line`() {
+        val content = "[a] and [b]"
+        val locations = parseAllDirectiveLocations(content)
+
+        assertEquals(2, locations.size)
+        assertEquals(0, locations[0].lineIndex)
+        assertEquals(0, locations[1].lineIndex)
+        assertEquals("[a]", locations[0].sourceText)
+        assertEquals("[b]", locations[1].sourceText)
+    }
+
+    @Test
+    fun `parseAllDirectiveLocations handles empty content`() {
+        val locations = parseAllDirectiveLocations("")
+        assertTrue(locations.isEmpty())
+    }
+
+    // endregion
+
+    // region matchDirectiveInstances noteId preservation
+
+    @Test
+    fun `matchDirectiveInstances preserves noteId on exact match`() {
+        val existing = listOf(
+            DirectiveInstance("uuid1", 0, 5, "[test]", "oldNote")
+        )
+        val newDirs = listOf(
+            ParsedDirectiveLocation(0, 5, "[test]", "newNote")
+        )
+
+        val result = matchDirectiveInstances(existing, newDirs)
+
+        assertEquals(1, result.size)
+        assertEquals("uuid1", result[0].uuid)
+        assertEquals("newNote", result[0].noteId) // updated to new noteId
+    }
+
+    @Test
+    fun `matchDirectiveInstances preserves noteId on same-line shift`() {
+        val existing = listOf(
+            DirectiveInstance("uuid1", 0, 5, "[test]", "note1")
+        )
+        val newDirs = listOf(
+            ParsedDirectiveLocation(0, 10, "[test]", "note1") // shifted offset
+        )
+
+        val result = matchDirectiveInstances(existing, newDirs)
+
+        assertEquals(1, result.size)
+        assertEquals("uuid1", result[0].uuid)
+        assertEquals("note1", result[0].noteId)
+        assertEquals(10, result[0].startOffset)
+    }
+
+    @Test
+    fun `matchDirectiveInstances preserves noteId on line move`() {
+        val existing = listOf(
+            DirectiveInstance("uuid1", 0, 5, "[test]", "note1")
+        )
+        val newDirs = listOf(
+            ParsedDirectiveLocation(3, 5, "[test]", "note1") // moved to line 3
+        )
+
+        val result = matchDirectiveInstances(existing, newDirs)
+
+        assertEquals(1, result.size)
+        assertEquals("uuid1", result[0].uuid)
+        assertEquals("note1", result[0].noteId)
+        assertEquals(3, result[0].lineIndex)
+    }
+
+    @Test
+    fun `matchDirectiveInstances sets noteId on new instances`() {
+        val existing = emptyList<DirectiveInstance>()
+        val newDirs = listOf(
+            ParsedDirectiveLocation(0, 0, "[test]", "note1")
+        )
+
+        val result = matchDirectiveInstances(existing, newDirs)
+
+        assertEquals(1, result.size)
+        assertEquals("note1", result[0].noteId)
     }
 
     // endregion

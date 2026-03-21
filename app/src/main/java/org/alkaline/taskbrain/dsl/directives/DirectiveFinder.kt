@@ -39,15 +39,20 @@ data class DirectiveExecutionResult(
 object DirectiveFinder {
 
     /**
-     * Creates a unique key for a directive based on its position.
-     * This ensures each directive instance has its own cached result,
-     * even if multiple directives have the same text (e.g., two [now] directives).
+     * Creates a unique key for a directive based on its note identity and position.
      *
-     * @param lineIndex The line number (0-indexed) where the directive appears
-     * @param startOffset The character offset within the line where the directive starts
-     * @return A string key like "3:15" for line 3, offset 15
+     * When noteId is available, produces `"noteId:startOffset"` which is stable across
+     * line reordering. Falls back to `"_line:lineIndex:startOffset"` for lines without
+     * a noteId (e.g., unsaved new lines).
      */
-    fun directiveKey(lineIndex: Int, startOffset: Int): String = "$lineIndex:$startOffset"
+    fun directiveKey(noteId: String?, lineIndex: Int, startOffset: Int): String =
+        if (noteId != null) "$noteId:$startOffset" else "_line:$lineIndex:$startOffset"
+
+    /**
+     * Extracts the startOffset from a directive key regardless of format.
+     */
+    fun startOffsetFromKey(key: String): Int? =
+        key.substringAfterLast(':').toIntOrNull()
 
     /**
      * A located directive in note content.
@@ -244,12 +249,13 @@ object DirectiveFinder {
      */
     fun executeAllDirectives(
         content: String,
+        noteId: String?,
         lineIndex: Int,
         notes: List<Note>? = null,
         currentNote: Note? = null
     ): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
-            directiveKey(lineIndex, found.startOffset) to
+            directiveKey(noteId, lineIndex, found.startOffset) to
                 executeDirective(found.sourceText, notes, currentNote).result
         }
     }

@@ -115,33 +115,22 @@ fun NoteTextField(
                     showCompleted = showCompleted,
                     onSymbolTap = onSymbolTap?.let { callback ->
                         { lineIndex: Int, charOffsetInLine: Int ->
-                            val content = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                            val symbol = TappableSymbol.at(content, charOffsetInLine)
-                            if (symbol != null) {
-                                val textBefore = content.substring(0, charOffsetInLine.coerceAtMost(content.length))
+                            val lineState = editorState.lines.getOrNull(lineIndex)
+                            val content = lineState?.content ?: ""
+                            val prefixLen = lineState?.prefix?.length ?: 0
+                            val noteId = lineState?.noteIds?.firstOrNull()
+                            val adjustedResults = DirectiveSegmenter.adjustKeysForPrefix(directiveResults, noteId, lineIndex, prefixLen)
+                            val displayResult = DirectiveSegmenter.buildDisplayText(content, noteId, lineIndex, adjustedResults)
+                            val alarmRange = displayResult.directiveDisplayRanges.find {
+                                it.isAlarm && charOffsetInLine in it.sourceRange
+                            }
+                            if (alarmRange?.alarmId != null) {
                                 callback(SymbolTapInfo(
-                                    symbol = symbol,
+                                    symbol = TappableSymbol.ALARM,
                                     charOffset = charOffsetInLine,
                                     lineIndex = lineIndex,
-                                    symbolIndexOnLine = textBefore.count { ch -> ch.toString() == symbol.char }
+                                    alarmId = alarmRange.alarmId
                                 ))
-                            } else {
-                                // Check if tap landed on an alarm directive [alarm("id")]
-                                val prefixLen = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
-                                val adjustedResults = DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineIndex, prefixLen)
-                                val displayResult = DirectiveSegmenter.buildDisplayText(content, lineIndex, adjustedResults)
-                                val alarmRange = displayResult.directiveDisplayRanges.find {
-                                    it.isAlarm && charOffsetInLine in it.sourceRange
-                                }
-                                if (alarmRange?.alarmId != null) {
-                                    callback(SymbolTapInfo(
-                                        symbol = TappableSymbol.ALARM,
-                                        charOffset = charOffsetInLine,
-                                        lineIndex = lineIndex,
-                                        symbolIndexOnLine = 0,
-                                        alarmId = alarmRange.alarmId
-                                    ))
-                                }
                             }
                         }
                     },

@@ -93,6 +93,7 @@ export function executeAllDirectives(
   notes: Note[],
   currentNote: Note | null,
   noteOperations?: NoteOperations,
+  lineNoteIds: (string | undefined)[] = [],
 ): AllDirectivesResult {
   const results = new Map<string, DirectiveResult>()
   const allMutations: NoteMutation[] = []
@@ -100,8 +101,9 @@ export function executeAllDirectives(
 
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const directives = findDirectives(lines[lineIndex]!)
+    const noteId = lineNoteIds[lineIndex]
     for (const directive of directives) {
-      const key = directiveKey(lineIndex, directive.startOffset)
+      const key = directiveKey(noteId, lineIndex, directive.startOffset)
       const { result, mutations } = executeDirectiveWithMutations(
         directive.sourceText, notes, currentNote, noteOperations,
       )

@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 
 /**
@@ -45,7 +46,7 @@ class InlineEditSession(
 
     /**
      * Directive results for the viewed note's content.
-     * Keyed by "lineIndex:startOffset" (same format as main editor).
+     * Keyed by "noteId:startOffset" or "_line:lineIndex:startOffset".
      * These are used to render directives within the inline editor.
      */
     var directiveResults: Map<String, DirectiveResult> by mutableStateOf(emptyMap())
@@ -53,7 +54,7 @@ class InlineEditSession(
 
     /**
      * The key of the currently expanded directive (for showing DirectiveEditRow).
-     * Format: "lineIndex:startOffset"
+     * Format: "noteId:startOffset" or "_line:lineIndex:startOffset"
      * Null means no directive is expanded.
      */
     var expandedDirectiveKey: String? by mutableStateOf(null)
@@ -265,7 +266,7 @@ class InlineEditState {
                 val editorState = activeSession?.editorState ?: return@let
                 val line = editorState.lines.getOrNull(lineIndex) ?: return@let
                 val content = line.content
-                val startOffset = directiveKey.split(":").getOrNull(1)?.toIntOrNull() ?: return@let
+                val startOffset = DirectiveFinder.startOffsetFromKey(directiveKey) ?: return@let
 
                 // Find and replace the directive text
                 val newContent = content.replaceRange(

@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.ui.currentnote
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
 import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
@@ -94,12 +95,16 @@ private fun resolveDirectiveUuid(
     viewModel: CurrentNoteViewModel,
     positionKey: String
 ): String? {
-    val parts = positionKey.split(":")
-    val lineIndex = parts.getOrNull(0)?.toIntOrNull()
-    val startOffset = parts.getOrNull(1)?.toIntOrNull()
-    return if (lineIndex != null && startOffset != null) {
+    val startOffset = DirectiveFinder.startOffsetFromKey(positionKey) ?: return null
+    return if (positionKey.startsWith("_line:")) {
+        // Fallback key format: "_line:lineIndex:startOffset"
+        val lineIndex = positionKey.removePrefix("_line:").substringBefore(':').toIntOrNull() ?: return null
         viewModel.getDirectiveUuid(lineIndex, startOffset)
-    } else null
+    } else {
+        // NoteId key format: "noteId:startOffset"
+        val noteId = positionKey.substringBeforeLast(':')
+        viewModel.getDirectiveUuidByNoteId(noteId, startOffset)
+    }
 }
 
 private fun handleDirectiveConfirm(

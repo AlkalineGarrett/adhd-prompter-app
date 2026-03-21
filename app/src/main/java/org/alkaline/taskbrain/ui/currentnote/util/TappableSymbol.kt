@@ -27,7 +27,6 @@ data class SymbolTapInfo(
     val symbol: TappableSymbol,
     val charOffset: Int,
     val lineIndex: Int,
-    val symbolIndexOnLine: Int,
-    /** When tapping an alarm directive, the alarm document ID from [alarm("id")]. */
+    /** The alarm document ID from the [alarm("id")] directive. */
     val alarmId: String? = null
 )

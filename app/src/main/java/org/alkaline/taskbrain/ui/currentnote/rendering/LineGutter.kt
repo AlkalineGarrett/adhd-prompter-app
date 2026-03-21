@@ -277,10 +277,12 @@ private fun computeGutterLineLayouts(
         currentY += lineHeight
 
         // Add gap height for each expanded directive on this line
-        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        val lineState = state.lines.getOrNull(index)
+        val lineContent = lineState?.content ?: ""
+        val lineNoteId = lineState?.noteIds?.firstOrNull()
         val lineDirectives = DirectiveFinder.findDirectives(lineContent)
         for (found in lineDirectives) {
-            val key = DirectiveFinder.directiveKey(index, found.startOffset)
+            val key = DirectiveFinder.directiveKey(lineNoteId, index, found.startOffset)
             val directiveResult = directiveResults[key]
             if (directiveResult != null && !directiveResult.collapsed) {
                 val measuredHeight = directiveEditHeights[key]
@@ -400,10 +402,12 @@ private fun GutterContent(
         )
 
         // Add gaps for expanded directive edit rows on this line
-        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        val gutterLineState = state.lines.getOrNull(index)
+        val lineContent = gutterLineState?.content ?: ""
+        val gutterLineNoteId = gutterLineState?.noteIds?.firstOrNull()
         val lineDirectives = DirectiveFinder.findDirectives(lineContent)
         for (found in lineDirectives) {
-            val key = DirectiveFinder.directiveKey(index, found.startOffset)
+            val key = DirectiveFinder.directiveKey(gutterLineNoteId, index, found.startOffset)
             val result = directiveResults[key]
             if (result != null && !result.collapsed) {
                 val measuredHeight = directiveEditHeights[key]

@@ -17,18 +17,17 @@ data class DirectiveInstance(
     val uuid: String,
     val lineIndex: Int,
     val startOffset: Int,
-    val sourceText: String
+    val sourceText: String,
+    val noteId: String? = null
 ) {
     companion object {
-        /**
-         * Creates a new directive instance with a fresh UUID.
-         */
-        fun create(lineIndex: Int, startOffset: Int, sourceText: String): DirectiveInstance {
+        fun create(lineIndex: Int, startOffset: Int, sourceText: String, noteId: String? = null): DirectiveInstance {
             return DirectiveInstance(
                 uuid = UUID.randomUUID().toString(),
                 lineIndex = lineIndex,
                 startOffset = startOffset,
-                sourceText = sourceText
+                sourceText = sourceText,
+                noteId = noteId
             )
         }
     }
@@ -53,8 +52,7 @@ fun matchDirectiveInstances(
 ): List<DirectiveInstance> {
     if (newDirectives.isEmpty()) return emptyList()
     if (existingInstances.isEmpty()) {
-        // All new - generate fresh UUIDs
-        return newDirectives.map { DirectiveInstance.create(it.lineIndex, it.startOffset, it.sourceText) }
+        return newDirectives.map { DirectiveInstance.create(it.lineIndex, it.startOffset, it.sourceText, it.noteId) }
     }
 
     val result = mutableListOf<DirectiveInstance>()
@@ -77,7 +75,7 @@ fun matchDirectiveInstances(
         }
     }
     result.addAll(exactMatches.map { (newDir, existing) ->
-        existing.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset)
+        existing.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset, noteId = newDir.noteId)
     })
 
     // Pass 2: Same line, same text, different offset (text shifted on same line)
@@ -95,7 +93,7 @@ fun matchDirectiveInstances(
         }
     }
     result.addAll(sameLineMatches.map { (newDir, existing) ->
-        existing.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset)
+        existing.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset, noteId = newDir.noteId)
     })
 
     // Pass 3: Different line, same text, unique candidate (line was moved)
@@ -107,7 +105,7 @@ fun matchDirectiveInstances(
         // Only match if there's exactly one candidate (avoid ambiguity)
         if (candidates.size == 1) {
             val match = candidates.first()
-            result.add(match.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset))
+            result.add(match.copy(lineIndex = newDir.lineIndex, startOffset = newDir.startOffset, noteId = newDir.noteId))
             usedExisting.add(match.uuid)
             unmatchedNew.remove(newDir)
         }
@@ -115,7 +113,7 @@ fun matchDirectiveInstances(
 
     // Pass 4: Remaining unmatched get new UUIDs
     result.addAll(unmatchedNew.map {
-        DirectiveInstance.create(it.lineIndex, it.startOffset, it.sourceText)
+        DirectiveInstance.create(it.lineIndex, it.startOffset, it.sourceText, it.noteId)
     })
 
     return result
@@ -127,18 +125,21 @@ fun matchDirectiveInstances(
 data class ParsedDirectiveLocation(
     val lineIndex: Int,
     val startOffset: Int,
-    val sourceText: String
+    val sourceText: String,
+    val noteId: String? = null
 )
 
 /**
  * Parses all directives from content and returns their locations.
+ * @param lineNoteIds Optional noteId per line (from NoteLineTracker).
  */
-fun parseAllDirectiveLocations(content: String): List<ParsedDirectiveLocation> {
+fun parseAllDirectiveLocations(content: String, lineNoteIds: List<String?> = emptyList()): List<ParsedDirectiveLocation> {
     val result = mutableListOf<ParsedDirectiveLocation>()
     content.lines().forEachIndexed { lineIndex, lineContent ->
+        val noteId = lineNoteIds.getOrNull(lineIndex)
         val directives = DirectiveFinder.findDirectives(lineContent)
         for (directive in directives) {
-            result.add(ParsedDirectiveLocation(lineIndex, directive.startOffset, directive.sourceText))
+            result.add(ParsedDirectiveLocation(lineIndex, directive.startOffset, directive.sourceText, noteId))
         }
     }
     return result

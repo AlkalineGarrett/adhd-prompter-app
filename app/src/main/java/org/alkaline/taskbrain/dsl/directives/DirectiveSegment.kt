@@ -53,11 +53,12 @@ object DirectiveSegmenter {
      * Split a line into segments.
      *
      * @param content The line content
-     * @param lineIndex The line number (0-indexed) - used for position-based directive keys
-     * @param results Map of directive key to result (keys are position-based: "lineIndex:startOffset")
+     * @param noteId The note ID for this line (used in directive keys)
+     * @param lineIndex The line number (0-indexed) - fallback when noteId is null
+     * @param results Map of directive key to result
      * @return List of segments in order
      */
-    fun segmentLine(content: String, lineIndex: Int, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
+    fun segmentLine(content: String, noteId: String?, lineIndex: Int, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
         val directives = DirectiveFinder.findDirectives(content)
 
         if (directives.isEmpty()) {
@@ -82,8 +83,7 @@ object DirectiveSegmenter {
                 )
             }
 
-            // Add the directive segment with position-based key
-            val key = DirectiveFinder.directiveKey(lineIndex, directive.startOffset)
+            val key = DirectiveFinder.directiveKey(noteId, lineIndex, directive.startOffset)
             val lookupResult = results[key]
             segments.add(
                 DirectiveSegment.Directive(
@@ -120,10 +120,10 @@ object DirectiveSegmenter {
     /**
      * Check if a line has any computed directives (results available).
      */
-    fun hasComputedDirectives(content: String, lineIndex: Int, results: Map<String, DirectiveResult>): Boolean {
+    fun hasComputedDirectives(content: String, noteId: String?, lineIndex: Int, results: Map<String, DirectiveResult>): Boolean {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
-            val key = DirectiveFinder.directiveKey(lineIndex, directive.startOffset)
+            val key = DirectiveFinder.directiveKey(noteId, lineIndex, directive.startOffset)
             results[key]?.isComputed ?: false
         }
     }
@@ -136,22 +136,25 @@ object DirectiveSegmenter {
      * stripped). This adjusts the keys so lookups match.
      *
      * @param results The directive results keyed by full-line offsets
-     * @param lineIndex The line index to adjust keys for
+     * @param noteId The note ID for this line (used in directive keys)
+     * @param lineIndex The line index (fallback when noteId is null)
      * @param prefixLength The length of the prefix to subtract from offsets
      * @return Results with adjusted keys
      */
     fun adjustKeysForPrefix(
         results: Map<String, DirectiveResult>,
+        noteId: String?,
         lineIndex: Int,
         prefixLength: Int
     ): Map<String, DirectiveResult> {
         if (prefixLength == 0) return results
+        // Build the expected key prefix for this line
+        val keyPrefix = if (noteId != null) "$noteId:" else "_line:$lineIndex:"
         return results.mapKeys { (key, _) ->
-            val parts = key.split(":")
-            if (parts.size == 2 && parts[0] == lineIndex.toString()) {
-                val fullOffset = parts[1].toIntOrNull() ?: return@mapKeys key
+            if (key.startsWith(keyPrefix)) {
+                val fullOffset = key.removePrefix(keyPrefix).toIntOrNull() ?: return@mapKeys key
                 val contentOffset = fullOffset - prefixLength
-                if (contentOffset >= 0) "$lineIndex:$contentOffset" else key
+                if (contentOffset >= 0) "$keyPrefix$contentOffset" else key
             } else {
                 key
             }
@@ -169,10 +172,11 @@ object DirectiveSegmenter {
      */
     fun buildDisplayText(
         content: String,
+        noteId: String?,
         lineIndex: Int,
         results: Map<String, DirectiveResult>
     ): DisplayTextResult {
-        val segments = segmentLine(content, lineIndex, results)
+        val segments = segmentLine(content, noteId, lineIndex, results)
 
         if (segments.isEmpty()) {
             return DisplayTextResult(

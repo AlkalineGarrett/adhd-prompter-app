@@ -3,12 +3,13 @@ package org.alkaline.taskbrain.ui.currentnote
 import com.google.firebase.Timestamp
 import kotlinx.coroutines.test.runTest
 import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmMarkers
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.alkaline.taskbrain.dsl.runtime.values.UndefinedVal
 import org.junit.Test
@@ -71,139 +72,130 @@ class ViewModelPureLogicTest {
         assertEquals("a2", updates[0].alarmId)
     }
 
-    // ==================== filterToActiveRecurringInstances ====================
+    // ==================== mapResultsByPosition ====================
+
+    // ==================== extractAlarmIds ====================
+
+    @Test
+    fun `extractAlarmIds returns empty for lines without directives`() {
+        val lines = listOf(
+            NoteLine("Plain text", "note1"),
+            NoteLine("No alarms here", "note2")
+        )
+        assertTrue(extractAlarmIds(lines).isEmpty())
+    }
+
+    @Test
+    fun `extractAlarmIds extracts single alarm ID`() {
+        val lines = listOf(
+            NoteLine("Task [alarm(\"abc123\")]", "note1")
+        )
+        assertEquals(listOf("abc123"), extractAlarmIds(lines))
+    }
+
+    @Test
+    fun `extractAlarmIds extracts multiple alarm IDs from one line`() {
+        val lines = listOf(
+            NoteLine("Task [alarm(\"a1\")] [alarm(\"a2\")]", "note1")
+        )
+        assertEquals(listOf("a1", "a2"), extractAlarmIds(lines))
+    }
+
+    @Test
+    fun `extractAlarmIds extracts across multiple lines`() {
+        val lines = listOf(
+            NoteLine("Line 1 [alarm(\"a1\")]", "note1"),
+            NoteLine("Line 2 [alarm(\"a2\")]", "note2")
+        )
+        assertEquals(listOf("a1", "a2"), extractAlarmIds(lines))
+    }
+
+    @Test
+    fun `extractAlarmIds deduplicates`() {
+        val lines = listOf(
+            NoteLine("Line 1 [alarm(\"a1\")]", "note1"),
+            NoteLine("Line 2 [alarm(\"a1\")]", "note2")
+        )
+        assertEquals(listOf("a1"), extractAlarmIds(lines))
+    }
+
+    @Test
+    fun `extractAlarmIds ignores lines with only plain alarm symbols`() {
+        val lines = listOf(
+            NoteLine("Task ⏰", "note1")
+        )
+        assertTrue(extractAlarmIds(lines).isEmpty())
+    }
+
+    // ==================== computeSymbolOverlays ====================
 
     private fun alarm(
         id: String,
-        recurringAlarmId: String? = null,
         status: AlarmStatus = AlarmStatus.PENDING,
-        updatedAt: Timestamp? = null
-    ) = Alarm(
-        id = id,
-        recurringAlarmId = recurringAlarmId,
-        status = status,
-        updatedAt = updatedAt
-    )
+        dueTime: Timestamp? = null
+    ) = Alarm(id = id, status = status, dueTime = dueTime)
 
     @Test
-    fun `filterToActiveRecurringInstances keeps all non-recurring`() {
-        val alarms = listOf(alarm("a1"), alarm("a2"), alarm("a3"))
-        val result = filterToActiveRecurringInstances(alarms)
-        assertEquals(3, result.size)
+    fun `computeSymbolOverlays returns empty for line without directives`() {
+        assertTrue(computeSymbolOverlays("Plain text", emptyMap(), Timestamp.now()).isEmpty())
     }
 
     @Test
-    fun `filterToActiveRecurringInstances keeps one instance per recurring`() {
-        val alarms = listOf(
-            alarm("i1", recurringAlarmId = "r1", status = AlarmStatus.DONE),
-            alarm("i2", recurringAlarmId = "r1", status = AlarmStatus.PENDING),
-            alarm("i3", recurringAlarmId = "r1", status = AlarmStatus.DONE)
-        )
-        val result = filterToActiveRecurringInstances(alarms)
-        assertEquals(1, result.size)
-        assertEquals("i2", result[0].id) // PENDING preferred
+    fun `computeSymbolOverlays returns overlay for cached alarm`() {
+        val cache = mapOf("a1" to alarm("a1", AlarmStatus.DONE))
+        val overlays = computeSymbolOverlays("Task [alarm(\"a1\")]", cache, Timestamp.now())
+
+        assertEquals(1, overlays.size)
+        assertEquals(AlarmMarkers.ALARM_SYMBOL, overlays[0].symbol)
+        assertTrue(overlays[0].badge is SymbolBadge.Corner) // done = checkmark corner badge
     }
 
     @Test
-    fun `filterToActiveRecurringInstances falls back to most recently updated when no PENDING`() {
-        val old = Timestamp(Date(1000))
-        val recent = Timestamp(Date(2000))
-        val alarms = listOf(
-            alarm("i1", recurringAlarmId = "r1", status = AlarmStatus.DONE, updatedAt = old),
-            alarm("i2", recurringAlarmId = "r1", status = AlarmStatus.DONE, updatedAt = recent)
-        )
-        val result = filterToActiveRecurringInstances(alarms)
-        assertEquals(1, result.size)
-        assertEquals("i2", result[0].id) // most recently updated
+    fun `computeSymbolOverlays returns None badge for missing alarm`() {
+        val overlays = computeSymbolOverlays("Task [alarm(\"missing\")]", emptyMap(), Timestamp.now())
+
+        assertEquals(1, overlays.size)
+        assertEquals(SymbolBadge.None, overlays[0].badge)
     }
 
     @Test
-    fun `filterToActiveRecurringInstances mixes recurring and non-recurring`() {
-        val alarms = listOf(
-            alarm("standalone"),
-            alarm("i1", recurringAlarmId = "r1", status = AlarmStatus.PENDING),
-            alarm("i2", recurringAlarmId = "r1", status = AlarmStatus.DONE)
+    fun `computeSymbolOverlays preserves left-to-right order`() {
+        val cache = mapOf(
+            "a1" to alarm("a1", AlarmStatus.DONE),
+            "a2" to alarm("a2", AlarmStatus.CANCELLED)
         )
-        val result = filterToActiveRecurringInstances(alarms)
-        assertEquals(2, result.size)
-        assertTrue(result.any { it.id == "standalone" })
-        assertTrue(result.any { it.id == "i1" })
+        val overlays = computeSymbolOverlays(
+            "Task [alarm(\"a1\")] [alarm(\"a2\")]", cache, Timestamp.now()
+        )
+
+        assertEquals(2, overlays.size)
+        // First is DONE (checkmark), second is CANCELLED (X)
+        val firstBadge = overlays[0].badge as SymbolBadge.Corner
+        val secondBadge = overlays[1].badge as SymbolBadge.Corner
+        assertEquals("✓", firstBadge.text)
+        assertEquals("✕", secondBadge.text)
     }
 
     @Test
-    fun `filterToActiveRecurringInstances handles multiple recurring groups`() {
-        val alarms = listOf(
-            alarm("i1", recurringAlarmId = "r1", status = AlarmStatus.PENDING),
-            alarm("i2", recurringAlarmId = "r1", status = AlarmStatus.DONE),
-            alarm("i3", recurringAlarmId = "r2", status = AlarmStatus.PENDING),
-            alarm("i4", recurringAlarmId = "r2", status = AlarmStatus.DONE)
+    fun `computeSymbolOverlays shows past due badge for overdue alarm`() {
+        val pastDue = Timestamp(Date(System.currentTimeMillis() - 3600_000)) // 1 hour ago
+        val cache = mapOf(
+            "a1" to Alarm(
+                id = "a1",
+                status = AlarmStatus.PENDING,
+                dueTime = pastDue
+            )
         )
-        val result = filterToActiveRecurringInstances(alarms)
-        assertEquals(2, result.size)
-        assertTrue(result.any { it.id == "i1" })
-        assertTrue(result.any { it.id == "i3" })
-    }
+        val overlays = computeSymbolOverlays("Task [alarm(\"a1\")]", cache, Timestamp.now())
 
-    @Test
-    fun `filterToActiveRecurringInstances handles empty list`() {
-        val result = filterToActiveRecurringInstances(emptyList())
-        assertTrue(result.isEmpty())
-    }
-
-    // ==================== migrateAlarmSymbolLines ====================
-
-    @Test
-    fun `migrateAlarmSymbolLines returns null when no alarm symbols`() {
-        val result = migrateAlarmSymbolLines(
-            listOf("Plain text", "No alarms"),
-            listOf("note1", "note2"),
-            emptyMap()
-        )
-        assertNull(result)
-    }
-
-    @Test
-    fun `migrateAlarmSymbolLines migrates symbol to directive`() {
-        val alarms = listOf(
-            Alarm(id = "a1", createdAt = Timestamp(Date(1000)))
-        )
-        val result = migrateAlarmSymbolLines(
-            listOf("Task ⏰"),
-            listOf("note1"),
-            mapOf("note1" to alarms)
-        )
-
-        assertEquals(true, result?.migrated)
-        assertEquals("Task [alarm(\"a1\")]", result?.lines?.get(0))
-    }
-
-    @Test
-    fun `migrateAlarmSymbolLines skips lines without noteId`() {
-        val result = migrateAlarmSymbolLines(
-            listOf("Task ⏰"),
-            listOf(null),
-            emptyMap()
-        )
-
-        // Has symbols but noteId is null, so no migration possible
-        assertEquals(false, result?.migrated)
-    }
-
-    @Test
-    fun `migrateAlarmSymbolLines skips lines with no matching alarms`() {
-        val result = migrateAlarmSymbolLines(
-            listOf("Task ⏰"),
-            listOf("note1"),
-            emptyMap() // no alarms for note1
-        )
-
-        assertEquals(false, result?.migrated)
+        assertEquals(1, overlays.size)
+        assertTrue(overlays[0].badge is SymbolBadge.Centered) // past due = centered "!"
     }
 
     // ==================== mapResultsByPosition ====================
 
-    private fun directiveInstance(uuid: String, lineIndex: Int, startOffset: Int) =
-        DirectiveInstance(uuid, lineIndex, startOffset, "[test]")
+    private fun directiveInstance(uuid: String, lineIndex: Int, startOffset: Int, noteId: String? = null) =
+        DirectiveInstance(uuid, lineIndex, startOffset, "[test]", noteId)
 
     @Test
     fun `mapResultsByPosition maps UUIDs to position keys`() {
@@ -218,8 +210,8 @@ class ViewModelPureLogicTest {
 
         val mapped = mapResultsByPosition(instances, results)
         assertEquals(2, mapped.size)
-        assertTrue(mapped.containsKey("0:5"))
-        assertTrue(mapped.containsKey("2:10"))
+        assertTrue(mapped.containsKey("_line:0:5"))
+        assertTrue(mapped.containsKey("_line:2:10"))
     }
 
     @Test
@@ -234,13 +226,47 @@ class ViewModelPureLogicTest {
 
         val mapped = mapResultsByPosition(instances, results)
         assertEquals(1, mapped.size)
-        assertTrue(mapped.containsKey("0:0"))
+        assertTrue(mapped.containsKey("_line:0:0"))
     }
 
     @Test
     fun `mapResultsByPosition returns empty for empty inputs`() {
         val mapped = mapResultsByPosition(emptyList(), emptyMap())
         assertTrue(mapped.isEmpty())
+    }
+
+    @Test
+    fun `mapResultsByPosition uses noteId-based keys when noteId is set`() {
+        val instances = listOf(
+            directiveInstance("uuid1", 0, 5, noteId = "note1"),
+            directiveInstance("uuid2", 2, 10, noteId = "note2")
+        )
+        val results = mapOf(
+            "uuid1" to DirectiveResult.success(UndefinedVal),
+            "uuid2" to DirectiveResult.success(UndefinedVal)
+        )
+
+        val mapped = mapResultsByPosition(instances, results)
+        assertEquals(2, mapped.size)
+        assertTrue(mapped.containsKey("note1:5"))
+        assertTrue(mapped.containsKey("note2:10"))
+    }
+
+    @Test
+    fun `mapResultsByPosition mixes noteId and lineIndex keys`() {
+        val instances = listOf(
+            directiveInstance("uuid1", 0, 5, noteId = "note1"),
+            directiveInstance("uuid2", 2, 10) // no noteId
+        )
+        val results = mapOf(
+            "uuid1" to DirectiveResult.success(UndefinedVal),
+            "uuid2" to DirectiveResult.success(UndefinedVal)
+        )
+
+        val mapped = mapResultsByPosition(instances, results)
+        assertEquals(2, mapped.size)
+        assertTrue(mapped.containsKey("note1:5"))
+        assertTrue(mapped.containsKey("_line:2:10"))
     }
 
     // ==================== findExpandedPositions ====================

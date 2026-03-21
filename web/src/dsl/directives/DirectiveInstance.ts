@@ -5,12 +5,14 @@ export interface DirectiveInstance {
   lineIndex: number
   startOffset: number
   sourceText: string
+  noteId?: string
 }
 
 export interface ParsedDirectiveLocation {
   lineIndex: number
   startOffset: number
   sourceText: string
+  noteId?: string
 }
 
 let uuidCounter = 0
@@ -19,8 +21,8 @@ function generateUUID(): string {
   return `${Date.now()}-${++uuidCounter}-${Math.random().toString(36).slice(2, 9)}`
 }
 
-export function createDirectiveInstance(lineIndex: number, startOffset: number, sourceText: string): DirectiveInstance {
-  return { uuid: generateUUID(), lineIndex, startOffset, sourceText }
+export function createDirectiveInstance(lineIndex: number, startOffset: number, sourceText: string, noteId?: string): DirectiveInstance {
+  return { uuid: generateUUID(), lineIndex, startOffset, sourceText, noteId }
 }
 
 /**
@@ -38,7 +40,7 @@ export function matchDirectiveInstances(
 ): DirectiveInstance[] {
   if (newDirectives.length === 0) return []
   if (existing.length === 0) {
-    return newDirectives.map((d) => createDirectiveInstance(d.lineIndex, d.startOffset, d.sourceText))
+    return newDirectives.map((d) => createDirectiveInstance(d.lineIndex, d.startOffset, d.sourceText, d.noteId))
   }
 
   const result: DirectiveInstance[] = []
@@ -52,7 +54,7 @@ export function matchDirectiveInstances(
       (e) => !usedUUIDs.has(e.uuid) && e.lineIndex === newDir.lineIndex && e.startOffset === newDir.startOffset && e.sourceText === newDir.sourceText,
     )
     if (exact) {
-      result.push({ ...exact, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset })
+      result.push({ ...exact, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset, noteId: newDir.noteId })
       usedUUIDs.add(exact.uuid)
       unmatched.splice(i, 1)
     }
@@ -65,7 +67,7 @@ export function matchDirectiveInstances(
       (e) => !usedUUIDs.has(e.uuid) && e.lineIndex === newDir.lineIndex && e.sourceText === newDir.sourceText,
     )
     if (sameLine) {
-      result.push({ ...sameLine, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset })
+      result.push({ ...sameLine, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset, noteId: newDir.noteId })
       usedUUIDs.add(sameLine.uuid)
       unmatched.splice(i, 1)
     }
@@ -77,7 +79,7 @@ export function matchDirectiveInstances(
     const candidates = existing.filter((e) => !usedUUIDs.has(e.uuid) && e.sourceText === newDir.sourceText)
     if (candidates.length === 1) {
       const match = candidates[0]!
-      result.push({ ...match, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset })
+      result.push({ ...match, lineIndex: newDir.lineIndex, startOffset: newDir.startOffset, noteId: newDir.noteId })
       usedUUIDs.add(match.uuid)
       unmatched.splice(i, 1)
     }
@@ -85,7 +87,7 @@ export function matchDirectiveInstances(
 
   // Pass 4: New UUIDs
   for (const newDir of unmatched) {
-    result.push(createDirectiveInstance(newDir.lineIndex, newDir.startOffset, newDir.sourceText))
+    result.push(createDirectiveInstance(newDir.lineIndex, newDir.startOffset, newDir.sourceText, newDir.noteId))
   }
 
   return result
@@ -93,14 +95,16 @@ export function matchDirectiveInstances(
 
 /**
  * Parses all directives from content and returns their locations.
+ * @param lineNoteIds Optional noteId per line (from editor state).
  */
-export function parseAllDirectiveLocations(content: string): ParsedDirectiveLocation[] {
+export function parseAllDirectiveLocations(content: string, lineNoteIds: (string | undefined)[] = []): ParsedDirectiveLocation[] {
   const result: ParsedDirectiveLocation[] = []
   const lines = content.split('\n')
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const noteId = lineNoteIds[lineIndex]
     const directives = findDirectives(lines[lineIndex]!)
     for (const directive of directives) {
-      result.push({ lineIndex, startOffset: directive.startOffset, sourceText: directive.sourceText })
+      result.push({ lineIndex, startOffset: directive.startOffset, sourceText: directive.sourceText, noteId })
     }
   }
   return result

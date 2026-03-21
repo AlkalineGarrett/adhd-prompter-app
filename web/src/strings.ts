@@ -117,6 +117,9 @@ export const ALARM_SNOOZE_2_MIN = '2 min'
 export const ALARM_SNOOZE_10_MIN = '10 min'
 export const ALARM_SNOOZE_1_HOUR = '1 hour'
 export const ALARM_MARK_DONE = 'Mark Done'
+export const ALARM_SKIP = 'Skip' // Android: alarm_skip — button label for skipping an alarm
+export const ALARM_SNOOZE_NOTIFICATION = 'Snooze' // Android: alarm_snooze_notification
+export const ALARM_DUE_FMT = 'Due %s' // Android: alarm_due_fmt
 
 // Alarms screen (Android: no_alarms, section_past_due, etc.)
 export const NO_ALARMS = 'No alarms'

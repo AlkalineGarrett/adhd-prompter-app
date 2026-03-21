@@ -78,6 +78,7 @@ function ViewNoteSection({
         <div key={lineIndex} className={styles.noteLine}>
           <DirectiveLineContent
             content={line}
+            noteId={undefined}
             lineIndex={lineIndex}
             results={directiveResults}
             onDirectiveRefresh={onDirectiveRefresh}

@@ -1,10 +1,46 @@
 import { describe, it, expect } from 'vitest'
-import { findDirectives, containsDirectives, directiveKey, hashDirective } from '../../../dsl/directives/DirectiveFinder'
+import { findDirectives, containsDirectives, directiveKey, startOffsetFromKey, hashDirective } from '../../../dsl/directives/DirectiveFinder'
+import { executeDirective, executeAllDirectives } from '../../../dsl/directives/DirectiveExecutor'
+import { DirectiveWarningType, directiveResultToValue, directiveResultToDisplayString, directiveResultWarning } from '../../../dsl/directives/DirectiveResult'
+import { numberVal, stringVal } from '../../../dsl/runtime/DslValue'
 
 describe('directiveKey', () => {
-  it('creates key from line index and offset', () => {
-    expect(directiveKey(0, 5)).toBe('0:5')
-    expect(directiveKey(3, 12)).toBe('3:12')
+  it('creates lineIndex-based key when noteId is undefined', () => {
+    expect(directiveKey(undefined, 0, 5)).toBe('_line:0:5')
+    expect(directiveKey(undefined, 3, 12)).toBe('_line:3:12')
+  })
+
+  it('creates noteId-based key when noteId is provided', () => {
+    expect(directiveKey('abc123', 0, 5)).toBe('abc123:5')
+    expect(directiveKey('note-xyz', 7, 12)).toBe('note-xyz:12')
+  })
+
+  it('ignores lineIndex when noteId is provided', () => {
+    expect(directiveKey('abc', 0, 5)).toBe('abc:5')
+    expect(directiveKey('abc', 99, 5)).toBe('abc:5')
+  })
+})
+
+describe('startOffsetFromKey', () => {
+  it('extracts offset from noteId-based key', () => {
+    expect(startOffsetFromKey('abc123:5')).toBe(5)
+  })
+
+  it('extracts offset from lineIndex-based key', () => {
+    expect(startOffsetFromKey('_line:3:12')).toBe(12)
+  })
+
+  it('returns undefined for invalid key', () => {
+    expect(startOffsetFromKey('nocolon')).toBeUndefined()
+  })
+
+  it('returns undefined for non-numeric offset', () => {
+    expect(startOffsetFromKey('abc:xyz')).toBeUndefined()
+  })
+
+  it('handles zero offset', () => {
+    expect(startOffsetFromKey('_line:0:0')).toBe(0)
+    expect(startOffsetFromKey('note:0')).toBe(0)
   })
 })
 
@@ -130,5 +166,95 @@ describe('hashDirective', () => {
     const hash = await hashDirective('[test]')
     expect(hash).toMatch(/^[0-9a-f]+$/)
     expect(hash.length).toBe(64) // SHA-256 = 32 bytes = 64 hex chars
+  })
+})
+
+describe('executeDirective', () => {
+  it('executes number directive successfully', () => {
+    const result = executeDirective('[42]', [], null)
+    expect(result.error).toBeNull()
+    expect(result.result).not.toBeNull()
+    const val = directiveResultToValue(result)
+    expect(val).toEqual(numberVal(42))
+  })
+
+  it('executes string directive successfully', () => {
+    const result = executeDirective('["hello"]', [], null)
+    expect(result.error).toBeNull()
+    const val = directiveResultToValue(result)
+    expect(val).toEqual(stringVal('hello'))
+  })
+
+  it('returns error for invalid directive', () => {
+    const result = executeDirective('[invalid@syntax]', [], null)
+    expect(result.error).not.toBeNull()
+    expect(result.error).toContain('error')
+  })
+
+  it('returns error for empty directive', () => {
+    const result = executeDirective('[]', [], null)
+    expect(result.error).not.toBeNull()
+  })
+
+  it('returns error for unclosed string', () => {
+    const result = executeDirective('["unclosed]', [], null)
+    expect(result.error).not.toBeNull()
+  })
+})
+
+describe('executeAllDirectives', () => {
+  it('returns results for all directives', () => {
+    const { results } = executeAllDirectives('First [42] second ["hello"]', [], null)
+    expect(results.size).toBe(2)
+  })
+
+  it('handles mixed success and error', () => {
+    const { results } = executeAllDirectives('[42] and [invalid@]', [], null)
+    expect(results.size).toBe(2)
+
+    const values = [...results.values()]
+    const success = values.find((r) => r.error === null)
+    expect(success).toBeDefined()
+    expect(directiveResultToValue(success!)).toEqual(numberVal(42))
+
+    const error = values.find((r) => r.error !== null)
+    expect(error).toBeDefined()
+  })
+
+  it('returns empty map for no directives', () => {
+    const { results } = executeAllDirectives('No directives here', [], null)
+    expect(results.size).toBe(0)
+  })
+})
+
+describe('no-effect warnings', () => {
+  it('lambda at top level returns warning', () => {
+    const result = executeDirective('[lambda[i]]', [], null)
+    expect(result.error).toBeNull()
+    expect(result.warning).toBe(DirectiveWarningType.NO_EFFECT_LAMBDA)
+  })
+
+  it('lambda with body at top level returns warning', () => {
+    const result = executeDirective('[lambda[i.path]]', [], null)
+    expect(result.error).toBeNull()
+    expect(result.warning).toBe(DirectiveWarningType.NO_EFFECT_LAMBDA)
+  })
+
+  it('pattern at top level returns warning', () => {
+    const result = executeDirective('[pattern(digit*4)]', [], null)
+    expect(result.error).toBeNull()
+    expect(result.warning).toBe(DirectiveWarningType.NO_EFFECT_PATTERN)
+  })
+
+  it('warning display message is descriptive', () => {
+    expect(DirectiveWarningType.NO_EFFECT_LAMBDA).toBe('Uncalled lambda has no effect')
+    expect(DirectiveWarningType.NO_EFFECT_PATTERN).toBe('Unused pattern has no effect')
+  })
+
+  it('warning result toDisplayString shows warning message', () => {
+    const result = directiveResultWarning(DirectiveWarningType.NO_EFFECT_LAMBDA)
+    const display = directiveResultToDisplayString(result)
+    expect(display).toContain('Warning')
+    expect(display).toContain('Uncalled lambda')
   })
 })

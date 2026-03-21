@@ -8,10 +8,24 @@ export interface FoundDirective {
 }
 
 /**
- * Creates a unique key for a directive based on its position.
+ * Creates a unique key for a directive based on its note identity and position.
+ *
+ * When noteId is available, produces "noteId:startOffset" which is stable across
+ * line reordering. Falls back to "_line:lineIndex:startOffset" for lines without
+ * a noteId (e.g., unsaved new lines).
  */
-export function directiveKey(lineIndex: number, startOffset: number): string {
-  return `${lineIndex}:${startOffset}`
+export function directiveKey(noteId: string | undefined, lineIndex: number, startOffset: number): string {
+  return noteId != null ? `${noteId}:${startOffset}` : `_line:${lineIndex}:${startOffset}`
+}
+
+/**
+ * Extracts the startOffset from a directive key regardless of format.
+ */
+export function startOffsetFromKey(key: string): number | undefined {
+  const lastColon = key.lastIndexOf(':')
+  if (lastColon < 0) return undefined
+  const parsed = parseInt(key.substring(lastColon + 1), 10)
+  return isNaN(parsed) ? undefined : parsed
 }
 
 /**

@@ -9,7 +9,7 @@ import { alarmVal, numberVal, stringVal, buttonVal } from '../../dsl/runtime/Dsl
  */
 function buildSegments(content: string, lineIndex: number, resultEntries: [string, ReturnType<typeof directiveResultSuccess>][]) {
   const results = new Map(resultEntries)
-  return segmentLine(content, lineIndex, results)
+  return segmentLine(content, undefined, lineIndex, results)
 }
 
 describe('mapDisplayOffsetToSource', () => {
@@ -33,7 +33,7 @@ describe('mapDisplayOffsetToSource', () => {
     const alarmResult = directiveResultSuccess(alarmVal('abc123'))
 
     it('maps click on text before alarm to correct source position', () => {
-      const segments = buildSegments(content, 0, [['0:5', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:5', alarmResult]])
       // Display: "Task " = 5 chars, then "⏰"
       // Click at display offset 0 → source 0
       expect(mapDisplayOffsetToSource(0, segments)).toBe(0)
@@ -44,14 +44,14 @@ describe('mapDisplayOffsetToSource', () => {
     })
 
     it('maps click on alarm emoji to end of directive in source', () => {
-      const segments = buildSegments(content, 0, [['0:5', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:5', alarmResult]])
       // Display offset 6 = on/after the "⏰" emoji
       // Should map to source 20 (end of "[alarm(abc123)]")
       expect(mapDisplayOffsetToSource(6, segments)).toBe(20)
     })
 
     it('maps click past all content to end of source', () => {
-      const segments = buildSegments(content, 0, [['0:5', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:5', alarmResult]])
       expect(mapDisplayOffsetToSource(100, segments)).toBe(20)
     })
   })
@@ -63,20 +63,20 @@ describe('mapDisplayOffsetToSource', () => {
     const alarmResult = directiveResultSuccess(alarmVal('x'))
 
     it('maps click on text before directive', () => {
-      const segments = buildSegments(content, 0, [['0:2', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:2', alarmResult]])
       // "A " = 2 chars display
       expect(mapDisplayOffsetToSource(0, segments)).toBe(0)
       expect(mapDisplayOffsetToSource(1, segments)).toBe(1)
     })
 
     it('maps click on directive to end of directive source', () => {
-      const segments = buildSegments(content, 0, [['0:2', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:2', alarmResult]])
       // Display offset 2-3 is on the "⏰"
       expect(mapDisplayOffsetToSource(3, segments)).toBe(12) // after "[alarm(x)]"
     })
 
     it('maps click on text after directive correctly', () => {
-      const segments = buildSegments(content, 0, [['0:2', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:2', alarmResult]])
       // Display: "A ⏰ B"
       //           01 2 34
       // Display offset 3 = " " after emoji → source " " at position 12
@@ -93,13 +93,13 @@ describe('mapDisplayOffsetToSource', () => {
     const numResult = directiveResultSuccess(numberVal(3))
 
     it('maps click on text before directive', () => {
-      const segments = buildSegments(content, 0, [['0:2', numResult]])
+      const segments = buildSegments(content, 0, [['_line:0:2', numResult]])
       expect(mapDisplayOffsetToSource(0, segments)).toBe(0)
       expect(mapDisplayOffsetToSource(1, segments)).toBe(1)
     })
 
     it('maps click on directive display text to end of directive source', () => {
-      const segments = buildSegments(content, 0, [['0:2', numResult]])
+      const segments = buildSegments(content, 0, [['_line:0:2', numResult]])
       // Display "3" is at offset 2, source directive ends at 7
       expect(mapDisplayOffsetToSource(3, segments)).toBe(7)
     })
@@ -112,7 +112,7 @@ describe('mapDisplayOffsetToSource', () => {
     const strResult = directiveResultSuccess(stringVal('hello'))
 
     it('maps click on displayed string to after directive source', () => {
-      const segments = buildSegments(content, 0, [['0:4', strResult]])
+      const segments = buildSegments(content, 0, [['_line:0:4', strResult]])
       // Display: "say hello"
       //           0123456789
       // "say " = 4 display chars, then "hello" = 5 display chars
@@ -121,7 +121,7 @@ describe('mapDisplayOffsetToSource', () => {
     })
 
     it('maps click on text before directive correctly', () => {
-      const segments = buildSegments(content, 0, [['0:4', strResult]])
+      const segments = buildSegments(content, 0, [['_line:0:4', strResult]])
       expect(mapDisplayOffsetToSource(2, segments)).toBe(2)
     })
   })
@@ -133,7 +133,7 @@ describe('mapDisplayOffsetToSource', () => {
     const btnResult = directiveResultSuccess(buttonVal('Go', { kind: 'LambdaVal', params: [], bodyAst: null as never }))
 
     it('maps click on button chip to end of directive source', () => {
-      const segments = buildSegments(content, 0, [['0:0', btnResult]])
+      const segments = buildSegments(content, 0, [['_line:0:0', btnResult]])
       // "▶ Go" = 4 chars display, source is 11 chars
       expect(mapDisplayOffsetToSource(4, segments)).toBe(11)
     })
@@ -147,7 +147,7 @@ describe('mapDisplayOffsetToSource', () => {
     const alarm2 = directiveResultSuccess(alarmVal('y'))
 
     it('maps positions correctly across multiple directives', () => {
-      const segments = buildSegments(content, 0, [['0:2', alarm1], ['0:15', alarm2]])
+      const segments = buildSegments(content, 0, [['_line:0:2', alarm1], ['_line:0:15', alarm2]])
       // Display: "A ⏰ B ⏰ C"
       //           01 2 345 6 78
 
@@ -177,13 +177,13 @@ describe('mapDisplayOffsetToSource', () => {
     const alarmResult = directiveResultSuccess(alarmVal('z'))
 
     it('maps click on leading directive to end of directive source', () => {
-      const segments = buildSegments(content, 0, [['0:0', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:0', alarmResult]])
       // Display offset 0-1 is on "⏰", maps to source 10 (after [alarm(z)])
       expect(mapDisplayOffsetToSource(1, segments)).toBe(10)
     })
 
     it('maps click on text after leading directive', () => {
-      const segments = buildSegments(content, 0, [['0:0', alarmResult]])
+      const segments = buildSegments(content, 0, [['_line:0:0', alarmResult]])
       // Display: "⏰ end"
       //           0 1234
       // Display offset 2 = " " → source 10 + offset-in-segment

@@ -109,6 +109,10 @@
     <string name="alarm_snooze_10_min">10 min</string>
     <string name="alarm_snooze_1_hour">1 hour</string>
     <string name="alarm_mark_done">Mark Done</string>
+    <string name="alarm_skip">Skip</string>
+    <string name="alarm_snooze_notification">Snooze</string>
+    <string name="alarm_due_fmt">Due %s</string>
+    <string name="alarm_urgent_prefix">! </string>
 
     <!-- Alarms Screen Strings -->
     <string name="no_alarms">No alarms</string>

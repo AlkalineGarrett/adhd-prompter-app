@@ -7,8 +7,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.format.DateFormat
+import android.text.format.DateUtils
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.google.firebase.Timestamp
 import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmType
@@ -46,12 +49,13 @@ class NotificationHelper(private val context: Context) {
     private fun showReminderNotification(alarm: Alarm, silent: Boolean = false): Boolean {
         val builder = NotificationCompat.Builder(context, NotificationChannels.REMINDER_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Reminder")
-            .setContentText(alarm.displayName)
+            .setContentTitle(alarm.displayName)
+            .setContentText(formatDueText(alarm.dueTime))
             .setAutoCancel(true)
             .setContentIntent(createContentIntent(alarm))
+            .addAction(createSnoozeNotificationAction(alarm))
+            .addAction(createSkipAction(alarm))
             .addAction(createDoneAction(alarm))
-            .addAction(createCancelAction(alarm))
 
         if (silent) {
             builder.setSilent(true)
@@ -67,17 +71,19 @@ class NotificationHelper(private val context: Context) {
     private fun showUrgentNotification(alarm: Alarm, silent: Boolean = false): Boolean {
         // Use REMINDER channel for silent notifications (channel settings override per-notification on Android 8+)
         val channelId = if (silent) NotificationChannels.REMINDER_CHANNEL_ID else NotificationChannels.URGENT_CHANNEL_ID
+        val urgentPrefix = context.getString(R.string.alarm_urgent_prefix)
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Urgent Reminder")
-            .setContentText(alarm.displayName)
+            .setContentTitle(urgentPrefix + alarm.displayName)
+            .setContentText(formatDueText(alarm.dueTime))
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(createContentIntent(alarm))
+            .addAction(createSnoozeNotificationAction(alarm))
+            .addAction(createSkipAction(alarm))
             .addAction(createDoneAction(alarm))
-            .addAction(createCancelAction(alarm))
 
         if (silent) {
             builder.setSilent(true)
@@ -100,16 +106,17 @@ class NotificationHelper(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.ALARM_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle("Alarm")
-            .setContentText(alarm.displayName)
+            .setContentTitle(alarm.displayName)
+            .setContentText(formatDueText(alarm.dueTime))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(false)
             .setOngoing(true)
             .setFullScreenIntent(fullScreenIntent, true)
             .setContentIntent(createContentIntent(alarm))
+            .addAction(createSnoozeNotificationAction(alarm))
+            .addAction(createSkipAction(alarm))
             .addAction(createDoneAction(alarm))
-            .addAction(createSnoozeAction(alarm))
             .build()
 
         notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), notification)
@@ -157,12 +164,12 @@ class NotificationHelper(private val context: Context) {
         )
         return NotificationCompat.Action.Builder(
             R.drawable.ic_check_circle,
-            "Done",
+            context.getString(R.string.alarm_mark_done),
             pendingIntent
         ).build()
     }
 
-    private fun createSnoozeAction(alarm: Alarm): NotificationCompat.Action {
+    private fun createSnoozeNotificationAction(alarm: Alarm): NotificationCompat.Action {
         val intent = Intent(context, AlarmActionReceiver::class.java).apply {
             action = AlarmActionReceiver.ACTION_SNOOZE
             putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
@@ -175,12 +182,12 @@ class NotificationHelper(private val context: Context) {
         )
         return NotificationCompat.Action.Builder(
             R.drawable.ic_alarm,
-            "Snooze",
+            context.getString(R.string.alarm_snooze_notification),
             pendingIntent
         ).build()
     }
 
-    private fun createCancelAction(alarm: Alarm): NotificationCompat.Action {
+    private fun createSkipAction(alarm: Alarm): NotificationCompat.Action {
         val intent = Intent(context, AlarmActionReceiver::class.java).apply {
             action = AlarmActionReceiver.ACTION_CANCEL
             putExtra(AlarmActionReceiver.EXTRA_ALARM_ID, alarm.id)
@@ -193,9 +200,30 @@ class NotificationHelper(private val context: Context) {
         )
         return NotificationCompat.Action.Builder(
             R.drawable.ic_close,
-            "Cancel",
+            context.getString(R.string.alarm_skip),
             pendingIntent
         ).build()
+    }
+
+    /**
+     * Formats the due time as a friendly string for notification content text.
+     * Uses system time format (12/24 hour) and omits the date if due today.
+     */
+    private fun formatDueText(dueTime: Timestamp?): String {
+        if (dueTime == null) return ""
+        val dueMs = dueTime.toDate().time
+        val timeStr = DateFormat.getTimeFormat(context).format(dueTime.toDate())
+        val dueDate = if (DateUtils.isToday(dueMs)) {
+            timeStr
+        } else {
+            DateUtils.formatDateTime(
+                context,
+                dueMs,
+                DateUtils.FORMAT_SHOW_DATE or DateUtils.FORMAT_SHOW_TIME or
+                        DateUtils.FORMAT_ABBREV_MONTH
+            )
+        }
+        return context.getString(R.string.alarm_due_fmt, dueDate)
     }
 
     /**

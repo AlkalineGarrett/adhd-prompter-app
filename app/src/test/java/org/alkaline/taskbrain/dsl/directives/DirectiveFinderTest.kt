@@ -196,7 +196,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives returns results for all directives`() {
         val content = "First [42] second [\"hello\"]"
-        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val results = DirectiveFinder.executeAllDirectives(content, null, 0)
 
         assertEquals(2, results.size)
     }
@@ -204,7 +204,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives handles mixed success and error`() {
         val content = "[42] and [invalid@]"
-        val results = DirectiveFinder.executeAllDirectives(content, 0)
+        val results = DirectiveFinder.executeAllDirectives(content, null, 0)
 
         assertEquals(2, results.size)
 
@@ -220,7 +220,7 @@ class DirectiveFinderTest {
 
     @Test
     fun `executeAllDirectives returns empty map for no directives`() {
-        val results = DirectiveFinder.executeAllDirectives("No directives here", 0)
+        val results = DirectiveFinder.executeAllDirectives("No directives here", null, 0)
         assertTrue(results.isEmpty())
     }
 
@@ -289,6 +289,64 @@ class DirectiveFinderTest {
 
         assertEquals(2, directives.size)
         assertNotEquals(directives[0].hash(), directives[1].hash())
+    }
+
+    @Test
+    fun `hash returns hex string`() {
+        val directive = DirectiveFinder.findDirectives("[test]")[0]
+        val hash = directive.hash()
+        assertTrue(hash.matches(Regex("^[0-9a-f]+$")))
+    }
+
+    // endregion
+
+    // region directiveKey
+
+    @Test
+    fun `directiveKey with noteId produces noteId-based key`() {
+        assertEquals("abc123:15", DirectiveFinder.directiveKey("abc123", 0, 15))
+    }
+
+    @Test
+    fun `directiveKey with null noteId produces lineIndex-based key`() {
+        assertEquals("_line:3:15", DirectiveFinder.directiveKey(null, 3, 15))
+    }
+
+    @Test
+    fun `directiveKey noteId ignores lineIndex`() {
+        // When noteId is present, lineIndex is not included in the key
+        assertEquals("note1:5", DirectiveFinder.directiveKey("note1", 0, 5))
+        assertEquals("note1:5", DirectiveFinder.directiveKey("note1", 99, 5))
+    }
+
+    // endregion
+
+    // region startOffsetFromKey
+
+    @Test
+    fun `startOffsetFromKey extracts offset from noteId key`() {
+        assertEquals(15, DirectiveFinder.startOffsetFromKey("abc123:15"))
+    }
+
+    @Test
+    fun `startOffsetFromKey extracts offset from lineIndex key`() {
+        assertEquals(20, DirectiveFinder.startOffsetFromKey("_line:5:20"))
+    }
+
+    @Test
+    fun `startOffsetFromKey returns null for non-numeric`() {
+        assertNull(DirectiveFinder.startOffsetFromKey("bad:key:abc"))
+    }
+
+    @Test
+    fun `startOffsetFromKey handles zero offset`() {
+        assertEquals(0, DirectiveFinder.startOffsetFromKey("note1:0"))
+        assertEquals(0, DirectiveFinder.startOffsetFromKey("_line:0:0"))
+    }
+
+    @Test
+    fun `startOffsetFromKey returns null for key with no colon`() {
+        assertNull(DirectiveFinder.startOffsetFromKey("nocolon"))
     }
 
     // endregion

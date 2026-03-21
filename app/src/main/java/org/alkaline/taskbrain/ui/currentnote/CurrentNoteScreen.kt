@@ -179,15 +179,10 @@ fun CurrentNoteScreen(
     var showAlarmDialog by remember { mutableStateOf(false) }
     var alarmDialogLineContent by remember { mutableStateOf("") }
     var alarmDialogLineIndex by remember { mutableStateOf<Int?>(null) }
-    var alarmDialogSymbolIndex by remember { mutableStateOf(0) }
-    val lineAlarms by currentNoteViewModel.lineAlarms.observeAsState(emptyList())
-    val noteAlarmsForOverlay by currentNoteViewModel.noteAlarms.observeAsState(emptyMap())
-    // When navigating between recurring instances, this overrides the line-based alarm
-    var alarmDialogOverride by remember { mutableStateOf<Alarm?>(null) }
-    val alarmDialogExistingAlarm = alarmDialogOverride ?: lineAlarms
-        .sortedWith(compareByDescending<Alarm> { it.status == AlarmStatus.PENDING }
-            .thenBy { it.createdAt?.toDate()?.time ?: 0L })
-        .getOrNull(alarmDialogSymbolIndex)
+    val alarmCacheForOverlay by currentNoteViewModel.alarmCache.observeAsState(emptyMap())
+    // The alarm being viewed/edited in the dialog (set when tapping a directive)
+    var alarmDialogAlarm by remember { mutableStateOf<Alarm?>(null) }
+    val alarmDialogExistingAlarm = alarmDialogAlarm
     val alarmDialogRecurrenceConfig by currentNoteViewModel.recurrenceConfig.observeAsState()
     val alarmDialogRecurringAlarm by currentNoteViewModel.recurringAlarm.observeAsState()
 
@@ -244,22 +239,6 @@ fun CurrentNoteScreen(
         onSavedChanged = { isSaved = it }
     )
 
-    // Migrate plain ⏰ characters to [alarm("id")] directives when alarms are loaded
-    LaunchedEffect(noteAlarmsForOverlay) {
-        if (noteAlarmsForOverlay.isNotEmpty()) {
-            val migrated = currentNoteViewModel.migrateAlarmSymbols(
-                editorState.text, noteAlarmsForOverlay
-            )
-            if (migrated != null) {
-                editorState.updateFromText(migrated)
-                userContent = migrated
-                textFieldValue = TextFieldValue(migrated, TextRange(migrated.length))
-                controller.resetUndoHistory()
-                currentNoteViewModel.saveContent(migrated, editorState.lines.map { it.noteIds })
-                currentNoteViewModel.executeDirectivesLive(migrated)
-            }
-        }
-    }
 
     DirectiveMutationEffect(
         currentNoteId = currentNoteId,
@@ -330,18 +309,18 @@ fun CurrentNoteScreen(
         onAlarmDelete = alarmDialogExistingAlarm?.let { alarm -> { currentNoteViewModel.deleteAlarmPermanently(alarm.id) } },
         onAlarmNavigatePrevious = if (alarmDialogRecurringId != null) {{
             val idx = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }
-            if (idx > 0) alarmDialogOverride = alarmDialogSiblings[idx - 1]
+            if (idx > 0) alarmDialogAlarm = alarmDialogSiblings[idx - 1]
         }} else null,
         onAlarmNavigateNext = if (alarmDialogRecurringId != null) {{
             val idx = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }
-            if (idx in 0 until alarmDialogSiblings.lastIndex) alarmDialogOverride = alarmDialogSiblings[idx + 1]
+            if (idx in 0 until alarmDialogSiblings.lastIndex) alarmDialogAlarm = alarmDialogSiblings[idx + 1]
         }} else null,
         alarmHasPrevious = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id } > 0,
         alarmHasNext = alarmDialogSiblings.indexOfFirst { it.id == alarmDialogExistingAlarm?.id }.let { it in 0 until alarmDialogSiblings.lastIndex },
         onAlarmDismiss = {
             showAlarmDialog = false
             alarmDialogLineIndex = null
-            alarmDialogOverride = null
+            alarmDialogAlarm = null
             currentNoteViewModel.fetchRecurrenceConfig(null)
         },
         onFetchRecurrenceConfig = { currentNoteViewModel.fetchRecurrenceConfig(it) }
@@ -361,6 +340,8 @@ fun CurrentNoteScreen(
             val newBracketCount = newValue.text.count { it == ']' }
             if (newBracketCount > oldBracketCount) {
                 currentNoteViewModel.executeDirectivesLive(newValue.text)
+            } else {
+                currentNoteViewModel.updateDirectivePositions(newValue.text)
             }
         }
     }
@@ -473,17 +454,8 @@ fun CurrentNoteScreen(
                                     alarmDialogLineIndex = tapInfo.lineIndex
 
                                     if (tapInfo.alarmId != null) {
-                                        // Alarm directive tap — fetch by ID directly
                                         currentNoteViewModel.fetchAlarmById(tapInfo.alarmId) { alarm ->
-                                            alarmDialogOverride = alarm
-                                            alarmDialogSymbolIndex = 0
-                                            showAlarmDialog = true
-                                        }
-                                    } else {
-                                        // Legacy plain symbol tap — use positional index
-                                        alarmDialogOverride = null
-                                        alarmDialogSymbolIndex = tapInfo.symbolIndexOnLine
-                                        currentNoteViewModel.fetchAlarmsForLine(tapInfo.lineIndex) {
+                                            alarmDialogAlarm = alarm
                                             showAlarmDialog = true
                                         }
                                     }
@@ -496,7 +468,8 @@ fun CurrentNoteScreen(
                         buttonCallbacks = buttonCallbacks,
                         showCompleted = showCompleted,
                         symbolOverlaysProvider = { lineIndex ->
-                            currentNoteViewModel.getSymbolOverlays(lineIndex, noteAlarmsForOverlay)
+                            val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
+                            currentNoteViewModel.getSymbolOverlays(lineIndex, lineContent, alarmCacheForOverlay)
                         },
                         modifier = Modifier.weight(1f)
                     )
@@ -538,7 +511,7 @@ fun CurrentNoteScreen(
                     val lineContent = editorState.currentLine?.text ?: ""
                     alarmDialogLineContent = TextLineUtils.trimLineForAlarm(lineContent)
                     alarmDialogLineIndex = editorState.focusedLineIndex
-                    alarmDialogSymbolIndex = -1
+                    alarmDialogAlarm = null
                     showAlarmDialog = true
                 }
             },

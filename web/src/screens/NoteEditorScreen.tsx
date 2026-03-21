@@ -17,7 +17,7 @@ import { LOADING_NOTE, DELETE_NOTE, DELETE_NOTE_CONFIRM_TITLE, DELETE_NOTE_CONFI
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
 import { computeHiddenIndices, computeDisplayItemsFromHidden, computeEffectiveHidden, computeFadedIndices, nearestVisibleLine } from '@/editor/CompletedLineUtils'
-import { findDirectives } from '@/dsl/directives/DirectiveFinder'
+import { findDirectives, startOffsetFromKey } from '@/dsl/directives/DirectiveFinder'
 import { getCharOffsetFromPoint, getCharOffsetHidingTextarea, getCharRectInElement } from '@/editor/TextMeasure'
 import styles from './NoteEditorScreen.module.css'
 
@@ -35,6 +35,12 @@ export function NoteEditorScreen() {
   const { noteId } = useParams<{ noteId: string }>()
   const navigate = useNavigate()
   const { controller, editorState, loading, showLoading, saving, error, dirty, save, showCompleted, toggleShowCompleted } = useEditor(noteId)
+
+  /** Returns per-line noteIds from editor state for directive key generation. */
+  const getLineNoteIds = useCallback(
+    () => editorState.lines.map((l) => l.noteIds[0]),
+    [editorState],
+  )
 
   // Load all notes for DSL context
   const [allNotes, setAllNotes] = useState<Note[]>([])
@@ -146,14 +152,14 @@ export function NoteEditorScreen() {
     setAllNotes(notes)
     setCurrentNote(note)
     const content = editorState.text
-    void executeAndSave(content)
+    void executeAndSave(content, getLineNoteIds())
   }, [noteId, editorState, executeAndSave])
 
   // Execute directives when note finishes loading and notes context is available
   useEffect(() => {
     if (loading || !noteId || allNotes.length === 0) return
     const content = editorState.text
-    void loadAndExecute(content)
+    void loadAndExecute(content, getLineNoteIds())
   }, [loading, noteId, allNotes.length])
 
   // Add/move tab to front when note first opens, and remember for nav
@@ -176,34 +182,44 @@ export function NoteEditorScreen() {
   const saveWithDirectives = useCallback(async () => {
     await save()
     const content = editorState.text
-    void executeAndSave(content)
+    void executeAndSave(content, getLineNoteIds())
   }, [save, editorState, executeAndSave])
 
   // Directive edit callback
   const handleDirectiveEdit = useCallback((key: string, newSourceText: string) => {
-    const parts = key.split(':')
-    const lineIndex = parseInt(parts[0]!)
-    const startOffset = parseInt(parts[1]!)
+    const offset = startOffsetFromKey(key)
+    if (offset == null) return
+
+    // Find the line index: by noteId or from the fallback key format
+    let lineIndex: number | undefined
+    if (key.startsWith('_line:')) {
+      lineIndex = parseInt(key.substring('_line:'.length))
+    } else {
+      const lineNoteId = key.substring(0, key.lastIndexOf(':'))
+      lineIndex = editorState.lines.findIndex((l) => l.noteIds[0] === lineNoteId)
+      if (lineIndex < 0) return
+    }
+
     const lineContent = editorState.lines[lineIndex]?.text ?? ''
     const directives = findDirectives(lineContent)
-    const directive = directives.find((d) => d.startOffset === startOffset)
+    const directive = directives.find((d) => d.startOffset === offset)
     if (!directive) return
-    controller.confirmDirectiveEdit(lineIndex, startOffset, directive.endOffset, newSourceText)
+    controller.confirmDirectiveEdit(lineIndex, offset, directive.endOffset, newSourceText)
     const content = editorState.text
-    void executeAndSave(content)
-  }, [editorState, controller, executeAndSave])
+    void executeAndSave(content, getLineNoteIds())
+  }, [editorState, controller, executeAndSave, getLineNoteIds])
 
   // Undo/redo with directive re-execution
   const handleUndo = useCallback(() => {
     controller.undo()
     const content = editorState.text
-    void executeAndSave(content)
+    void executeAndSave(content, getLineNoteIds())
   }, [controller, editorState, executeAndSave])
 
   const handleRedo = useCallback(() => {
     controller.redo()
     const content = editorState.text
-    void executeAndSave(content)
+    void executeAndSave(content, getLineNoteIds())
   }, [controller, editorState, executeAndSave])
 
   const handleDeleteNote = useCallback(async () => {

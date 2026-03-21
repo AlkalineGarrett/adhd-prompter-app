@@ -489,7 +489,7 @@ private fun StatusButtons(
             modifier = Modifier.weight(1f),
             contentPadding = StatusButtonPadding
         ) {
-            Text(stringResource(R.string.alarm_skipped), fontSize = StatusButtonFontSize, maxLines = 1)
+            Text(stringResource(R.string.alarm_skip), fontSize = StatusButtonFontSize, maxLines = 1)
         }
         Button(
             onClick = {

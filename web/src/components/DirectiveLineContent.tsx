@@ -7,6 +7,7 @@ import styles from './DirectiveLineContent.module.css'
 
 interface DirectiveLineContentProps {
   content: string
+  noteId: string | undefined
   lineIndex: number
   results: Map<string, DirectiveResult>
   onDirectiveEdit?: (key: string, newSourceText: string) => void
@@ -21,6 +22,7 @@ interface DirectiveLineContentProps {
  */
 export function DirectiveLineContent({
   content,
+  noteId,
   lineIndex,
   results,
   onDirectiveEdit,
@@ -30,7 +32,7 @@ export function DirectiveLineContent({
 }: DirectiveLineContentProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null)
 
-  const segments = segmentLine(content, lineIndex, results)
+  const segments = segmentLine(content, noteId, lineIndex, results)
 
   const handleChipClick = useCallback((key: string) => {
     setEditingKey((prev) => (prev === key ? null : key))
