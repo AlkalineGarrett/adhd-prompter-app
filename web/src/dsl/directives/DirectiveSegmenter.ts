@@ -3,6 +3,14 @@ import type { DirectiveResult } from './DirectiveResult'
 import { directiveResultToValue, isComputed } from './DirectiveResult'
 import { toDisplayString } from '../runtime/DslValue'
 
+const ALARM_PATTERN = /^\[alarm\("([^"]+)"\)]$/
+const ALARM_SYMBOL = '⏰'
+
+/** Extracts alarm ID if source text is an alarm directive, undefined otherwise. */
+function alarmIdFromSource(sourceText: string): string | undefined {
+  return ALARM_PATTERN.exec(sourceText)?.[1]
+}
+
 // ---- Segment types ----
 
 export type DirectiveSegment = TextSegment | DirectiveSegmentType
@@ -53,8 +61,7 @@ export interface DisplayTextResult {
  */
 export function segmentLine(
   content: string,
-  noteId: string | undefined,
-  lineIndex: number,
+  lineId: string,
   results: Map<string, DirectiveResult>,
 ): DirectiveSegment[] {
   const directives = findDirectives(content)
@@ -76,13 +83,17 @@ export function segmentLine(
       })
     }
 
-    const key = directiveKey(noteId, lineIndex, directive.startOffset)
+    const key = directiveKey(lineId, directive.startOffset)
     const result = results.get(key) ?? null
     const computed = result ? isComputed(result) : false
     let displayText = directive.sourceText
     if (result && computed) {
       const val = directiveResultToValue(result)
       if (val) displayText = toDisplayString(val)
+    } else {
+      // Alarm directives are trivial pure functions — render the icon
+      // even without a computed result to avoid flicker from key mismatches
+      if (alarmIdFromSource(directive.sourceText)) displayText = ALARM_SYMBOL
     }
 
     segments.push({
@@ -93,7 +104,7 @@ export function segmentLine(
       rangeStart: directive.startOffset,
       rangeEnd: directive.endOffset,
       displayText,
-      isComputed: computed,
+      isComputed: computed || alarmIdFromSource(directive.sourceText) != null,
     })
 
     lastEnd = directive.endOffset
@@ -111,11 +122,10 @@ export function segmentLine(
  */
 export function buildDisplayText(
   content: string,
-  noteId: string | undefined,
-  lineIndex: number,
+  lineId: string,
   results: Map<string, DirectiveResult>,
 ): DisplayTextResult {
-  const segments = segmentLine(content, noteId, lineIndex, results)
+  const segments = segmentLine(content, lineId, results)
 
   if (segments.length === 0) {
     return { displayText: '', segments: [], directiveDisplayRanges: [] }
@@ -133,6 +143,7 @@ export function buildDisplayText(
       const displayEnd = displayText.length
 
       const resultValue = segment.result ? directiveResultToValue(segment.result) : null
+      const synthesizedAlarmId = alarmIdFromSource(segment.sourceText)
       directiveDisplayRanges.push({
         key: segment.key,
         sourceRangeStart: segment.rangeStart,
@@ -146,8 +157,8 @@ export function buildDisplayText(
         hasWarning: segment.result?.warning != null,
         isView: resultValue?.kind === 'ViewVal',
         isButton: resultValue?.kind === 'ButtonVal',
-        isAlarm: resultValue?.kind === 'AlarmVal',
-        alarmId: resultValue?.kind === 'AlarmVal' ? resultValue.alarmId : undefined,
+        isAlarm: resultValue?.kind === 'AlarmVal' || synthesizedAlarmId != null,
+        alarmId: resultValue?.kind === 'AlarmVal' ? resultValue.alarmId : synthesizedAlarmId,
       })
     }
   }

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes
+import java.util.UUID
 
 /**
  * Represents the state of a single line in the editor.
@@ -23,6 +24,12 @@ class LineState(
     /** Note IDs associated with this line (first = primary, rest = from merges). */
     var noteIds: List<String> = noteIds
         internal set
+
+    /** Stable temporary ID for directive key generation before a Firestore noteId is assigned. */
+    val tempId: String = UUID.randomUUID().toString()
+
+    /** The effective ID for directive keys: noteId if available, otherwise tempId. */
+    val effectiveId: String get() = noteIds.firstOrNull() ?: tempId
 
     /** The prefix portion (tabs + bullet/checkbox) */
     val prefix: String get() = extractPrefix(text)

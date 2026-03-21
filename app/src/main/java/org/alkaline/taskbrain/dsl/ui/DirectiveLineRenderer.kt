@@ -77,8 +77,7 @@ enum class ButtonExecutionState {
 @Composable
 fun DirectiveLineContent(
     sourceContent: String,
-    noteId: String?,
-    lineIndex: Int,
+    lineId: String,
     directiveResults: Map<String, DirectiveResult>,
     textStyle: TextStyle,
     onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
@@ -89,8 +88,8 @@ fun DirectiveLineContent(
     modifier: Modifier = Modifier
 ) {
     // Build display text with directive results replacing source
-    val displayResult = remember(sourceContent, noteId, lineIndex, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(sourceContent, noteId, lineIndex, directiveResults)
+    val displayResult = remember(sourceContent, lineId, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(sourceContent, lineId, directiveResults)
     }
 
     if (displayResult.directiveDisplayRanges.isEmpty()) {

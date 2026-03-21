@@ -8,14 +8,14 @@ export interface FoundDirective {
 }
 
 /**
- * Creates a unique key for a directive based on its note identity and position.
+ * Creates a unique key for a directive based on its line identity and position.
+ * Produces "lineId:startOffset" which is stable across line reordering.
  *
- * When noteId is available, produces "noteId:startOffset" which is stable across
- * line reordering. Falls back to "_line:lineIndex:startOffset" for lines without
- * a noteId (e.g., unsaved new lines).
+ * @param lineId The line's effective ID — either a Firestore noteId or a temporary UUID.
+ *   Must never be line-index-based.
  */
-export function directiveKey(noteId: string | undefined, lineIndex: number, startOffset: number): string {
-  return noteId != null ? `${noteId}:${startOffset}` : `_line:${lineIndex}:${startOffset}`
+export function directiveKey(lineId: string, startOffset: number): string {
+  return `${lineId}:${startOffset}`
 }
 
 /**

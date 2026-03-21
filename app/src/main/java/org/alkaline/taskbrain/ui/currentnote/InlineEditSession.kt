@@ -46,7 +46,7 @@ class InlineEditSession(
 
     /**
      * Directive results for the viewed note's content.
-     * Keyed by "noteId:startOffset" or "_line:lineIndex:startOffset".
+     * Keyed by "lineId:startOffset".
      * These are used to render directives within the inline editor.
      */
     var directiveResults: Map<String, DirectiveResult> by mutableStateOf(emptyMap())
@@ -54,7 +54,7 @@ class InlineEditSession(
 
     /**
      * The key of the currently expanded directive (for showing DirectiveEditRow).
-     * Format: "noteId:startOffset" or "_line:lineIndex:startOffset"
+     * Format: "lineId:startOffset"
      * Null means no directive is expanded.
      */
     var expandedDirectiveKey: String? by mutableStateOf(null)

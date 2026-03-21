@@ -5,19 +5,14 @@ import { DirectiveWarningType, directiveResultToValue, directiveResultToDisplayS
 import { numberVal, stringVal } from '../../../dsl/runtime/DslValue'
 
 describe('directiveKey', () => {
-  it('creates lineIndex-based key when noteId is undefined', () => {
-    expect(directiveKey(undefined, 0, 5)).toBe('_line:0:5')
-    expect(directiveKey(undefined, 3, 12)).toBe('_line:3:12')
+  it('creates key from lineId and offset', () => {
+    expect(directiveKey('test-line', 5)).toBe('test-line:5')
+    expect(directiveKey('test-line', 12)).toBe('test-line:12')
   })
 
-  it('creates noteId-based key when noteId is provided', () => {
-    expect(directiveKey('abc123', 0, 5)).toBe('abc123:5')
-    expect(directiveKey('note-xyz', 7, 12)).toBe('note-xyz:12')
-  })
-
-  it('ignores lineIndex when noteId is provided', () => {
-    expect(directiveKey('abc', 0, 5)).toBe('abc:5')
-    expect(directiveKey('abc', 99, 5)).toBe('abc:5')
+  it('creates key with provided lineId', () => {
+    expect(directiveKey('abc123', 5)).toBe('abc123:5')
+    expect(directiveKey('note-xyz', 12)).toBe('note-xyz:12')
   })
 })
 
@@ -26,8 +21,8 @@ describe('startOffsetFromKey', () => {
     expect(startOffsetFromKey('abc123:5')).toBe(5)
   })
 
-  it('extracts offset from lineIndex-based key', () => {
-    expect(startOffsetFromKey('_line:3:12')).toBe(12)
+  it('extracts offset from lineId-based key', () => {
+    expect(startOffsetFromKey('test-line:12')).toBe(12)
   })
 
   it('returns undefined for invalid key', () => {
@@ -39,7 +34,7 @@ describe('startOffsetFromKey', () => {
   })
 
   it('handles zero offset', () => {
-    expect(startOffsetFromKey('_line:0:0')).toBe(0)
+    expect(startOffsetFromKey('test-line:0')).toBe(0)
     expect(startOffsetFromKey('note:0')).toBe(0)
   })
 })

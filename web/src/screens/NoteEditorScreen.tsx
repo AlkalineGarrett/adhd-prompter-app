@@ -36,9 +36,9 @@ export function NoteEditorScreen() {
   const navigate = useNavigate()
   const { controller, editorState, loading, showLoading, saving, error, dirty, save, showCompleted, toggleShowCompleted } = useEditor(noteId)
 
-  /** Returns per-line noteIds from editor state for directive key generation. */
-  const getLineNoteIds = useCallback(
-    () => editorState.lines.map((l) => l.noteIds[0]),
+  /** Returns per-line effective IDs from editor state for directive key generation. */
+  const getLineIds = useCallback(
+    () => editorState.lines.map((l) => l.effectiveId),
     [editorState],
   )
 
@@ -152,14 +152,14 @@ export function NoteEditorScreen() {
     setAllNotes(notes)
     setCurrentNote(note)
     const content = editorState.text
-    void executeAndSave(content, getLineNoteIds())
+    void executeAndSave(content, getLineIds())
   }, [noteId, editorState, executeAndSave])
 
   // Execute directives when note finishes loading and notes context is available
   useEffect(() => {
     if (loading || !noteId || allNotes.length === 0) return
     const content = editorState.text
-    void loadAndExecute(content, getLineNoteIds())
+    void loadAndExecute(content, getLineIds())
   }, [loading, noteId, allNotes.length])
 
   // Add/move tab to front when note first opens, and remember for nav
@@ -182,7 +182,7 @@ export function NoteEditorScreen() {
   const saveWithDirectives = useCallback(async () => {
     await save()
     const content = editorState.text
-    void executeAndSave(content, getLineNoteIds())
+    void executeAndSave(content, getLineIds())
   }, [save, editorState, executeAndSave])
 
   // Directive edit callback
@@ -190,15 +190,10 @@ export function NoteEditorScreen() {
     const offset = startOffsetFromKey(key)
     if (offset == null) return
 
-    // Find the line index: by noteId or from the fallback key format
-    let lineIndex: number | undefined
-    if (key.startsWith('_line:')) {
-      lineIndex = parseInt(key.substring('_line:'.length))
-    } else {
-      const lineNoteId = key.substring(0, key.lastIndexOf(':'))
-      lineIndex = editorState.lines.findIndex((l) => l.noteIds[0] === lineNoteId)
-      if (lineIndex < 0) return
-    }
+    // Find the line index from the lineId (noteId or tempId) in the key
+    const lineId = key.substring(0, key.lastIndexOf(':'))
+    let lineIndex = editorState.lines.findIndex((l) => l.effectiveId === lineId)
+    if (lineIndex < 0) return
 
     const lineContent = editorState.lines[lineIndex]?.text ?? ''
     const directives = findDirectives(lineContent)
@@ -206,20 +201,20 @@ export function NoteEditorScreen() {
     if (!directive) return
     controller.confirmDirectiveEdit(lineIndex, offset, directive.endOffset, newSourceText)
     const content = editorState.text
-    void executeAndSave(content, getLineNoteIds())
-  }, [editorState, controller, executeAndSave, getLineNoteIds])
+    void executeAndSave(content, getLineIds())
+  }, [editorState, controller, executeAndSave, getLineIds])
 
   // Undo/redo with directive re-execution
   const handleUndo = useCallback(() => {
     controller.undo()
     const content = editorState.text
-    void executeAndSave(content, getLineNoteIds())
+    void executeAndSave(content, getLineIds())
   }, [controller, editorState, executeAndSave])
 
   const handleRedo = useCallback(() => {
     controller.redo()
     const content = editorState.text
-    void executeAndSave(content, getLineNoteIds())
+    void executeAndSave(content, getLineIds())
   }, [controller, editorState, executeAndSave])
 
   const handleDeleteNote = useCallback(async () => {

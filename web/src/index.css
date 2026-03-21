@@ -84,6 +84,9 @@
   --color-icon-default: #000000;
   --color-icon-disabled: #808080;
 
+  /* Editor font size (shared across editor input, overlays, directive chips) */
+  --font-size-editor: 0.9375rem;
+
   /* Deleted note — Android: deleted_note_background, deleted_note_text */
   --color-deleted-bg: #f0f0f0;
   --color-deleted-text: #666666;

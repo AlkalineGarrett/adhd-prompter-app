@@ -485,6 +485,24 @@ class EditorState {
     }
 
     /**
+     * Syncs primary noteIds from the line tracker into LineState.
+     *
+     * The line tracker (NoteLineTracker) is the source of truth for noteIds.
+     * LineState also maintains noteIds for undo/redo snapshots and merge tracking.
+     * This method keeps them in sync so directive key lookups use consistent noteIds.
+     */
+    internal fun syncNoteIds(trackerNoteIds: List<String?>) {
+        for (i in lines.indices) {
+            val trackerId = trackerNoteIds.getOrNull(i) ?: continue
+            val currentIds = lines[i].noteIds
+            if (currentIds.isEmpty() || currentIds.first() != trackerId) {
+                // Set primary noteId from tracker, keep secondary IDs from merges
+                lines[i].noteIds = listOf(trackerId) + currentIds.drop(1).filter { it != trackerId }
+            }
+        }
+    }
+
+    /**
      * Initializes the editor from note lines with their associated noteIds.
      * Used when loading a note from Firestore.
      */

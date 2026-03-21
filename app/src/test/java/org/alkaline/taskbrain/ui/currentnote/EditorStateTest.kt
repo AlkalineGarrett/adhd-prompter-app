@@ -983,4 +983,68 @@ class EditorStateTest {
         assertEquals("• abc", state.lines[0].text)
         assertEquals("• def", state.lines[1].text)
     }
+
+    // ==================== syncNoteIds ====================
+
+    @Test
+    fun `syncNoteIds sets primary noteId from tracker`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("line1" to emptyList(), "line2" to emptyList()))
+
+        state.syncNoteIds(listOf("noteA", "noteB"))
+
+        assertEquals(listOf("noteA"), state.lines[0].noteIds)
+        assertEquals(listOf("noteB"), state.lines[1].noteIds)
+    }
+
+    @Test
+    fun `syncNoteIds preserves secondary noteIds from merges`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("merged line" to listOf("primary", "secondary")))
+
+        state.syncNoteIds(listOf("newPrimary"))
+
+        assertEquals(listOf("newPrimary", "secondary"), state.lines[0].noteIds)
+    }
+
+    @Test
+    fun `syncNoteIds skips lines with null tracker noteId`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("line1" to listOf("existing")))
+
+        state.syncNoteIds(listOf(null))
+
+        assertEquals(listOf("existing"), state.lines[0].noteIds)
+    }
+
+    @Test
+    fun `syncNoteIds handles tracker with fewer lines than editor`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("line1" to emptyList(), "line2" to emptyList()))
+
+        state.syncNoteIds(listOf("noteA")) // only one tracker line
+
+        assertEquals(listOf("noteA"), state.lines[0].noteIds)
+        assertEquals(emptyList<String>(), state.lines[1].noteIds)
+    }
+
+    @Test
+    fun `syncNoteIds deduplicates when tracker noteId matches secondary`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("merged" to listOf("old", "noteX")))
+
+        state.syncNoteIds(listOf("noteX")) // tracker has noteX, which is already a secondary
+
+        assertEquals(listOf("noteX"), state.lines[0].noteIds) // no duplicate
+    }
+
+    @Test
+    fun `syncNoteIds is no-op when noteIds already match`() {
+        val state = EditorState()
+        state.initFromNoteLines(listOf("line" to listOf("noteA")))
+
+        state.syncNoteIds(listOf("noteA"))
+
+        assertEquals(listOf("noteA"), state.lines[0].noteIds)
+    }
 }

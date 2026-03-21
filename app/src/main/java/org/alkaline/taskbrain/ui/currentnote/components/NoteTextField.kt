@@ -118,9 +118,9 @@ fun NoteTextField(
                             val lineState = editorState.lines.getOrNull(lineIndex)
                             val content = lineState?.content ?: ""
                             val prefixLen = lineState?.prefix?.length ?: 0
-                            val noteId = lineState?.noteIds?.firstOrNull()
-                            val adjustedResults = DirectiveSegmenter.adjustKeysForPrefix(directiveResults, noteId, lineIndex, prefixLen)
-                            val displayResult = DirectiveSegmenter.buildDisplayText(content, noteId, lineIndex, adjustedResults)
+                            val lineId = lineState?.effectiveId ?: "unknown"
+                            val adjustedResults = DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineId, prefixLen)
+                            val displayResult = DirectiveSegmenter.buildDisplayText(content, lineId, adjustedResults)
                             val alarmRange = displayResult.directiveDisplayRanges.find {
                                 it.isAlarm && charOffsetInLine in it.sourceRange
                             }

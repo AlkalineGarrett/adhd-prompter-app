@@ -20,6 +20,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import org.alkaline.taskbrain.data.Alarm
+import org.alkaline.taskbrain.data.AlarmMarkers
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.Note
@@ -295,7 +296,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         lines.map { listOfNotNull(it.noteId) }
 
     /** Returns per-line noteIds from the line tracker for directive key generation. */
-    private fun getLineNoteIds(): List<String?> =
+    fun getLineNoteIds(): List<String?> =
         lineTracker.getTrackedLines().map { it.noteId }
 
     /**
@@ -378,6 +379,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             _isNoteDeleted.value = cached.isDeleted
             lineTracker.setTrackedLines(cached.noteLines)
             _loadStatus.value = LoadStatus.Success(fullContent, noteLinesToNoteIds(cached.noteLines))
+            // Pre-populate alarm results for instant icon rendering
+            prePopulateAlarmResults(fullContent)
             // Still update lastAccessedAt, load showCompleted, and directive results in background
             viewModelScope.launch {
                 repository.updateLastAccessed(currentNoteId)
@@ -449,6 +452,9 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                         loadedLines,
                         _isNoteDeleted.value ?: false
                     )
+
+                    // Pre-populate alarm results for instant icon rendering
+                    prePopulateAlarmResults(fullContent)
 
                     // Load cached directive results and execute any missing directives
                     loadDirectiveResults(fullContent)
@@ -1241,6 +1247,35 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Cached results in Firestore are keyed by text hash. We create fresh UUID-based instances
      * and map cached results to them.
      */
+    /**
+     * Pre-populates directive results for alarm directives synchronously.
+     * Alarm directives are trivial pure functions ([alarm("id")] → AlarmVal(id))
+     * that don't need notes data or Firestore. This provides instant rendering
+     * while the full loadDirectiveResults pipeline handles complex directives async.
+     */
+    private fun prePopulateAlarmResults(content: String) {
+        if (!DirectiveFinder.containsDirectives(content)) return
+
+        val locations = parseAllDirectiveLocations(content, getLineNoteIds())
+        val newInstances = locations.map { loc ->
+            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
+        }
+        directiveInstances = newInstances
+
+        val uuidResults = mutableMapOf<String, DirectiveResult>()
+        for (instance in newInstances) {
+            val match = AlarmMarkers.ALARM_DIRECTIVE_REGEX.matchEntire(instance.sourceText)
+            if (match != null) {
+                val alarmId = match.groupValues[1]
+                uuidResults[instance.uuid] = DirectiveResult.success(AlarmVal(alarmId))
+            }
+        }
+
+        if (uuidResults.isNotEmpty()) {
+            _directiveResults.value = uuidResults
+        }
+    }
+
     private suspend fun loadDirectiveResults(content: String) {
         // First load cached results (keyed by text hash in Firestore)
         val cachedByHash = directiveResultRepository.getResults(currentNoteId)
@@ -1255,18 +1290,27 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             return
         }
 
-        // Parse all directive locations and create fresh instances with UUIDs
+        // Parse directive locations and match to existing instances (preserves UUIDs
+        // from prePopulateAlarmResults so pre-populated results stay valid)
         val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-        val newInstances = newLocations.map { loc ->
-            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
+        val newInstances = if (directiveInstances.isNotEmpty()) {
+            matchDirectiveInstances(directiveInstances, newLocations)
+        } else {
+            newLocations.map { loc ->
+                DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
+            }
         }
         directiveInstances = newInstances
 
-        // Build UUID-based results map from cached results
-        val uuidResults = mutableMapOf<String, DirectiveResult>()
+        // Start with any pre-populated results (from prePopulateAlarmResults)
+        val prePopulated = _directiveResults.value ?: emptyMap()
+        val uuidResults = prePopulated.toMutableMap()
         val missingInstances = mutableListOf<DirectiveInstance>()
 
         for (instance in newInstances) {
+            // Skip if already pre-populated (e.g., alarm results from prePopulateAlarmResults)
+            if (uuidResults.containsKey(instance.uuid)) continue
+
             val textHash = DirectiveResult.hashDirective(instance.sourceText)
             val cached = cachedByHash[textHash]
             val cachedValue = cached?.toValue()
@@ -1434,7 +1478,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Note: The buttonVal passed here has a placeholder lambda (lambdas can't be serialized).
      * We need to re-parse the source text to get the real lambda for execution.
      *
-     * @param directiveKey Position-based key (e.g., "3:15" for line 3, offset 15)
+     * @param directiveKey Directive key (e.g., "noteId:15")
      * @param buttonVal The ButtonVal (used for label display, action is placeholder)
      * @param sourceText The original directive source text to re-parse for execution
      */
@@ -1530,12 +1574,14 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Gets directive results keyed by position (lineIndex:startOffset) for UI display.
-     * This converts from the internal UUID-keyed results to position-keyed results.
+     * Gets directive results keyed by position (lineId:offset).
+     *
+     * @param effectiveIds The effective IDs from the editor's LineState (noteId or tempId).
+     *   Keys are generated using these IDs so they match what the rendering layer will look up.
      */
-    fun getResultsByPosition(): Map<String, DirectiveResult> {
+    fun getResultsByPosition(effectiveIds: List<String>): Map<String, DirectiveResult> {
         val uuidResults = _directiveResults.value ?: return emptyMap()
-        return mapResultsByPosition(directiveInstances, uuidResults)
+        return mapResultsByPosition(directiveInstances, uuidResults, effectiveIds)
     }
 
     /**
@@ -1602,7 +1648,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
     /**
      * Execute directives for arbitrary content (e.g., a viewed note being edited inline).
-     * Returns directive results keyed by "lineIndex:startOffset" for use in rendering.
+     * Returns directive results keyed by "lineId:startOffset" for use in rendering.
      *
      * This is used when inline editing a viewed note to render its directives properly.
      * The results are separate from the main note's directive results.
@@ -1628,7 +1674,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
             val results = mutableMapOf<String, DirectiveResult>()
             for (loc in locations) {
-                val key = DirectiveFinder.directiveKey(loc.noteId, loc.lineIndex, loc.startOffset)
+                val lineId = loc.noteId ?: "inline:${loc.lineIndex}"
+                val key = DirectiveFinder.directiveKey(lineId, loc.startOffset)
                 Log.d("InlineEditCache", "executeDirectivesForContent: executing '${loc.sourceText}' at key=$key")
                 // Execute directive (mutations are skipped for inline view - read-only context)
                 try {

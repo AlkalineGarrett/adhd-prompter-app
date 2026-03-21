@@ -25,22 +25,41 @@ sealed class DirectiveSegment {
      */
     data class Directive(
         val sourceText: String,      // Original text, e.g., "[42]"
-        val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
+        val key: String,             // Directive key (e.g., "noteId:15")
         val result: DirectiveResult?, // Computed result, null if not yet computed
         override val range: IntRange
     ) : DirectiveSegment() {
         /** Display text - result value if computed, source if not */
         val displayText: String
             get() {
-                val r = result ?: return sourceText
-                if (!r.isComputed) return sourceText
-                val value = r.toValue() ?: return sourceText
-                return value.toDisplayString()
+                val r = result
+                if (r != null && r.isComputed) {
+                    val value = r.toValue() ?: return sourceText
+                    return value.toDisplayString()
+                }
+                // Alarm directives are trivial pure functions — render the icon
+                // even without a computed result to avoid flicker from key mismatches
+                return alarmIdFromSource(sourceText)?.let { ALARM_SYMBOL } ?: sourceText
             }
 
         /** Whether this directive has been computed */
         val isComputed: Boolean
-            get() = result?.isComputed ?: false
+            get() = result?.isComputed ?: false || alarmIdFromSource(sourceText) != null
+
+        /** The synthesized result for alarm directives (key-mismatch-proof) */
+        val effectiveResult: DirectiveResult?
+            get() = result ?: alarmIdFromSource(sourceText)?.let {
+                DirectiveResult.success(AlarmVal(it))
+            }
+
+        companion object {
+            private const val ALARM_SYMBOL = "⏰"
+            private val ALARM_PATTERN = Regex("""\[alarm\("([^"]+)"\)]""")
+
+            /** Extracts the alarm ID if this is an alarm directive, null otherwise. */
+            fun alarmIdFromSource(sourceText: String): String? =
+                ALARM_PATTERN.matchEntire(sourceText)?.groupValues?.get(1)
+        }
     }
 }
 
@@ -53,12 +72,11 @@ object DirectiveSegmenter {
      * Split a line into segments.
      *
      * @param content The line content
-     * @param noteId The note ID for this line (used in directive keys)
-     * @param lineIndex The line number (0-indexed) - fallback when noteId is null
+     * @param lineId The line's effective ID (noteId or temp UUID)
      * @param results Map of directive key to result
      * @return List of segments in order
      */
-    fun segmentLine(content: String, noteId: String?, lineIndex: Int, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
+    fun segmentLine(content: String, lineId: String, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
         val directives = DirectiveFinder.findDirectives(content)
 
         if (directives.isEmpty()) {
@@ -83,7 +101,7 @@ object DirectiveSegmenter {
                 )
             }
 
-            val key = DirectiveFinder.directiveKey(noteId, lineIndex, directive.startOffset)
+            val key = DirectiveFinder.directiveKey(lineId, directive.startOffset)
             val lookupResult = results[key]
             segments.add(
                 DirectiveSegment.Directive(
@@ -120,10 +138,10 @@ object DirectiveSegmenter {
     /**
      * Check if a line has any computed directives (results available).
      */
-    fun hasComputedDirectives(content: String, noteId: String?, lineIndex: Int, results: Map<String, DirectiveResult>): Boolean {
+    fun hasComputedDirectives(content: String, lineId: String, results: Map<String, DirectiveResult>): Boolean {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
-            val key = DirectiveFinder.directiveKey(noteId, lineIndex, directive.startOffset)
+            val key = DirectiveFinder.directiveKey(lineId, directive.startOffset)
             results[key]?.isComputed ?: false
         }
     }
@@ -136,20 +154,17 @@ object DirectiveSegmenter {
      * stripped). This adjusts the keys so lookups match.
      *
      * @param results The directive results keyed by full-line offsets
-     * @param noteId The note ID for this line (used in directive keys)
-     * @param lineIndex The line index (fallback when noteId is null)
+     * @param lineId The line's effective ID (noteId or temp UUID)
      * @param prefixLength The length of the prefix to subtract from offsets
      * @return Results with adjusted keys
      */
     fun adjustKeysForPrefix(
         results: Map<String, DirectiveResult>,
-        noteId: String?,
-        lineIndex: Int,
+        lineId: String,
         prefixLength: Int
     ): Map<String, DirectiveResult> {
         if (prefixLength == 0) return results
-        // Build the expected key prefix for this line
-        val keyPrefix = if (noteId != null) "$noteId:" else "_line:$lineIndex:"
+        val keyPrefix = "$lineId:"
         return results.mapKeys { (key, _) ->
             if (key.startsWith(keyPrefix)) {
                 val fullOffset = key.removePrefix(keyPrefix).toIntOrNull() ?: return@mapKeys key
@@ -166,17 +181,16 @@ object DirectiveSegmenter {
      * Also returns offset mapping from display to source positions.
      *
      * @param content The source line content
-     * @param lineIndex The line number (0-indexed) - used for position-based directive keys
-     * @param results Map of directive key to result (keys are position-based: "lineIndex:startOffset")
+     * @param lineId The line's effective ID (noteId or temp UUID)
+     * @param results Map of directive key to result
      * @return Pair of (displayText, sourceToDisplayMapping)
      */
     fun buildDisplayText(
         content: String,
-        noteId: String?,
-        lineIndex: Int,
+        lineId: String,
         results: Map<String, DirectiveResult>
     ): DisplayTextResult {
-        val segments = segmentLine(content, noteId, lineIndex, results)
+        val segments = segmentLine(content, lineId, results)
 
         if (segments.isEmpty()) {
             return DisplayTextResult(
@@ -200,8 +214,8 @@ object DirectiveSegmenter {
                     displayBuilder.append(displayText)
                     val displayEnd = displayBuilder.length
 
-                    // Check if the result is a ViewVal, ButtonVal, or AlarmVal for special UI handling
-                    val resultValue = segment.result?.toValue()
+                    // Use effectiveResult to include synthesized alarm results
+                    val resultValue = segment.effectiveResult?.toValue()
                     val isViewResult = resultValue is ViewVal
                     val isButtonResult = resultValue is ButtonVal
                     val isAlarmResult = resultValue is AlarmVal
@@ -253,7 +267,7 @@ data class DisplayTextResult(
  * Alarm identity: Added isAlarm/alarmId for alarm directive rendering (no dashed box).
  */
 data class DirectiveDisplayRange(
-    val key: String,             // Position-based key (e.g., "3:15" for line 3, offset 15)
+    val key: String,             // Directive key (e.g., "noteId:15")
     val sourceRange: IntRange,
     val displayRange: IntRange,
     val sourceText: String,

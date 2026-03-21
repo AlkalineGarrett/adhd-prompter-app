@@ -8,11 +8,19 @@ export class LineState {
   text: string
   cursorPosition: number
   noteIds: string[]
+  /** Stable temporary ID for directive key generation before a Firestore noteId is assigned. */
+  readonly tempId: string
 
   constructor(text: string, cursorPosition?: number, noteIds: string[] = []) {
     this.text = text
     this.cursorPosition = clamp(cursorPosition ?? text.length, 0, text.length)
     this.noteIds = noteIds
+    this.tempId = crypto.randomUUID()
+  }
+
+  /** The effective ID for directive keys: noteId if available, otherwise tempId. */
+  get effectiveId(): string {
+    return this.noteIds[0] ?? this.tempId
   }
 
   get prefix(): string {

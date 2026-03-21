@@ -39,14 +39,14 @@ data class DirectiveExecutionResult(
 object DirectiveFinder {
 
     /**
-     * Creates a unique key for a directive based on its note identity and position.
+     * Creates a unique key for a directive based on its line identity and position.
+     * Produces `"lineId:startOffset"` which is stable across line reordering.
      *
-     * When noteId is available, produces `"noteId:startOffset"` which is stable across
-     * line reordering. Falls back to `"_line:lineIndex:startOffset"` for lines without
-     * a noteId (e.g., unsaved new lines).
+     * @param lineId The line's effective ID — either a Firestore noteId or a temporary UUID.
+     *   Must never be line-index-based.
      */
-    fun directiveKey(noteId: String?, lineIndex: Int, startOffset: Int): String =
-        if (noteId != null) "$noteId:$startOffset" else "_line:$lineIndex:$startOffset"
+    fun directiveKey(lineId: String, startOffset: Int): String =
+        "$lineId:$startOffset"
 
     /**
      * Extracts the startOffset from a directive key regardless of format.
@@ -242,20 +242,19 @@ object DirectiveFinder {
      * Find, parse, and execute all directives in the content.
      *
      * @param content The note content (single line)
-     * @param lineIndex The line index (for position-based keys)
+     * @param lineId The line's effective ID (noteId or temp UUID)
      * @param notes Optional list of notes for find() operations
      * @param currentNote Optional current note for [.] reference (Milestone 6)
      * @return Map of directive position key to execution result
      */
     fun executeAllDirectives(
         content: String,
-        noteId: String?,
-        lineIndex: Int,
+        lineId: String,
         notes: List<Note>? = null,
         currentNote: Note? = null
     ): Map<String, DirectiveResult> {
         return findDirectives(content).associate { found ->
-            directiveKey(noteId, lineIndex, found.startOffset) to
+            directiveKey(lineId, found.startOffset) to
                 executeDirective(found.sourceText, notes, currentNote).result
         }
     }

@@ -98,16 +98,26 @@ data class DirectivePosition(val lineIndex: Int, val startOffset: Int)
 
 /**
  * Converts UUID-keyed directive results to position-keyed results for UI display.
+ *
+ * Keys use noteId when available (e.g., "noteId:offset"), falling back to
+ * effective ID (e.g., "lineId:offset").
+ *
+ * @param editorNoteIds The noteIds from the editor's LineState — must be the SAME
+ *   noteIds that the rendering layer will use for key lookups. This ensures key
+ *   generation and key lookup always agree, regardless of whether the tracker
+ *   and editor are momentarily out of sync.
  */
 internal fun mapResultsByPosition(
     instances: List<DirectiveInstance>,
-    uuidResults: Map<String, DirectiveResult>
+    uuidResults: Map<String, DirectiveResult>,
+    effectiveIds: List<String>
 ): Map<String, DirectiveResult> {
     val positionResults = mutableMapOf<String, DirectiveResult>()
     for (instance in instances) {
         val result = uuidResults[instance.uuid] ?: continue
-        val positionKey = DirectiveFinder.directiveKey(instance.noteId, instance.lineIndex, instance.startOffset)
-        positionResults[positionKey] = result
+        val lineId = effectiveIds.getOrNull(instance.lineIndex) ?: continue
+        val key = DirectiveFinder.directiveKey(lineId, instance.startOffset)
+        positionResults[key] = result
     }
     return positionResults
 }

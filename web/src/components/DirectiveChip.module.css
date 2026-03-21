@@ -1,14 +1,18 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 0 8px;
   border-radius: 4px;
-  font-size: 0.85rem;
+  font-size: var(--font-size-editor);
+  line-height: 1.5rem;
   cursor: pointer;
   border: 1px dashed;
   user-select: none;
   white-space: pre-wrap;
   word-break: break-word;
+  /* Negative margin absorbs the border so chip lines stay 24px like textarea lines */
+  margin-top: -1px;
+  margin-bottom: -1px;
 }
 
 .computed {

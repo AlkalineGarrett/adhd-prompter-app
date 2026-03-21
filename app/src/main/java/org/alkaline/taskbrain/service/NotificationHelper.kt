@@ -16,6 +16,7 @@ import org.alkaline.taskbrain.R
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.receiver.AlarmActionReceiver
+import org.alkaline.taskbrain.MainActivity
 import org.alkaline.taskbrain.ui.alarm.AlarmActivity
 
 /**
@@ -124,10 +125,9 @@ class NotificationHelper(private val context: Context) {
     }
 
     private fun createContentIntent(alarm: Alarm): PendingIntent {
-        val intent = Intent(context, AlarmActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(AlarmActivity.EXTRA_ALARM_ID, alarm.id)
-            putExtra(AlarmActivity.EXTRA_ALARM_TYPE, AlarmType.NOTIFY.name)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(MainActivity.EXTRA_OPEN_ALARM_ID, alarm.id)
         }
         return PendingIntent.getActivity(
             context,

@@ -25,7 +25,7 @@ export function useDirectives({ noteId, notes, currentNote, noteOperations, onMu
    * Load cached results from Firestore and execute any missing directives.
    */
   const loadAndExecute = useCallback(
-    async (content: string, lineNoteIds: (string | undefined)[] = []) => {
+    async (content: string, lineIds: string[] = []) => {
       if (!noteId) return
 
       setIsExecuting(true)
@@ -39,9 +39,9 @@ export function useDirectives({ noteId, notes, currentNote, noteOperations, onMu
 
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
           const directives = findDirectives(lines[lineIndex]!)
-          const lineNoteId = lineNoteIds[lineIndex]
+          const lineId = lineIds[lineIndex] ?? `tmp:${lineIndex}`
           for (const directive of directives) {
-            const posKey = directiveKey(lineNoteId, lineIndex, directive.startOffset)
+            const posKey = directiveKey(lineId, directive.startOffset)
             const hash = await hashDirective(directive.sourceText)
             const cached = cachedByHash.get(hash)
 
@@ -70,14 +70,14 @@ export function useDirectives({ noteId, notes, currentNote, noteOperations, onMu
    * Execute all directives fresh and save results to Firestore.
    */
   const executeAndSave = useCallback(
-    async (content: string, lineNoteIds: (string | undefined)[] = []) => {
+    async (content: string, lineIds: string[] = []) => {
       if (!noteId) return
 
       setIsExecuting(true)
       try {
         // Execute all directives
         const { results: newResults, mutations } = executeAllDirectives(
-          content, notes, currentNote, noteOperations, lineNoteIds,
+          content, notes, currentNote, noteOperations, lineIds,
         )
 
         // Propagate mutations to caller
@@ -101,9 +101,9 @@ export function useDirectives({ noteId, notes, currentNote, noteOperations, onMu
         const lines = content.split('\n')
         for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
           const directives = findDirectives(lines[lineIndex]!)
-          const lineNoteId = lineNoteIds[lineIndex]
+          const lineId = lineIds[lineIndex] ?? `tmp:${lineIndex}`
           for (const directive of directives) {
-            const posKey = directiveKey(lineNoteId, lineIndex, directive.startOffset)
+            const posKey = directiveKey(lineId, directive.startOffset)
             const result = mergedResults.get(posKey)
             if (result) {
               const hash = await hashDirective(directive.sourceText)

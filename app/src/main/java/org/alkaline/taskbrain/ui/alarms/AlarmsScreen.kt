@@ -70,7 +70,9 @@ import java.util.Locale
 
 @Composable
 fun AlarmsScreen(
-    alarmsViewModel: AlarmsViewModel = viewModel()
+    alarmsViewModel: AlarmsViewModel = viewModel(),
+    openAlarmId: String? = null,
+    onOpenAlarmConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val pastDueAlarms by alarmsViewModel.pastDueAlarms.observeAsState(emptyList())
@@ -85,6 +87,19 @@ fun AlarmsScreen(
     // Instance edit dialog state
     var selectedAlarm by remember { mutableStateOf<Alarm?>(null) }
     var dialogInitialMode by remember { mutableStateOf(AlarmDialogMode.INSTANCE) }
+
+    // Auto-open dialog when navigated from a notification tap
+    LaunchedEffect(openAlarmId, isLoading) {
+        val alarmId = openAlarmId ?: return@LaunchedEffect
+        if (isLoading) return@LaunchedEffect
+        val allAlarms = pastDueAlarms + upcomingAlarms + laterAlarms + completedAlarms + cancelledAlarms
+        val alarm = allAlarms.find { it.id == alarmId }
+        if (alarm != null) {
+            selectedAlarm = alarm
+            dialogInitialMode = AlarmDialogMode.INSTANCE
+            onOpenAlarmConsumed()
+        }
+    }
 
     // Delete all confirmation dialog state
     var showDeleteAllDialog by remember { mutableStateOf(false) }

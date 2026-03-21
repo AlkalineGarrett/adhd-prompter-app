@@ -94,7 +94,7 @@
   background: none;
   cursor: pointer;
   text-align: left;
-  font-size: 0.9375rem;
+  font-size: var(--font-size-editor);
   gap: 1rem;
 }
 

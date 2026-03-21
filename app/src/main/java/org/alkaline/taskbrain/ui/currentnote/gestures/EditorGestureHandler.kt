@@ -111,9 +111,9 @@ internal fun positionToGlobalOffset(
     val layoutInfo = lineLayouts.getOrNull(lineIndex)
 
     // Build display text info to map between display and source positions
-    val noteId = lineState.noteIds.firstOrNull()
+    val lineId = lineState.effectiveId
     val displayResult = DirectiveSegmenter.buildDisplayText(
-        lineState.content, noteId, lineIndex, directiveResults
+        lineState.content, lineId, directiveResults
     )
 
     val displayOffset = getCharacterOffsetInContent(

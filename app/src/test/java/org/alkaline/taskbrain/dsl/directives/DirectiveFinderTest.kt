@@ -7,6 +7,10 @@ import org.junit.Test
 
 class DirectiveFinderTest {
 
+    private companion object {
+        const val TEST_LINE_ID = "test-line"
+    }
+
     // region Finding directives
 
     @Test
@@ -196,7 +200,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives returns results for all directives`() {
         val content = "First [42] second [\"hello\"]"
-        val results = DirectiveFinder.executeAllDirectives(content, null, 0)
+        val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
 
         assertEquals(2, results.size)
     }
@@ -204,7 +208,7 @@ class DirectiveFinderTest {
     @Test
     fun `executeAllDirectives handles mixed success and error`() {
         val content = "[42] and [invalid@]"
-        val results = DirectiveFinder.executeAllDirectives(content, null, 0)
+        val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
 
         assertEquals(2, results.size)
 
@@ -220,7 +224,7 @@ class DirectiveFinderTest {
 
     @Test
     fun `executeAllDirectives returns empty map for no directives`() {
-        val results = DirectiveFinder.executeAllDirectives("No directives here", null, 0)
+        val results = DirectiveFinder.executeAllDirectives("No directives here", TEST_LINE_ID)
         assertTrue(results.isEmpty())
     }
 
@@ -303,20 +307,18 @@ class DirectiveFinderTest {
     // region directiveKey
 
     @Test
-    fun `directiveKey with noteId produces noteId-based key`() {
-        assertEquals("abc123:15", DirectiveFinder.directiveKey("abc123", 0, 15))
+    fun `directiveKey produces lineId-based key`() {
+        assertEquals("abc123:15", DirectiveFinder.directiveKey("abc123", 15))
     }
 
     @Test
-    fun `directiveKey with null noteId produces lineIndex-based key`() {
-        assertEquals("_line:3:15", DirectiveFinder.directiveKey(null, 3, 15))
+    fun `directiveKey with test lineId produces expected key`() {
+        assertEquals("test-line:15", DirectiveFinder.directiveKey(TEST_LINE_ID, 15))
     }
 
     @Test
-    fun `directiveKey noteId ignores lineIndex`() {
-        // When noteId is present, lineIndex is not included in the key
-        assertEquals("note1:5", DirectiveFinder.directiveKey("note1", 0, 5))
-        assertEquals("note1:5", DirectiveFinder.directiveKey("note1", 99, 5))
+    fun `directiveKey formats correctly`() {
+        assertEquals("note1:5", DirectiveFinder.directiveKey("note1", 5))
     }
 
     // endregion
@@ -324,13 +326,13 @@ class DirectiveFinderTest {
     // region startOffsetFromKey
 
     @Test
-    fun `startOffsetFromKey extracts offset from noteId key`() {
+    fun `startOffsetFromKey extracts offset from lineId key`() {
         assertEquals(15, DirectiveFinder.startOffsetFromKey("abc123:15"))
     }
 
     @Test
-    fun `startOffsetFromKey extracts offset from lineIndex key`() {
-        assertEquals(20, DirectiveFinder.startOffsetFromKey("_line:5:20"))
+    fun `startOffsetFromKey extracts offset from test lineId key`() {
+        assertEquals(20, DirectiveFinder.startOffsetFromKey("test-line:20"))
     }
 
     @Test
@@ -341,7 +343,7 @@ class DirectiveFinderTest {
     @Test
     fun `startOffsetFromKey handles zero offset`() {
         assertEquals(0, DirectiveFinder.startOffsetFromKey("note1:0"))
-        assertEquals(0, DirectiveFinder.startOffsetFromKey("_line:0:0"))
+        assertEquals(0, DirectiveFinder.startOffsetFromKey("test-line:0"))
     }
 
     @Test

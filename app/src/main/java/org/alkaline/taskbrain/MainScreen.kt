@@ -48,6 +48,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.dsl.directives.ScheduleManager
 import org.alkaline.taskbrain.ui.Dimens
@@ -74,14 +75,33 @@ fun MainScreen(
     onSignInClick: () -> Unit,
     isUserSignedIn: Boolean,
     onSignOutClick: () -> Unit,
-    isFingerDown: StateFlow<Boolean>
+    isFingerDown: StateFlow<Boolean>,
+    openAlarmId: StateFlow<String?> = MutableStateFlow(null),
+    onOpenAlarmConsumed: () -> Unit = {}
 ) {
     val navController = rememberNavController()
+    val pendingAlarmId by openAlarmId.collectAsState()
 
     // Create ViewModels at MainScreen level so they're shared across all CurrentNoteScreen instances
     // (both the "current_note" and "current_note?noteId={noteId}" routes)
     val recentTabsViewModel: RecentTabsViewModel = viewModel()
     val currentNoteViewModel: CurrentNoteViewModel = viewModel()
+
+    // Alarm ID to auto-open on the alarms screen (from notification tap)
+    var alarmIdToOpen by remember { mutableStateOf<String?>(null) }
+
+    // When a notification tap sets pendingAlarmId, navigate to the alarms screen
+    LaunchedEffect(pendingAlarmId) {
+        val alarmId = pendingAlarmId ?: return@LaunchedEffect
+        onOpenAlarmConsumed()
+        alarmIdToOpen = alarmId
+        navController.navigate(Screen.Notifications.route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+        }
+    }
 
     // Determine the start destination based on sign-in status
     val startDestination = if (isUserSignedIn) Screen.CurrentNote.route else Screen.Login.route
@@ -297,7 +317,10 @@ fun MainScreen(
                 )
             }
             composable(Screen.Notifications.route) {
-                AlarmsScreen()
+                AlarmsScreen(
+                    openAlarmId = alarmIdToOpen,
+                    onOpenAlarmConsumed = { alarmIdToOpen = null }
+                )
             }
             composable(Screen.Schedules.route) {
                 SchedulesScreen(

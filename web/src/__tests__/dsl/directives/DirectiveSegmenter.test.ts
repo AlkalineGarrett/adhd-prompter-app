@@ -11,7 +11,7 @@ function resultsMap(entries: [string, DirectiveResult][]): Map<string, Directive
 
 describe('segmentLine', () => {
   it('returns single text segment for plain text', () => {
-    const segments = segmentLine('hello world', undefined, 0, new Map())
+    const segments = segmentLine('hello world', 'test-line', new Map())
     expect(segments).toHaveLength(1)
     expect(segments[0]!.kind).toBe('Text')
     if (segments[0]!.kind === 'Text') {
@@ -22,24 +22,24 @@ describe('segmentLine', () => {
   })
 
   it('returns empty array for empty content', () => {
-    const segments = segmentLine('', undefined, 0, new Map())
+    const segments = segmentLine('', 'test-line', new Map())
     expect(segments).toHaveLength(0)
   })
 
   it('returns directive segment for directive-only content', () => {
-    const segments = segmentLine('[test]', undefined, 0, new Map())
+    const segments = segmentLine('[test]', 'test-line', new Map())
     expect(segments).toHaveLength(1)
     expect(segments[0]!.kind).toBe('Directive')
     if (segments[0]!.kind === 'Directive') {
       expect(segments[0]!.sourceText).toBe('[test]')
-      expect(segments[0]!.key).toBe('_line:0:0')
+      expect(segments[0]!.key).toBe('test-line:0')
       expect(segments[0]!.result).toBeNull()
       expect(segments[0]!.isComputed).toBe(false)
     }
   })
 
   it('splits text and directive segments', () => {
-    const segments = segmentLine('before [dir] after', undefined, 0, new Map())
+    const segments = segmentLine('before [dir] after', 'test-line', new Map())
     expect(segments).toHaveLength(3)
     expect(segments[0]!.kind).toBe('Text')
     expect(segments[1]!.kind).toBe('Directive')
@@ -50,16 +50,8 @@ describe('segmentLine', () => {
     if (segments[2]!.kind === 'Text') expect(segments[2]!.content).toBe(' after')
   })
 
-  it('uses line index for directive key when no noteId', () => {
-    const segments = segmentLine('[test]', undefined, 3, new Map())
-    expect(segments).toHaveLength(1)
-    if (segments[0]!.kind === 'Directive') {
-      expect(segments[0]!.key).toBe('_line:3:0')
-    }
-  })
-
-  it('uses noteId for directive key when provided', () => {
-    const segments = segmentLine('[test]', 'note-abc', 3, new Map())
+  it('uses lineId for directive key', () => {
+    const segments = segmentLine('[test]', 'note-abc', new Map())
     expect(segments).toHaveLength(1)
     if (segments[0]!.kind === 'Directive') {
       expect(segments[0]!.key).toBe('note-abc:0')
@@ -67,9 +59,9 @@ describe('segmentLine', () => {
   })
 
   it('attaches result when available', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const result = directiveResultSuccess(numberVal(42))
-    const segments = segmentLine('[calc]', undefined, 0, resultsMap([[key, result]]))
+    const segments = segmentLine('[calc]', 'test-line', resultsMap([[key, result]]))
     expect(segments).toHaveLength(1)
     if (segments[0]!.kind === 'Directive') {
       expect(segments[0]!.result).not.toBeNull()
@@ -79,7 +71,7 @@ describe('segmentLine', () => {
   })
 
   it('shows source text when no result', () => {
-    const segments = segmentLine('[calc]', undefined, 0, new Map())
+    const segments = segmentLine('[calc]', 'test-line', new Map())
     expect(segments).toHaveLength(1)
     if (segments[0]!.kind === 'Directive') {
       expect(segments[0]!.displayText).toBe('[calc]')
@@ -88,9 +80,9 @@ describe('segmentLine', () => {
   })
 
   it('shows source text for error result', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const result = directiveResultFailure('bad')
-    const segments = segmentLine('[calc]', undefined, 0, resultsMap([[key, result]]))
+    const segments = segmentLine('[calc]', 'test-line', resultsMap([[key, result]]))
     expect(segments).toHaveLength(1)
     if (segments[0]!.kind === 'Directive') {
       // isComputed is false for errors, so displayText remains sourceText
@@ -100,7 +92,7 @@ describe('segmentLine', () => {
   })
 
   it('handles multiple directives', () => {
-    const segments = segmentLine('[a] + [b]', undefined, 0, new Map())
+    const segments = segmentLine('[a] + [b]', 'test-line', new Map())
     expect(segments).toHaveLength(3)
     expect(segments[0]!.kind).toBe('Directive')
     expect(segments[1]!.kind).toBe('Text')
@@ -108,7 +100,7 @@ describe('segmentLine', () => {
   })
 
   it('tracks correct ranges for segments', () => {
-    const segments = segmentLine('hi [x] bye', undefined, 0, new Map())
+    const segments = segmentLine('hi [x] bye', 'test-line', new Map())
     expect(segments).toHaveLength(3)
 
     // "hi " -> 0..3
@@ -131,40 +123,40 @@ describe('segmentLine', () => {
 
 describe('buildDisplayText', () => {
   it('returns plain text unchanged', () => {
-    const result = buildDisplayText('hello', undefined, 0, new Map())
+    const result = buildDisplayText('hello', 'test-line', new Map())
     expect(result.displayText).toBe('hello')
     expect(result.directiveDisplayRanges).toHaveLength(0)
   })
 
   it('returns empty for empty content', () => {
-    const result = buildDisplayText('', undefined, 0, new Map())
+    const result = buildDisplayText('', 'test-line', new Map())
     expect(result.displayText).toBe('')
     expect(result.segments).toHaveLength(0)
   })
 
   it('replaces directive source with computed result', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(numberVal(42))
-    const result = buildDisplayText('[calc]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[calc]', 'test-line', resultsMap([[key, dr]]))
     expect(result.displayText).toBe('42')
   })
 
   it('keeps directive source when no result', () => {
-    const result = buildDisplayText('val=[calc]', undefined, 0, new Map())
+    const result = buildDisplayText('val=[calc]', 'test-line', new Map())
     expect(result.displayText).toBe('val=[calc]')
   })
 
   it('builds display text with mixed text and directives', () => {
-    const key = directiveKey(undefined, 0, 4)
+    const key = directiveKey('test-line', 4)
     const dr = directiveResultSuccess(stringVal('world'))
-    const result = buildDisplayText('say [greet]!', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('say [greet]!', 'test-line', resultsMap([[key, dr]]))
     expect(result.displayText).toBe('say world!')
   })
 
   it('populates directive display ranges', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(numberVal(7))
-    const result = buildDisplayText('[x] end', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[x] end', 'test-line', resultsMap([[key, dr]]))
     expect(result.directiveDisplayRanges).toHaveLength(1)
 
     const range = result.directiveDisplayRanges[0]!
@@ -181,20 +173,20 @@ describe('buildDisplayText', () => {
   })
 
   it('marks error in display range', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultFailure('bad')
-    const result = buildDisplayText('[x]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[x]', 'test-line', resultsMap([[key, dr]]))
     expect(result.directiveDisplayRanges).toHaveLength(1)
     expect(result.directiveDisplayRanges[0]!.hasError).toBe(true)
     expect(result.directiveDisplayRanges[0]!.isComputed).toBe(false)
   })
 
   it('handles multiple directives with different display lengths', () => {
-    const key1 = directiveKey(undefined, 0, 0)
-    const key2 = directiveKey(undefined, 0, 6)
+    const key1 = directiveKey('test-line', 0)
+    const key2 = directiveKey('test-line', 6)
     const dr1 = directiveResultSuccess(stringVal('AB'))
     const dr2 = directiveResultSuccess(stringVal('CDEF'))
-    const result = buildDisplayText('[xxx] [yyy]', undefined, 0, resultsMap([[key1, dr1], [key2, dr2]]))
+    const result = buildDisplayText('[xxx] [yyy]', 'test-line', resultsMap([[key1, dr1], [key2, dr2]]))
     expect(result.displayText).toBe('AB CDEF')
 
     const ranges = result.directiveDisplayRanges
@@ -210,9 +202,9 @@ describe('buildDisplayText', () => {
 
 describe('buildDisplayText alarm directives', () => {
   it('marks alarm directive with isAlarm and alarmId', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(alarmVal('alarm-123'))
-    const result = buildDisplayText('[alarm("alarm-123")]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[alarm("alarm-123")]', 'test-line', resultsMap([[key, dr]]))
 
     expect(result.directiveDisplayRanges).toHaveLength(1)
     const range = result.directiveDisplayRanges[0]!
@@ -223,9 +215,9 @@ describe('buildDisplayText alarm directives', () => {
   })
 
   it('non-alarm directive has isAlarm false and no alarmId', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(numberVal(42))
-    const result = buildDisplayText('[calc]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[calc]', 'test-line', resultsMap([[key, dr]]))
 
     const range = result.directiveDisplayRanges[0]!
     expect(range.isAlarm).toBe(false)
@@ -233,9 +225,9 @@ describe('buildDisplayText alarm directives', () => {
   })
 
   it('alarm directive mixed with text preserves display ranges', () => {
-    const key = directiveKey(undefined, 0, 5)
+    const key = directiveKey('test-line', 5)
     const dr = directiveResultSuccess(alarmVal('a1'))
-    const result = buildDisplayText('Task [alarm("a1")] done', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('Task [alarm("a1")] done', 'test-line', resultsMap([[key, dr]]))
 
     expect(result.directiveDisplayRanges).toHaveLength(1)
     const range = result.directiveDisplayRanges[0]!
@@ -244,16 +236,16 @@ describe('buildDisplayText alarm directives', () => {
   })
 
   it('alarm directive displays as clock emoji', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(alarmVal('a1'))
-    const result = buildDisplayText('[alarm("a1")]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[alarm("a1")]', 'test-line', resultsMap([[key, dr]]))
     expect(result.displayText).toBe('\u23F0')
   })
 
   it('alarm sourceRange covers entire directive text', () => {
-    const key = directiveKey(undefined, 0, 5)
+    const key = directiveKey('test-line', 5)
     const dr = directiveResultSuccess(alarmVal('a1'))
-    const result = buildDisplayText('Task [alarm("a1")] done', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('Task [alarm("a1")] done', 'test-line', resultsMap([[key, dr]]))
 
     const range = result.directiveDisplayRanges[0]!
     expect(range.sourceRangeStart).toBe(5)
@@ -261,9 +253,9 @@ describe('buildDisplayText alarm directives', () => {
   })
 
   it('alarm displayRange is single emoji width', () => {
-    const key = directiveKey(undefined, 0, 0)
+    const key = directiveKey('test-line', 0)
     const dr = directiveResultSuccess(alarmVal('a1'))
-    const result = buildDisplayText('[alarm("a1")]', undefined, 0, resultsMap([[key, dr]]))
+    const result = buildDisplayText('[alarm("a1")]', 'test-line', resultsMap([[key, dr]]))
 
     const range = result.directiveDisplayRanges[0]!
     expect(range.displayRangeEnd - range.displayRangeStart).toBe(1) // "⏰" = 1 char

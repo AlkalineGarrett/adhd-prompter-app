@@ -96,15 +96,9 @@ private fun resolveDirectiveUuid(
     positionKey: String
 ): String? {
     val startOffset = DirectiveFinder.startOffsetFromKey(positionKey) ?: return null
-    return if (positionKey.startsWith("_line:")) {
-        // Fallback key format: "_line:lineIndex:startOffset"
-        val lineIndex = positionKey.removePrefix("_line:").substringBefore(':').toIntOrNull() ?: return null
-        viewModel.getDirectiveUuid(lineIndex, startOffset)
-    } else {
-        // NoteId key format: "noteId:startOffset"
-        val noteId = positionKey.substringBeforeLast(':')
-        viewModel.getDirectiveUuidByNoteId(noteId, startOffset)
-    }
+    // Key format: "lineId:startOffset" where lineId is a noteId or temp UUID
+    val lineId = positionKey.substringBeforeLast(':')
+    return viewModel.getDirectiveUuidByNoteId(lineId, startOffset)
 }
 
 private fun handleDirectiveConfirm(

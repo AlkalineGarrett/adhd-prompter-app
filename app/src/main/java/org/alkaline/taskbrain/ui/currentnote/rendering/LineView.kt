@@ -108,14 +108,14 @@ internal fun ControlledLineView(
     // Adjust directive result keys: results are keyed by offset in full line text (including
     // prefix), but buildDisplayText operates on content-only text (prefix stripped).
     val prefixLength = prefix.length
-    val noteId = lineState.noteIds.firstOrNull()
-    val adjustedDirectiveResults = remember(directiveResults, noteId, lineIndex, prefixLength) {
-        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, noteId, lineIndex, prefixLength)
+    val lineId = lineState.effectiveId
+    val adjustedDirectiveResults = remember(directiveResults, lineId, prefixLength) {
+        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineId, prefixLength)
     }
 
     // Build display text info to map between source and display coordinates
-    val displayResult = remember(content, noteId, lineIndex, adjustedDirectiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, noteId, lineIndex, adjustedDirectiveResults)
+    val displayResult = remember(content, lineId, adjustedDirectiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineId, adjustedDirectiveResults)
     }
 
     // Convert line selection to content selection range (in source coordinates)

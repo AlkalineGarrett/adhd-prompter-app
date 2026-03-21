@@ -1,6 +1,7 @@
 package org.alkaline.taskbrain
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -43,6 +44,10 @@ class MainActivity : AppCompatActivity() {
     private val _isFingerDown = MutableStateFlow(false)
     val isFingerDown: StateFlow<Boolean> = _isFingerDown.asStateFlow()
 
+    // Alarm ID to open when navigating from a notification tap
+    private val _openAlarmId = MutableStateFlow<String?>(null)
+    val openAlarmId: StateFlow<String?> = _openAlarmId.asStateFlow()
+
     // Permission request launcher for notification permission (Android 13+)
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -70,6 +75,9 @@ class MainActivity : AppCompatActivity() {
         // Request notification permission on Android 13+
         requestNotificationPermissionIfNeeded()
 
+        // Check if launched from a notification tap
+        _openAlarmId.value = intent.getStringExtra(EXTRA_OPEN_ALARM_ID)
+
         setContent {
             var user by remember { mutableStateOf(auth.currentUser) }
 
@@ -89,7 +97,9 @@ class MainActivity : AppCompatActivity() {
                 onSignOutClick = {
                     auth.signOut()
                 },
-                isFingerDown = isFingerDown
+                isFingerDown = isFingerDown,
+                openAlarmId = openAlarmId,
+                onOpenAlarmConsumed = { consumeOpenAlarmId() }
             )
         }
     }
@@ -162,7 +172,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_OPEN_ALARM_ID)?.let {
+            _openAlarmId.value = it
+        }
+    }
+
+    /** Clears the pending alarm ID after it has been consumed. */
+    fun consumeOpenAlarmId() {
+        _openAlarmId.value = null
+    }
+
     companion object {
         private const val TAG = "MainActivity"
+        const val EXTRA_OPEN_ALARM_ID = "extra_open_alarm_id"
     }
 }

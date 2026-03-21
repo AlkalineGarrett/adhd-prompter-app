@@ -207,11 +207,12 @@ class ViewModelPureLogicTest {
             "uuid1" to DirectiveResult.success(UndefinedVal),
             "uuid2" to DirectiveResult.success(UndefinedVal)
         )
+        val effectiveIds = listOf("line-0", "line-1", "line-2")
 
-        val mapped = mapResultsByPosition(instances, results)
+        val mapped = mapResultsByPosition(instances, results, effectiveIds)
         assertEquals(2, mapped.size)
-        assertTrue(mapped.containsKey("_line:0:5"))
-        assertTrue(mapped.containsKey("_line:2:10"))
+        assertTrue(mapped.containsKey("line-0:5"))
+        assertTrue(mapped.containsKey("line-2:10"))
     }
 
     @Test
@@ -223,20 +224,21 @@ class ViewModelPureLogicTest {
         val results = mapOf(
             "uuid1" to DirectiveResult.success(UndefinedVal)
         )
+        val effectiveIds = listOf("line-0", "line-1")
 
-        val mapped = mapResultsByPosition(instances, results)
+        val mapped = mapResultsByPosition(instances, results, effectiveIds)
         assertEquals(1, mapped.size)
-        assertTrue(mapped.containsKey("_line:0:0"))
+        assertTrue(mapped.containsKey("line-0:0"))
     }
 
     @Test
     fun `mapResultsByPosition returns empty for empty inputs`() {
-        val mapped = mapResultsByPosition(emptyList(), emptyMap())
+        val mapped = mapResultsByPosition(emptyList(), emptyMap(), emptyList())
         assertTrue(mapped.isEmpty())
     }
 
     @Test
-    fun `mapResultsByPosition uses noteId-based keys when noteId is set`() {
+    fun `mapResultsByPosition uses effectiveIds for keys`() {
         val instances = listOf(
             directiveInstance("uuid1", 0, 5, noteId = "note1"),
             directiveInstance("uuid2", 2, 10, noteId = "note2")
@@ -245,28 +247,30 @@ class ViewModelPureLogicTest {
             "uuid1" to DirectiveResult.success(UndefinedVal),
             "uuid2" to DirectiveResult.success(UndefinedVal)
         )
+        val effectiveIds = listOf("eid-0", "eid-1", "eid-2")
 
-        val mapped = mapResultsByPosition(instances, results)
+        val mapped = mapResultsByPosition(instances, results, effectiveIds)
         assertEquals(2, mapped.size)
-        assertTrue(mapped.containsKey("note1:5"))
-        assertTrue(mapped.containsKey("note2:10"))
+        // Keys come from effectiveIds, not from noteId on the instance
+        assertTrue(mapped.containsKey("eid-0:5"))
+        assertTrue(mapped.containsKey("eid-2:10"))
     }
 
     @Test
-    fun `mapResultsByPosition mixes noteId and lineIndex keys`() {
+    fun `mapResultsByPosition skips instances with out-of-bounds lineIndex`() {
         val instances = listOf(
-            directiveInstance("uuid1", 0, 5, noteId = "note1"),
-            directiveInstance("uuid2", 2, 10) // no noteId
+            directiveInstance("uuid1", 0, 5),
+            directiveInstance("uuid2", 5, 10) // lineIndex 5 out of bounds
         )
         val results = mapOf(
             "uuid1" to DirectiveResult.success(UndefinedVal),
             "uuid2" to DirectiveResult.success(UndefinedVal)
         )
+        val effectiveIds = listOf("line-0", "line-1")
 
-        val mapped = mapResultsByPosition(instances, results)
-        assertEquals(2, mapped.size)
-        assertTrue(mapped.containsKey("note1:5"))
-        assertTrue(mapped.containsKey("_line:2:10"))
+        val mapped = mapResultsByPosition(instances, results, effectiveIds)
+        assertEquals(1, mapped.size)
+        assertTrue(mapped.containsKey("line-0:5"))
     }
 
     // ==================== findExpandedPositions ====================

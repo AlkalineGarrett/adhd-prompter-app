@@ -195,9 +195,9 @@ internal fun DirectiveAwareLineInput(
     }
 
     // Build display text with directive results
-    val noteId = controller.state.lines.getOrNull(lineIndex)?.noteIds?.firstOrNull()
-    val displayResult = remember(content, noteId, lineIndex, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, noteId, lineIndex, directiveResults)
+    val lineId = controller.state.lines.getOrNull(lineIndex)?.effectiveId ?: "unknown"
+    val displayResult = remember(content, lineId, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
     }
 
     // Map source cursor to display cursor
@@ -718,7 +718,7 @@ private fun mapDisplayToSourceCursor(displayCursor: Int, displayResult: DisplayT
  * Renders multi-line content by replacing directive source text with computed results.
  *
  * @param content The raw content (may contain directive source like [add(1,1)])
- * @param directiveResults Map of directive key ("noteId:startOffset" or "_line:lineIndex:startOffset") to result
+ * @param directiveResults Map of directive key ("lineId:startOffset") to result
  * @return The rendered content with directives replaced by their display values
  */
 internal fun renderContentWithDirectives(
@@ -730,8 +730,8 @@ internal fun renderContentWithDirectives(
     }
 
     return content.lines().mapIndexed { lineIndex, lineContent ->
-        // noteId not available in inline editor context; falls back to lineIndex-based keys
-        val displayResult = DirectiveSegmenter.buildDisplayText(lineContent, null, lineIndex, directiveResults)
+        // In inline editor context, use lineIndex as a synthetic ID since real noteIds aren't available
+        val displayResult = DirectiveSegmenter.buildDisplayText(lineContent, "inline:$lineIndex", directiveResults)
         displayResult.displayText
     }.joinToString("\n")
 }
@@ -1329,13 +1329,13 @@ private fun InlineEditorLine(
     // Adjust directive result keys: results are keyed by offset in full line text (including
     // prefix), but buildDisplayText operates on content-only text (prefix stripped).
     val prefixLength = prefix.length
-    val noteId = lineState.noteIds.firstOrNull()
-    val adjustedResults = remember(directiveResults, noteId, lineIndex, prefixLength) {
-        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, noteId, lineIndex, prefixLength)
+    val lineId = lineState.effectiveId
+    val adjustedResults = remember(directiveResults, lineId, prefixLength) {
+        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineId, prefixLength)
     }
 
-    val displayResult = remember(content, noteId, lineIndex, adjustedResults) {
-        DirectiveSegmenter.buildDisplayText(content, noteId, lineIndex, adjustedResults)
+    val displayResult = remember(content, lineId, adjustedResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineId, adjustedResults)
     }
 
     // Map source cursor to display cursor

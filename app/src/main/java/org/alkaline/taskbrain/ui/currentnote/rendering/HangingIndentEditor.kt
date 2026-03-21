@@ -667,10 +667,10 @@ private fun EditorContent(
 
                         // Render edit rows for expanded directives on this line
                         val lineContent = lineState.content
-                        val lineNoteId = lineState.noteIds.firstOrNull()
+                        val lineId = lineState.effectiveId
                         val lineDirectives = DirectiveFinder.findDirectives(lineContent)
                         for (found in lineDirectives) {
-                            val directiveKey = DirectiveFinder.directiveKey(lineNoteId, index, found.startOffset)
+                            val directiveKey = DirectiveFinder.directiveKey(lineId, found.startOffset)
                             val result = directiveResults[directiveKey]
                             val isViewDirective = result?.toValue() is org.alkaline.taskbrain.dsl.runtime.values.ViewVal
                             if (result != null && !result.collapsed && !isViewDirective) {

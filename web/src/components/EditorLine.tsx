@@ -90,7 +90,7 @@ export function EditorLine({
     let selStart = contentSelection[0]
     let selEnd = contentSelection[1]
     if (!overlayRef.current && directiveContentRef.current) {
-      const segments = segmentLine(content, line.noteIds[0], lineIndex, directiveResults ?? new Map())
+      const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map())
       selStart = mapSourceOffsetToDisplay(selStart, segments)
       selEnd = mapSourceOffsetToDisplay(selEnd, segments)
     }
@@ -459,7 +459,7 @@ export function EditorLine({
       if (directiveEl) {
         const displayOffset = getCharOffsetFromPoint(directiveEl, e.clientX, e.clientY)
         if (displayOffset != null) {
-          const segments = segmentLine(content, line.noteIds[0], lineIndex, directiveResults ?? new Map())
+          const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map())
           return mapDisplayOffsetToSource(displayOffset, segments)
         }
       }
@@ -589,8 +589,7 @@ export function EditorLine({
           )}
           <DirectiveLineContent
             content={content}
-            noteId={line.noteIds[0]}
-            lineIndex={lineIndex}
+            lineId={line.effectiveId}
             results={directiveResults}
             onDirectiveEdit={onDirectiveEdit}
             onDirectiveRefresh={onDirectiveRefresh}

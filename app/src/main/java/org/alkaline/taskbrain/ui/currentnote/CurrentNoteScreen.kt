@@ -1,6 +1,5 @@
 package org.alkaline.taskbrain.ui.currentnote
 
-import android.util.Log
 import androidx.compose.foundation.background
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmStatus
@@ -83,15 +82,8 @@ fun CurrentNoteScreen(
     val isNoteDeletedFromVm by currentNoteViewModel.isNoteDeleted.observeAsState(false)
     val showCompleted by currentNoteViewModel.showCompleted.observeAsState(true)
     val directiveResultsRaw by currentNoteViewModel.directiveResults.observeAsState(emptyMap())
-    val directiveResults = remember(directiveResultsRaw) {
-        currentNoteViewModel.getResultsByPosition()
-    }
     val buttonExecutionStates by currentNoteViewModel.buttonExecutionStates.observeAsState(emptyMap())
     val buttonErrors by currentNoteViewModel.buttonErrors.observeAsState(emptyMap())
-    LaunchedEffect(directiveResultsRaw) {
-        val firstContent = directiveResultsRaw.values.firstOrNull()?.toValue()?.toDisplayString()?.take(60)?.replace("\n", "\\n")
-        Log.d("InlineEditCache", ">>> directiveResultsRaw CHANGED: ${directiveResultsRaw.size} entries, firstContent='$firstContent...'")
-    }
     val recentTabs by recentTabsViewModel.tabs.observeAsState(emptyList())
     val tabsError by recentTabsViewModel.error.observeAsState()
 
@@ -127,6 +119,14 @@ fun CurrentNoteScreen(
         }
     }
     val controller = rememberEditorController(editorState)
+
+    // Sync tracker noteIds into editor state, then map directive results using
+    // the editor's effective IDs so key generation matches key lookup in rendering
+    val directiveResults = remember(directiveResultsRaw) {
+        editorState.syncNoteIds(currentNoteViewModel.getLineNoteIds())
+        val effectiveIds = editorState.lines.map { it.effectiveId }
+        currentNoteViewModel.getResultsByPosition(effectiveIds)
+    }
 
     // Update hidden indices for move system when showCompleted or lines change
     controller.hiddenIndices = remember(userContent, showCompleted) {
@@ -755,6 +755,8 @@ private fun ContentSyncEffects(
                 controller.recordAlarmCreation(snapshot)
             }
             currentNoteViewModel.saveContent(editorState.text, editorState.lines.map { it.noteIds })
+            // Immediately render the new alarm icon (without waiting for snapshot reload)
+            currentNoteViewModel.executeDirectivesLive(editorState.text)
             currentNoteViewModel.clearAlarmCreatedEvent()
         }
     }

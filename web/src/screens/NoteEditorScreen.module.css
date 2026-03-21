@@ -24,7 +24,7 @@
 
 .deletedEditor {
   background: var(--color-deleted-bg);
-  opacity: 0.6;
+  color: var(--color-deleted-text);
 }
 
 .editor.moveDragging,
