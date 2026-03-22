@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
@@ -55,7 +57,18 @@ fun RecentTabsBar(
         return
     }
 
+    val listState = rememberLazyListState()
+
+    // Scroll to the current tab whenever it moves (tab list reorder or note change)
+    val currentTabIndex = tabs.indexOfFirst { it.noteId == currentNoteId }
+    LaunchedEffect(currentTabIndex) {
+        if (currentTabIndex >= 0) {
+            listState.animateScrollToItem(currentTabIndex)
+        }
+    }
+
     LazyRow(
+        state = listState,
         modifier = modifier
             .background(TabBarBackgroundColor)
             .padding(horizontal = TabBarHorizontalPadding, vertical = TabBarVerticalPadding),

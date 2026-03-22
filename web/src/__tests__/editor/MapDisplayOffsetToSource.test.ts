@@ -130,7 +130,7 @@ describe('mapDisplayOffsetToSource', () => {
     // Source: '[run("Go")]'
     // Display: "▶ Go" (chip display for buttons)
     const content = '[run("Go")]'
-    const btnResult = directiveResultSuccess(buttonVal('Go', { kind: 'LambdaVal', params: [], bodyAst: null as never }))
+    const btnResult = directiveResultSuccess(buttonVal('Go', { kind: 'LambdaVal', params: [], body: null as never, capturedEnv: null }))
 
     it('maps click on button chip to end of directive source', () => {
       const segments = buildSegments(content, 'L',[['L:0', btnResult]])

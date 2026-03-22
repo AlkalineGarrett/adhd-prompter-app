@@ -14,7 +14,6 @@ export function useNotes() {
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showDeleted, setShowDeleted] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -33,9 +32,8 @@ export function useNotes() {
     void refresh()
   }, [refresh])
 
-  const displayedNotes = showDeleted
-    ? filterAndSortDeletedNotes(notes)
-    : filterAndSortNotesByLastAccessed(notes)
+  const activeNotes = filterAndSortNotesByLastAccessed(notes)
+  const deletedNotes = filterAndSortDeletedNotes(notes)
 
   const createNote = useCallback(async (): Promise<string> => {
     const id = await repo.createNote()
@@ -60,11 +58,10 @@ export function useNotes() {
   )
 
   return {
-    notes: displayedNotes,
+    activeNotes,
+    deletedNotes,
     loading,
     error,
-    showDeleted,
-    setShowDeleted,
     createNote,
     deleteNote,
     undeleteNote,

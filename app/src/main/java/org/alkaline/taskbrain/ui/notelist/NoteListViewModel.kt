@@ -108,6 +108,30 @@ class NoteListViewModel : ViewModel() {
         }
     }
 
+    fun softDeleteNote(noteId: String) {
+        viewModelScope.launch {
+            repository.softDeleteNote(noteId).fold(
+                onSuccess = { refreshNotes() },
+                onFailure = { e ->
+                    Log.w("NoteListViewModel", "Error deleting note", e)
+                    _loadStatus.value = LoadStatus.Error(e)
+                }
+            )
+        }
+    }
+
+    fun undeleteNote(noteId: String) {
+        viewModelScope.launch {
+            repository.undeleteNote(noteId).fold(
+                onSuccess = { refreshNotes() },
+                onFailure = { e ->
+                    Log.w("NoteListViewModel", "Error restoring note", e)
+                    _loadStatus.value = LoadStatus.Error(e)
+                }
+            )
+        }
+    }
+
     fun clearLoadError() {
         if (_loadStatus.value is LoadStatus.Error) {
             _loadStatus.value = null

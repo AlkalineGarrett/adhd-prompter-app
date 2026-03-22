@@ -27,6 +27,7 @@
   flex-shrink: 0;
   background: var(--color-gutter-bg);
   border-bottom: 1px solid var(--color-gutter-border);
+  border-right: 1px solid var(--color-border);
   cursor: pointer;
   user-select: none;
 }

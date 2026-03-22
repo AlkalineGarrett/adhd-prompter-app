@@ -122,7 +122,7 @@ describe('load → save round-trip preserves identity', () => {
     const { tracked, state } = await simulateLoad(repo, 'root')
 
     // Save without changes
-    const updatedTracked = await simulateSave(repo, 'root', state, tracked)
+    await simulateSave(repo, 'root', state, tracked)
 
     // Reload
     const reloaded = await repo.loadNoteWithChildren('root')
