@@ -48,8 +48,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
+import org.alkaline.taskbrain.service.NotificationSyncer
 import org.alkaline.taskbrain.dsl.directives.ScheduleManager
 import org.alkaline.taskbrain.ui.Dimens
 import org.alkaline.taskbrain.ui.alarms.AlarmsScreen
@@ -86,6 +90,16 @@ fun MainScreen(
     // (both the "current_note" and "current_note?noteId={noteId}" routes)
     val recentTabsViewModel: RecentTabsViewModel = viewModel()
     val currentNoteViewModel: CurrentNoteViewModel = viewModel()
+
+    // Sync notification icons/titles with correct alarm stage types on startup
+    val context = LocalContext.current
+    LaunchedEffect(isUserSignedIn) {
+        if (isUserSignedIn) {
+            withContext(Dispatchers.IO) {
+                NotificationSyncer(context).sync()
+            }
+        }
+    }
 
     // Alarm ID to auto-open on the alarms screen (from notification tap)
     var alarmIdToOpen by remember { mutableStateOf<String?>(null) }

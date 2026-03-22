@@ -99,10 +99,13 @@ data class AlarmStage(
     }
 }
 
-enum class AlarmStageType {
-    SOUND_ALARM,    // Audible alarm with snooze
-    LOCK_SCREEN,    // Lock screen red tint / full-screen activity
-    NOTIFICATION;   // Status bar notification
+enum class AlarmStageType(
+    /** Higher value = higher priority. Used for determining which stage "wins". */
+    val priority: Int
+) {
+    SOUND_ALARM(3),    // Audible alarm with snooze
+    LOCK_SCREEN(2),    // Lock screen red tint / full-screen activity
+    NOTIFICATION(1);   // Status bar notification
 
     /** Maps to the existing AlarmType used in PendingIntent extras. */
     fun toAlarmType(): AlarmType = when (this) {
@@ -131,7 +134,14 @@ data class Alarm(
     val snoozedUntil: Timestamp? = null,
 
     /** If this alarm was spawned by a recurring alarm template, its ID. */
-    val recurringAlarmId: String? = null
+    val recurringAlarmId: String? = null,
+
+    /**
+     * The highest stage type that has been presented with sound (via AlarmReceiver).
+     * Sync/restart logic uses this to decide whether to post silently.
+     * Reset to null when alarm timings change.
+     */
+    val notifiedStageType: AlarmStageType? = null
 ) {
     /**
      * Display-friendly name with bullets, checkboxes, tabs, and alarm symbols removed.
@@ -159,6 +169,17 @@ data class Alarm(
      */
     val latestThresholdTime: Timestamp?
         get() = dueTime
+
+    /**
+     * Returns the highest-priority enabled stage whose trigger time is at or before [nowMs],
+     * or null if no stages have triggered yet.
+     */
+    fun currentTriggeredStage(nowMs: Long): AlarmStage? {
+        val due = dueTime ?: return null
+        return enabledStages
+            .filter { it.resolveTime(due).toDate().time <= nowMs }
+            .maxByOrNull { it.type.priority }
+    }
 
     companion object {
         val DEFAULT_STAGES = listOf(
@@ -198,5 +219,12 @@ enum class AlarmPriority {
 enum class AlarmType {
     NOTIFY,     // Regular notification
     URGENT,     // Full-screen urgent notification
-    ALARM       // Audible alarm with snooze options
+    ALARM;      // Audible alarm with snooze options
+
+    /** Maps back to the corresponding [AlarmStageType]. */
+    fun toStageType(): AlarmStageType = when (this) {
+        NOTIFY -> AlarmStageType.NOTIFICATION
+        URGENT -> AlarmStageType.LOCK_SCREEN
+        ALARM -> AlarmStageType.SOUND_ALARM
+    }
 }

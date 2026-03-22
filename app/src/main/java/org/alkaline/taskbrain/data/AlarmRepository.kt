@@ -64,6 +64,19 @@ class AlarmRepository(
     }.onFailure { Log.e(TAG, "Error updating alarm", it) }
 
     /**
+     * Records the highest stage type that has been presented with sound.
+     * Sync/restart logic uses this to avoid re-sounding notifications.
+     */
+    suspend fun markNotifiedStage(alarmId: String, stageType: AlarmStageType): Result<Unit> = runCatching {
+        withContext(Dispatchers.IO) {
+            val userId = requireUserId()
+            alarmRef(userId, alarmId).update("notifiedStageType", stageType.name).await()
+            Log.d(TAG, "Marked notifiedStageType=$stageType for alarm $alarmId")
+            Unit
+        }
+    }.onFailure { Log.e(TAG, "Error marking notified stage: $alarmId/$stageType", it) }
+
+    /**
      * Links an existing alarm to a recurring alarm template.
      */
     suspend fun linkToRecurringAlarm(alarmId: String, recurringAlarmId: String): Result<Unit> = runCatching {
@@ -486,7 +499,8 @@ class AlarmRepository(
         "stages" to alarm.stages.map { it.toMap() },
         "status" to alarm.status.name,
         "snoozedUntil" to alarm.snoozedUntil,
-        "recurringAlarmId" to alarm.recurringAlarmId
+        "recurringAlarmId" to alarm.recurringAlarmId,
+        "notifiedStageType" to alarm.notifiedStageType?.name
     )
 
     private fun mapToAlarm(id: String, data: Map<String, Any?>): Alarm = Alarm(
@@ -504,7 +518,10 @@ class AlarmRepository(
             AlarmStatus.PENDING
         },
         snoozedUntil = data["snoozedUntil"] as? Timestamp,
-        recurringAlarmId = data["recurringAlarmId"] as? String
+        recurringAlarmId = data["recurringAlarmId"] as? String,
+        notifiedStageType = (data["notifiedStageType"] as? String)?.let {
+            try { AlarmStageType.valueOf(it) } catch (e: IllegalArgumentException) { null }
+        }
     )
 
     private fun parseStages(raw: Any?): List<AlarmStage> = AlarmStage.fromMapList(raw)

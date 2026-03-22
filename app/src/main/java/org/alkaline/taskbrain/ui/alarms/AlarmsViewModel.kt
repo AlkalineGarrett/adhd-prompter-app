@@ -19,6 +19,7 @@ import org.alkaline.taskbrain.data.toTimeOfDay
 import org.alkaline.taskbrain.data.RecurringAlarm
 import org.alkaline.taskbrain.data.RecurringAlarmRepository
 import org.alkaline.taskbrain.service.AlarmStateManager
+import org.alkaline.taskbrain.service.AlarmUtils
 import org.alkaline.taskbrain.service.NotificationHelper
 import org.alkaline.taskbrain.service.RecurrenceScheduler
 import org.alkaline.taskbrain.service.UrgentStateManager
@@ -115,8 +116,8 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
                     }
 
                     _pastDueAlarms.value = pastDue.sortedBy { it.latestThresholdTime?.toDate()?.time }
-                    _upcomingAlarms.value = upcoming.sortedBy { it.earliestThresholdTime?.toDate()?.time }
-                    _laterAlarms.value = later.sortedBy { it.earliestThresholdTime?.toDate()?.time }
+                    _upcomingAlarms.value = upcoming.sortedBy { it.dueTime?.toDate()?.time }
+                    _laterAlarms.value = later.sortedBy { it.dueTime?.toDate()?.time }
                 },
                 onFailure = {
                     Log.e(TAG, "Error loading pending alarms", it)
@@ -142,6 +143,25 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
 
             firstError?.let { _error.value = it }
             _isLoading.value = false
+
+            syncNotifications()
+        }
+    }
+
+    /**
+     * Silently updates notifications for all triggered alarms to ensure icon/color/title
+     * stay in sync with the correct stage type. Only posts new notifications (with sound)
+     * for alarms that don't already have an active notification.
+     */
+    private fun syncNotifications() {
+        val nowMs = System.currentTimeMillis()
+        val allPending = (_pastDueAlarms.value.orEmpty() + _upcomingAlarms.value.orEmpty())
+        for (alarm in allPending) {
+            val currentStage = alarm.currentTriggeredStage(nowMs) ?: continue
+            val alarmType = currentStage.type.toAlarmType()
+            val silent = AlarmUtils.shouldSyncSilently(alarm.notifiedStageType, currentStage.type) ||
+                notificationHelper.isNotificationActive(alarm.id)
+            notificationHelper.showNotification(alarm, alarmType, silent = silent)
         }
     }
 
@@ -155,21 +175,12 @@ class AlarmsViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Refreshes all alarms: ensures recurring alarm instances are up to date
-     * (creates missing next instances), then re-shows any missing notifications.
+     * (creates missing next instances), then re-syncs notifications.
      */
     fun refreshAlarms() {
         viewModelScope.launch {
             recurrenceScheduler.bootstrapRecurringAlarms()
             loadAlarms()
-
-            val now = Timestamp.now()
-            val allPending = (_pastDueAlarms.value.orEmpty() + _upcomingAlarms.value.orEmpty())
-            for (alarm in allPending) {
-                val earliest = alarm.earliestThresholdTime ?: continue
-                if (earliest <= now && !notificationHelper.isNotificationActive(alarm.id)) {
-                    notificationHelper.showNotification(alarm)
-                }
-            }
         }
     }
 

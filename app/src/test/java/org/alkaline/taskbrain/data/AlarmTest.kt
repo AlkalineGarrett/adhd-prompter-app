@@ -99,6 +99,20 @@ class AlarmTest {
         assertEquals(Alarm.DEFAULT_STAGES, alarm.stages)
         assertEquals(AlarmStatus.PENDING, alarm.status)
         assertNull(alarm.snoozedUntil)
+        assertNull(alarm.notifiedStageType)
+    }
+
+    @Test
+    fun `Alarm notifiedStageType can be set and read`() {
+        val alarm = Alarm(notifiedStageType = AlarmStageType.LOCK_SCREEN)
+        assertEquals(AlarmStageType.LOCK_SCREEN, alarm.notifiedStageType)
+    }
+
+    @Test
+    fun `Alarm copy preserves notifiedStageType`() {
+        val alarm = Alarm(id = "a", notifiedStageType = AlarmStageType.NOTIFICATION)
+        val copy = alarm.copy(id = "b")
+        assertEquals(AlarmStageType.NOTIFICATION, copy.notifiedStageType)
     }
 
     @Test
@@ -204,6 +218,29 @@ class AlarmTest {
     }
 
     @Test
+    fun `AlarmType toStageType maps correctly`() {
+        assertEquals(AlarmStageType.SOUND_ALARM, AlarmType.ALARM.toStageType())
+        assertEquals(AlarmStageType.LOCK_SCREEN, AlarmType.URGENT.toStageType())
+        assertEquals(AlarmStageType.NOTIFICATION, AlarmType.NOTIFY.toStageType())
+    }
+
+    @Test
+    fun `AlarmStageType priority ordering is SOUND_ALARM highest`() {
+        assertTrue(AlarmStageType.SOUND_ALARM.priority > AlarmStageType.LOCK_SCREEN.priority)
+        assertTrue(AlarmStageType.LOCK_SCREEN.priority > AlarmStageType.NOTIFICATION.priority)
+    }
+
+    @Test
+    fun `AlarmType toStageType round-trips with toAlarmType`() {
+        for (stageType in AlarmStageType.entries) {
+            assertEquals(stageType, stageType.toAlarmType().toStageType())
+        }
+        for (alarmType in AlarmType.entries) {
+            assertEquals(alarmType, alarmType.toStageType().toAlarmType())
+        }
+    }
+
+    @Test
     fun `enabledStages filters disabled stages`() {
         val stages = listOf(
             AlarmStage(AlarmStageType.SOUND_ALARM, enabled = true),
@@ -214,6 +251,71 @@ class AlarmTest {
 
         assertEquals(2, alarm.enabledStages.size)
         assertTrue(alarm.enabledStages.all { it.enabled })
+    }
+
+    // endregion
+
+    // region currentTriggeredStage tests
+
+    @Test
+    fun `currentTriggeredStage returns null when no dueTime`() {
+        val alarm = Alarm(id = "test", dueTime = null)
+        assertNull(alarm.currentTriggeredStage(System.currentTimeMillis()))
+    }
+
+    @Test
+    fun `currentTriggeredStage returns null when no stages triggered`() {
+        val futureTime = Timestamp(Date(System.currentTimeMillis() + 10_000_000))
+        val alarm = Alarm(
+            id = "test",
+            dueTime = futureTime,
+            stages = listOf(
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3600000L, enabled = true)
+            )
+        )
+        // nowMs is well before the notification trigger
+        assertNull(alarm.currentTriggeredStage(System.currentTimeMillis() - 20_000_000))
+    }
+
+    @Test
+    fun `currentTriggeredStage returns highest priority triggered stage`() {
+        val dueMs = 10_000_000L
+        val alarm = Alarm(
+            id = "test",
+            dueTime = Timestamp(Date(dueMs)),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+                AlarmStage(AlarmStageType.LOCK_SCREEN, offsetMs = 1_800_000, enabled = true),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3_600_000, enabled = true)
+            )
+        )
+        // Only NOTIFICATION has triggered (nowMs between notification and lock_screen triggers)
+        val notifyOnly = alarm.currentTriggeredStage(dueMs - 2_000_000)
+        assertEquals(AlarmStageType.NOTIFICATION, notifyOnly?.type)
+
+        // NOTIFICATION and LOCK_SCREEN have triggered
+        val lockScreen = alarm.currentTriggeredStage(dueMs - 1_000_000)
+        assertEquals(AlarmStageType.LOCK_SCREEN, lockScreen?.type)
+
+        // All triggered
+        val soundAlarm = alarm.currentTriggeredStage(dueMs + 1000)
+        assertEquals(AlarmStageType.SOUND_ALARM, soundAlarm?.type)
+    }
+
+    @Test
+    fun `currentTriggeredStage skips disabled stages`() {
+        val dueMs = 10_000_000L
+        val alarm = Alarm(
+            id = "test",
+            dueTime = Timestamp(Date(dueMs)),
+            stages = listOf(
+                AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = false),
+                AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3_600_000, enabled = true)
+            )
+        )
+        // All times past, but SOUND_ALARM is disabled
+        val result = alarm.currentTriggeredStage(dueMs + 1000)
+        assertEquals(AlarmStageType.NOTIFICATION, result?.type)
     }
 
     // endregion

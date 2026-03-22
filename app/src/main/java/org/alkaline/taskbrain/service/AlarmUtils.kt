@@ -33,10 +33,19 @@ object AlarmUtils {
             ?: AlarmType.ALARM
     }
 
-    fun stagePriority(type: AlarmStageType): Int = when (type) {
-        AlarmStageType.SOUND_ALARM -> 3
-        AlarmStageType.LOCK_SCREEN -> 2
-        AlarmStageType.NOTIFICATION -> 1
+    fun stagePriority(type: AlarmStageType): Int = type.priority
+
+    /**
+     * Returns true if notification sync should be silent for the given alarm state.
+     * Silent when the notified stage is at or above the current stage priority
+     * (i.e., the user has already been alerted with sound for this stage or a higher one).
+     */
+    fun shouldSyncSilently(
+        notifiedStageType: AlarmStageType?,
+        currentStageType: AlarmStageType
+    ): Boolean {
+        if (notifiedStageType == null) return false
+        return notifiedStageType.priority >= currentStageType.priority
     }
 
     /**

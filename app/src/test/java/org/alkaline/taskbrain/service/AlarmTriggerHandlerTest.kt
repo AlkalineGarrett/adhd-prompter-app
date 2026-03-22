@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.alkaline.taskbrain.data.AlarmType
 import org.junit.After
 import org.junit.Assert.*
@@ -27,7 +28,8 @@ class AlarmTriggerHandlerTest {
         id: String = "alarm-1",
         status: AlarmStatus = AlarmStatus.PENDING,
         recurringAlarmId: String? = null,
-        snoozedUntil: Timestamp? = null
+        snoozedUntil: Timestamp? = null,
+        notifiedStageType: AlarmStageType? = null
     ) = Alarm(
         id = id,
         noteId = "note-1",
@@ -35,7 +37,8 @@ class AlarmTriggerHandlerTest {
         dueTime = ts(3600_000),
         status = status,
         recurringAlarmId = recurringAlarmId,
-        snoozedUntil = snoozedUntil
+        snoozedUntil = snoozedUntil,
+        notifiedStageType = notifiedStageType
     )
 
     /** Tracks presenter.present() calls in order. */
@@ -461,6 +464,80 @@ class AlarmTriggerHandlerTest {
         // Null re-fetch falls back to stale copy (still PENDING) — should present
         val result = handler.handle("alarm-1", AlarmType.NOTIFY)
         assertTrue(result is TriggerResult.Shown)
+    }
+
+    // -----------------------------------------------------------------------
+    // notifiedStageType recording
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `handle marks notifiedStageType after presenting`() = runTest {
+        val alarm = alarm()
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm)
+
+        handler.handle("alarm-1", AlarmType.NOTIFY)
+
+        coVerify { alarmRepo.markNotifiedStage("alarm-1", AlarmStageType.NOTIFICATION) }
+    }
+
+    @Test
+    fun `handle marks LOCK_SCREEN when presenting URGENT`() = runTest {
+        val alarm = alarm()
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm)
+
+        handler.handle("alarm-1", AlarmType.URGENT)
+
+        coVerify { alarmRepo.markNotifiedStage("alarm-1", AlarmStageType.LOCK_SCREEN) }
+    }
+
+    @Test
+    fun `handle marks SOUND_ALARM when presenting ALARM`() = runTest {
+        val alarm = alarm()
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm)
+
+        handler.handle("alarm-1", AlarmType.ALARM)
+
+        coVerify { alarmRepo.markNotifiedStage("alarm-1", AlarmStageType.SOUND_ALARM) }
+    }
+
+    @Test
+    fun `handle upgrades notifiedStageType on escalation`() = runTest {
+        // Alarm already notified at NOTIFICATION level, now escalating to LOCK_SCREEN
+        val alarm = alarm(notifiedStageType = AlarmStageType.NOTIFICATION)
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm)
+
+        handler.handle("alarm-1", AlarmType.URGENT)
+
+        coVerify { alarmRepo.markNotifiedStage("alarm-1", AlarmStageType.LOCK_SCREEN) }
+    }
+
+    @Test
+    fun `handle does not downgrade notifiedStageType`() = runTest {
+        // Alarm already notified at LOCK_SCREEN, presenting NOTIFY should not downgrade
+        val alarm = alarm(notifiedStageType = AlarmStageType.LOCK_SCREEN)
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm)
+
+        handler.handle("alarm-1", AlarmType.NOTIFY)
+
+        coVerify(exactly = 0) { alarmRepo.markNotifiedStage(any(), any()) }
+    }
+
+    @Test
+    fun `handle does not mark notifiedStageType when suppressed`() = runTest {
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(alarm(status = AlarmStatus.DONE))
+
+        handler.handle("alarm-1", AlarmType.NOTIFY)
+
+        coVerify(exactly = 0) { alarmRepo.markNotifiedStage(any(), any()) }
+    }
+
+    @Test
+    fun `handle does not mark notifiedStageType when not found`() = runTest {
+        coEvery { alarmRepo.getAlarm("alarm-1") } returns Result.success(null)
+
+        handler.handle("alarm-1", AlarmType.NOTIFY)
+
+        coVerify(exactly = 0) { alarmRepo.markNotifiedStage(any(), any()) }
     }
 
     // -----------------------------------------------------------------------

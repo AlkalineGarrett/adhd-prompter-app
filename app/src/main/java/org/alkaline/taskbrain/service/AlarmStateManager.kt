@@ -147,9 +147,15 @@ class AlarmStateManager(
         dueTime: Timestamp?,
         stages: List<AlarmStage>
     ): Result<AlarmScheduleResult> {
+        // Reset notifiedStageType when timings change so sync will re-sound.
+        // Compare only timing-relevant fields (type, offsetMs, absoluteTimeOfDay), not `enabled`.
+        val timingsChanged = alarm.dueTime != dueTime ||
+            alarm.stages.map { Triple(it.type, it.offsetMs, it.absoluteTimeOfDay) } !=
+            stages.map { Triple(it.type, it.offsetMs, it.absoluteTimeOfDay) }
         val updatedAlarm = alarm.copy(
             dueTime = dueTime,
-            stages = stages
+            stages = stages,
+            notifiedStageType = if (timingsChanged) null else alarm.notifiedStageType
         )
 
         return repository.updateAlarm(updatedAlarm).map {

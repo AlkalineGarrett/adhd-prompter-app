@@ -439,6 +439,80 @@ class AlarmStateManagerTest {
         }
     }
 
+    @Test
+    fun `update resets notifiedStageType when dueTime changes`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1").copy(
+            notifiedStageType = AlarmStageType.LOCK_SCREEN
+        )
+        val newDueTime = Timestamp(Date(System.currentTimeMillis() + 7200000))
+        val scheduleResult = AlarmScheduleResult(
+            alarmId = "alarm1",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
+        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
+
+        stateManager.update(alarm, newDueTime, alarm.stages)
+
+        coVerify {
+            mockRepository.updateAlarm(match { it.notifiedStageType == null })
+        }
+    }
+
+    @Test
+    fun `update resets notifiedStageType when stages change`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1").copy(
+            notifiedStageType = AlarmStageType.NOTIFICATION
+        )
+        val newStages = listOf(
+            AlarmStage(AlarmStageType.SOUND_ALARM, offsetMs = 0, enabled = true),
+            AlarmStage(AlarmStageType.NOTIFICATION, offsetMs = 3600000, enabled = true)
+        )
+        val scheduleResult = AlarmScheduleResult(
+            alarmId = "alarm1",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
+        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
+
+        stateManager.update(alarm, alarm.dueTime, newStages)
+
+        coVerify {
+            mockRepository.updateAlarm(match { it.notifiedStageType == null })
+        }
+    }
+
+    @Test
+    fun `update preserves notifiedStageType when timings unchanged`() = runTest {
+        val alarm = createTestAlarm(id = "alarm1").copy(
+            notifiedStageType = AlarmStageType.LOCK_SCREEN
+        )
+        val scheduleResult = AlarmScheduleResult(
+            alarmId = "alarm1",
+            scheduledTriggers = emptyList(),
+            skippedPastTriggers = emptyList(),
+            noTriggersConfigured = false,
+            usedExactAlarm = true
+        )
+
+        coEvery { mockRepository.updateAlarm(any()) } returns Result.success(Unit)
+        every { mockScheduler.scheduleAlarm(any()) } returns scheduleResult
+
+        stateManager.update(alarm, alarm.dueTime, alarm.stages)
+
+        coVerify {
+            mockRepository.updateAlarm(match { it.notifiedStageType == AlarmStageType.LOCK_SCREEN })
+        }
+    }
+
     // endregion
 
     // region reactivate

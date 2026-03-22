@@ -8,7 +8,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.alkaline.taskbrain.data.AlarmStatus
+import org.alkaline.taskbrain.service.AlarmUtils
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -427,6 +429,44 @@ class AlarmsViewModelTest {
         assertEquals(23, resultCal.get(Calendar.HOUR_OF_DAY))
         assertEquals(59, resultCal.get(Calendar.MINUTE))
     }
+
+    // ==================== shouldSyncSilently Tests ====================
+
+    @Test
+    fun `shouldSyncSilently returns false when notifiedStageType is null`() {
+        assertFalse(AlarmUtils.shouldSyncSilently(null, AlarmStageType.NOTIFICATION))
+        assertFalse(AlarmUtils.shouldSyncSilently(null, AlarmStageType.LOCK_SCREEN))
+        assertFalse(AlarmUtils.shouldSyncSilently(null, AlarmStageType.SOUND_ALARM))
+    }
+
+    @Test
+    fun `shouldSyncSilently returns true when notified at same stage`() {
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.NOTIFICATION, AlarmStageType.NOTIFICATION))
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.LOCK_SCREEN, AlarmStageType.LOCK_SCREEN))
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.SOUND_ALARM, AlarmStageType.SOUND_ALARM))
+    }
+
+    @Test
+    fun `shouldSyncSilently returns true when notified at higher stage`() {
+        // Notified at LOCK_SCREEN, current is NOTIFICATION — already alerted, stay silent
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.LOCK_SCREEN, AlarmStageType.NOTIFICATION))
+        // Notified at SOUND_ALARM, current is LOCK_SCREEN
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.SOUND_ALARM, AlarmStageType.LOCK_SCREEN))
+        // Notified at SOUND_ALARM, current is NOTIFICATION
+        assertTrue(AlarmUtils.shouldSyncSilently(AlarmStageType.SOUND_ALARM, AlarmStageType.NOTIFICATION))
+    }
+
+    @Test
+    fun `shouldSyncSilently returns false when escalating to higher stage`() {
+        // Notified at NOTIFICATION, current is LOCK_SCREEN — new escalation, should sound
+        assertFalse(AlarmUtils.shouldSyncSilently(AlarmStageType.NOTIFICATION, AlarmStageType.LOCK_SCREEN))
+        // Notified at NOTIFICATION, current is SOUND_ALARM
+        assertFalse(AlarmUtils.shouldSyncSilently(AlarmStageType.NOTIFICATION, AlarmStageType.SOUND_ALARM))
+        // Notified at LOCK_SCREEN, current is SOUND_ALARM
+        assertFalse(AlarmUtils.shouldSyncSilently(AlarmStageType.LOCK_SCREEN, AlarmStageType.SOUND_ALARM))
+    }
+
+    // ==================== endOfDay Tests (continued) ====================
 
     @Test
     fun `endOfDay at 23_59 returns end of that same day`() {

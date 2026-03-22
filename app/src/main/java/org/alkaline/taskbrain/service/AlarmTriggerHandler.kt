@@ -3,6 +3,7 @@ package org.alkaline.taskbrain.service
 import android.util.Log
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmRepository
+import org.alkaline.taskbrain.data.AlarmStageType
 import org.alkaline.taskbrain.data.AlarmType
 
 /**
@@ -78,6 +79,16 @@ class AlarmTriggerHandler(
         }
 
         presenter.present(freshAlarm, alarmType)
+
+        // Record that this stage has been presented with sound, so sync/restart
+        // can post silently instead of re-sounding.
+        val stageType = alarmType.toStageType()
+        val currentNotified = freshAlarm.notifiedStageType
+        if (currentNotified == null || stageType.priority > currentNotified.priority) {
+            alarmRepository.markNotifiedStage(freshAlarm.id, stageType)
+                .onFailure { Log.e(TAG, "Failed to record notified stage for ${freshAlarm.id}", it) }
+        }
+
         return TriggerResult.Shown(freshAlarm, alarmType)
     }
 

@@ -6,6 +6,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.os.Build
 import android.text.format.DateFormat
 import android.text.format.DateUtils
@@ -28,6 +32,26 @@ class NotificationHelper(private val context: Context) {
     private val notificationManager: NotificationManager? =
         context.getSystemService(NotificationManager::class.java)
 
+    companion object {
+        /** Urgent alarm red (#B71C1C) — tints the notification icon on urgent notifications. */
+        private const val URGENT_COLOR = 0xFFB71C1C.toInt()
+        private const val LARGE_ICON_SIZE_DP = 48
+    }
+
+    private val largeIconCache = mutableMapOf<Int, Bitmap>()
+
+    /** Renders the octopus vector drawable as a tinted bitmap for use as a large notification icon. */
+    private fun createTintedLargeIcon(color: Int): Bitmap = largeIconCache.getOrPut(color) {
+        val sizePx = (LARGE_ICON_SIZE_DP * context.resources.displayMetrics.density).toInt()
+        val drawable = ContextCompat.getDrawable(context, R.drawable.ic_notification_octopus)!!.mutate()
+        drawable.colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.SRC_IN)
+        val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        drawable.setBounds(0, 0, sizePx, sizePx)
+        drawable.draw(canvas)
+        bitmap
+    }
+
     /**
      * Shows a notification for the given alarm.
      * @param alarm The alarm to show notification for
@@ -35,7 +59,7 @@ class NotificationHelper(private val context: Context) {
      * @param silent If true, the notification will be added silently without sound or popup
      * Returns true if the notification was shown, false otherwise.
      */
-    fun showNotification(alarm: Alarm, alarmType: AlarmType = AlarmType.NOTIFY, silent: Boolean = false): Boolean {
+    fun showNotification(alarm: Alarm, alarmType: AlarmType, silent: Boolean = false): Boolean {
         if (!hasNotificationPermission() || notificationManager == null) {
             return false
         }
@@ -48,8 +72,11 @@ class NotificationHelper(private val context: Context) {
     }
 
     private fun showReminderNotification(alarm: Alarm, silent: Boolean = false): Boolean {
+        val greenColor = ContextCompat.getColor(context, R.color.titlebar_background)
         val builder = NotificationCompat.Builder(context, NotificationChannels.REMINDER_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_alarm)
+            .setSmallIcon(R.drawable.ic_notification_octopus)
+            .setColor(greenColor)
+            .setLargeIcon(createTintedLargeIcon(greenColor))
             .setContentTitle(alarm.displayName)
             .setContentText(formatDueText(alarm.dueTime))
             .setAutoCancel(true)
@@ -75,7 +102,9 @@ class NotificationHelper(private val context: Context) {
         val urgentPrefix = context.getString(R.string.alarm_urgent_prefix)
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_alarm)
+            .setSmallIcon(R.drawable.ic_notification_octopus)
+            .setColor(URGENT_COLOR)
+            .setLargeIcon(createTintedLargeIcon(URGENT_COLOR))
             .setContentTitle(urgentPrefix + alarm.displayName)
             .setContentText(formatDueText(alarm.dueTime))
             .setCategory(NotificationCompat.CATEGORY_ALARM)
@@ -104,10 +133,13 @@ class NotificationHelper(private val context: Context) {
 
     private fun showAlarmNotification(alarm: Alarm): Boolean {
         val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.ALARM)
+        val urgentPrefix = context.getString(R.string.alarm_urgent_prefix)
 
         val notification = NotificationCompat.Builder(context, NotificationChannels.ALARM_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_alarm)
-            .setContentTitle(alarm.displayName)
+            .setSmallIcon(R.drawable.ic_notification_octopus)
+            .setColor(URGENT_COLOR)
+            .setLargeIcon(createTintedLargeIcon(URGENT_COLOR))
+            .setContentTitle(urgentPrefix + alarm.displayName)
             .setContentText(formatDueText(alarm.dueTime))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
