@@ -27,10 +27,17 @@ class NotificationSyncer(private val context: Context) {
 
         for (alarm in alarms) {
             val currentStage = alarm.currentTriggeredStage(nowMs) ?: continue
-            val alarmType = currentStage.type.toAlarmType()
-            val silent = AlarmUtils.shouldSyncSilently(alarm.notifiedStageType, currentStage.type) ||
+            val stageType = currentStage.type
+            val alarmType = stageType.toAlarmType()
+            val silent = AlarmUtils.shouldSyncSilently(alarm.notifiedStageType, stageType) ||
                 notificationHelper.isNotificationActive(alarm.id)
             notificationHelper.showNotification(alarm, alarmType, silent = silent)
+
+            // Record notified stage so future syncs (e.g., after redeploy) stay silent
+            if (alarm.notifiedStageType == null || stageType.priority > alarm.notifiedStageType.priority) {
+                repository.markNotifiedStage(alarm.id, stageType)
+                    .onFailure { Log.e(TAG, "Failed to record notified stage for ${alarm.id}", it) }
+            }
         }
     }
 

@@ -14,6 +14,7 @@ object NotificationChannels {
     const val REMINDER_CHANNEL_ID = "reminders"
     const val URGENT_CHANNEL_ID = "urgent_reminders"
     const val ALARM_CHANNEL_ID = "alarms"
+    const val SILENT_CHANNEL_ID = "silent_updates"
 
     /**
      * Creates all notification channels for the app.
@@ -59,8 +60,19 @@ object NotificationChannels {
             vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
         }
 
+        // Silent channel for sync/redeploy updates — no sound, no popup
+        val silentChannel = NotificationChannel(
+            SILENT_CHANNEL_ID,
+            "Silent Updates",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Silent notification updates (no sound or popup)"
+            setSound(null, null)
+            enableVibration(false)
+        }
+
         notificationManager.createNotificationChannels(
-            listOf(reminderChannel, urgentChannel, alarmChannel)
+            listOf(reminderChannel, urgentChannel, alarmChannel, silentChannel)
         )
     }
 }

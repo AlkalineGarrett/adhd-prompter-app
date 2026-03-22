@@ -73,7 +73,8 @@ class NotificationHelper(private val context: Context) {
 
     private fun showReminderNotification(alarm: Alarm, silent: Boolean = false): Boolean {
         val greenColor = ContextCompat.getColor(context, R.color.titlebar_background)
-        val builder = NotificationCompat.Builder(context, NotificationChannels.REMINDER_CHANNEL_ID)
+        val channelId = if (silent) NotificationChannels.SILENT_CHANNEL_ID else NotificationChannels.REMINDER_CHANNEL_ID
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_octopus)
             .setColor(greenColor)
             .setLargeIcon(createTintedLargeIcon(greenColor))
@@ -98,7 +99,7 @@ class NotificationHelper(private val context: Context) {
 
     private fun showUrgentNotification(alarm: Alarm, silent: Boolean = false): Boolean {
         // Use REMINDER channel for silent notifications (channel settings override per-notification on Android 8+)
-        val channelId = if (silent) NotificationChannels.REMINDER_CHANNEL_ID else NotificationChannels.URGENT_CHANNEL_ID
+        val channelId = if (silent) NotificationChannels.SILENT_CHANNEL_ID else NotificationChannels.URGENT_CHANNEL_ID
         val urgentPrefix = context.getString(R.string.alarm_urgent_prefix)
 
         val builder = NotificationCompat.Builder(context, channelId)
