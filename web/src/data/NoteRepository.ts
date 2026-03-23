@@ -15,6 +15,7 @@ import {
 import type { Auth } from 'firebase/auth'
 import { noteFromFirestore, type Note, type NoteLine } from './Note'
 import { flattenTreeToLines } from './NoteTree'
+import { performSimilarityMatching } from '@/editor/ContentSimilarity'
 
 /**
  * Repository for managing composable notes in Firestore.
@@ -642,15 +643,17 @@ export function matchLinesToIds(
     }
   })
 
-  // Phase 2: Positional matches
-  newLinesContent.forEach((_, index) => {
-    if (newIds[index] == null) {
-      if (index < existingLines.length && !oldConsumed[index]) {
-        newIds[index] = existingLines[index]!.noteId
-        oldConsumed[index] = true
-      }
-    }
-  })
+  // Phase 2: Similarity-based matching for modifications and splits.
+  performSimilarityMatching(
+    new Set(newLinesContent.map((_, i) => i).filter((i) => newIds[i] == null)),
+    existingLines.map((_, i) => i).filter((i) => !oldConsumed[i]),
+    (idx) => existingLines[idx]!.content,
+    (idx) => newLinesContent[idx]!,
+    (oldIdx, newIdx) => {
+      newIds[newIdx] = existingLines[oldIdx]!.noteId
+      oldConsumed[oldIdx] = true
+    },
+  )
 
   const trackedLines = newLinesContent.map((content, index) => ({
     content,

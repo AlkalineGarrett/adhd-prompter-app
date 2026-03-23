@@ -171,6 +171,59 @@ describe('matchLinesToIds', () => {
     expect(result[1]!.noteId).toBe('child_2')
   })
 
+  // Requirement: when a line is split, the fragment with more original content keeps the ID
+  it('line split gives ID to fragment with more original content', () => {
+    const existing = lines(
+      ['Line 1', parentId],
+      ['Hello world.', 'child_1'],
+    )
+    const result = tracked(existing, 'Line 1\nHello world\n.')
+    expect(result).toEqual(lines(
+      ['Line 1', parentId],
+      ['Hello world', 'child_1'],
+      ['.', null],
+    ))
+  })
+
+  it('line split at beginning gives ID to longer fragment', () => {
+    const existing = lines(
+      ['Line 1', parentId],
+      ['Hello world.', 'child_1'],
+    )
+    const result = tracked(existing, 'Line 1\nH\nello world.')
+    expect(result).toEqual(lines(
+      ['Line 1', parentId],
+      ['H', null],
+      ['ello world.', 'child_1'],
+    ))
+  })
+
+  it('line split with subsequent edits preserves ID on original content', () => {
+    const existing = lines(
+      ['Line 1', parentId],
+      ['Hello world.', 'child_1'],
+    )
+    const result = tracked(existing, 'Line 1\nHello world\n. plus a whole lot of new content')
+    expect(result).toEqual(lines(
+      ['Line 1', parentId],
+      ['Hello world', 'child_1'],
+      ['. plus a whole lot of new content', null],
+    ))
+  })
+
+  it('line split at beginning with subsequent edits gives ID to fragment with more original content', () => {
+    const existing = lines(
+      ['Line 1', parentId],
+      ['Hello world.', 'child_1'],
+    )
+    const result = tracked(existing, 'Line 1\nH plus a very long addition\nello world.')
+    expect(result).toEqual(lines(
+      ['Line 1', parentId],
+      ['H plus a very long addition', null],
+      ['ello world.', 'child_1'],
+    ))
+  })
+
   it('whitespace-only line is NOT treated as empty', () => {
     const existing = lines(['Line 1', parentId])
     const result = tracked(existing, 'Line 1\n   \nLine 3')

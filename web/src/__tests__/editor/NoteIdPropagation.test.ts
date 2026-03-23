@@ -136,7 +136,7 @@ describe('updateFromText preserves noteIds', () => {
 // ==================== Split line propagation ====================
 
 describe('splitLine preserves noteIds', () => {
-  it('gives both fragments the same noteIds when splitting in the middle', () => {
+  it('gives noteIds to the longer fragment when splitting in the middle', () => {
     const controller = controllerWithNoteLines(
       { text: 'Hello World', noteIds: ['note1'] },
       { text: '', noteIds: [] },
@@ -148,7 +148,8 @@ describe('splitLine preserves noteIds', () => {
 
     expect(controller.state.lines[0]!.text).toBe('Hello')
     expect(controller.state.lines[1]!.text).toBe(' World')
-    expect(controller.state.lines[0]!.noteIds).toEqual(['note1'])
+    // " World" (6 chars) > "Hello" (5 chars), so after half gets the noteId
+    expect(controller.state.lines[0]!.noteIds).toEqual([])
     expect(controller.state.lines[1]!.noteIds).toEqual(['note1'])
   })
 
@@ -252,7 +253,7 @@ describe('updateLineContent newline assigns noteIds correctly', () => {
     expect(controller.state.lines[1]!.noteIds).toEqual(['note1'])
   })
 
-  it('gives both fragments noteIds when newline in middle', () => {
+  it('gives noteIds to the longer fragment when newline in middle', () => {
     const controller = controllerWithNoteLines(
       { text: 'HelloWorld', noteIds: ['note1'] },
       { text: '', noteIds: [] },
@@ -261,8 +262,9 @@ describe('updateLineContent newline assigns noteIds correctly', () => {
 
     controller.updateLineContent(0, 'Hello\nWorld', 5)
 
+    // "Hello" (5 chars) = "World" (5 chars), so before half gets noteIds (>=)
     expect(controller.state.lines[0]!.noteIds).toEqual(['note1'])
-    expect(controller.state.lines[1]!.noteIds).toEqual(['note1'])
+    expect(controller.state.lines[1]!.noteIds).toEqual([])
   })
 })
 
@@ -649,12 +651,13 @@ describe('full lifecycle: noteIds through load → edit → save', () => {
       { text: '', noteIds: [] },
     ])
 
-    // Split line 0 at position 5
+    // Split line 0 at position 5: "Hello" (5) vs " World" (6)
     state.focusedLineIndex = 0
     state.lines[0]!.updateFull('Hello World', 5)
     controller.splitLine(0)
 
-    expect(state.lines[0]!.noteIds).toEqual(['note1'])
+    // Longer fragment (" World") keeps the noteId
+    expect(state.lines[0]!.noteIds).toEqual([])
     expect(state.lines[1]!.noteIds).toEqual(['note1'])
 
     // Merge them back
@@ -662,7 +665,7 @@ describe('full lifecycle: noteIds through load → edit → save', () => {
     state.lines[1]!.updateFull(state.lines[1]!.text, 0)
     controller.mergeToPreviousLine(1)
 
-    // After merge, noteIds should include note1 (from both)
+    // After merge, noteIds should include note1
     expect(state.lines[0]!.text).toBe('Hello World')
     expect(state.lines[0]!.noteIds).toEqual(['note1'])
   })

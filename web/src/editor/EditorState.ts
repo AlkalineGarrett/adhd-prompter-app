@@ -8,6 +8,7 @@ import {
 } from './EditorSelection'
 import * as SC from './SelectionCoordinates'
 import * as IU from './IndentationUtils'
+import { performSimilarityMatching } from './ContentSimilarity'
 import * as MTF from './MoveTargetFinder'
 import * as ME from './MoveExecutor'
 
@@ -377,15 +378,17 @@ export class EditorState {
       }
     })
 
-    // Phase 2: Positional fallback
-    newLineTexts.forEach((_, index) => {
-      if (matchedNoteIds[index] == null) {
-        if (index < oldLines.length && !oldConsumed[index]) {
-          matchedNoteIds[index] = oldLines[index]!.noteIds
-          oldConsumed[index] = true
-        }
-      }
-    })
+    // Phase 2: Similarity-based matching for modifications and splits.
+    performSimilarityMatching(
+      new Set(newLineTexts.map((_, i) => i).filter((i) => matchedNoteIds[i] == null)),
+      oldLines.map((_, i) => i).filter((i) => !oldConsumed[i]),
+      (idx) => oldLines[idx]!.text,
+      (idx) => newLineTexts[idx]!,
+      (oldIdx, newIdx) => {
+        matchedNoteIds[newIdx] = oldLines[oldIdx]!.noteIds
+        oldConsumed[oldIdx] = true
+      },
+    )
 
     this.lines = newLineTexts.map((t, i) => new LineState(t, undefined, matchedNoteIds[i] ?? []))
     this.focusedLineIndex = Math.max(0, Math.min(this.focusedLineIndex, this.lines.length - 1))

@@ -730,15 +730,12 @@ class EditorController(
         val beforeCursor = line.text.substring(0, cursor)
         val afterCursor = line.text.substring(cursor)
 
-        // Determine which side has real content (beyond prefix).
-        // The side with content keeps the original noteIds; the empty side gets a fresh tempId.
         val beforeHasContent = beforeCursor.length > prefix.length
         val afterHasContent = afterCursor.isNotEmpty()
-        val (currentNoteIds, newNoteIds) = when {
-            !beforeHasContent && afterHasContent -> emptyList<String>() to noteIds
-            beforeHasContent && !afterHasContent -> noteIds to emptyList()
-            else -> noteIds to noteIds
-        }
+        val (currentNoteIds, newNoteIds) = org.alkaline.taskbrain.data.splitNoteIds(
+            noteIds, beforeCursor.length - prefix.length, afterCursor.length,
+            beforeHasContent, afterHasContent
+        )
 
         // Update current line
         line.updateFull(beforeCursor, beforeCursor.length)
@@ -913,16 +910,11 @@ class EditorController(
             val beforeNewline = newContent.substring(0, newlineIndex)
             val afterNewline = newContent.substring(newlineIndex + 1)
 
-            // Determine which side has real content.
-            // The side with content keeps the original noteIds; the empty side gets a fresh tempId.
-            val beforeHasContent = beforeNewline.isNotEmpty()
-            val afterHasContent = afterNewline.isNotEmpty()
             val noteIds = line.noteIds
-            val (currentNoteIds, newNoteIds) = when {
-                !beforeHasContent && afterHasContent -> emptyList<String>() to noteIds
-                beforeHasContent && !afterHasContent -> noteIds to emptyList()
-                else -> noteIds to noteIds
-            }
+            val (currentNoteIds, newNoteIds) = org.alkaline.taskbrain.data.splitNoteIds(
+                noteIds, beforeNewline.length, afterNewline.length,
+                beforeNewline.isNotEmpty(), afterNewline.isNotEmpty()
+            )
 
             // Update current line with content before newline
             line.updateContent(beforeNewline, beforeNewline.length)

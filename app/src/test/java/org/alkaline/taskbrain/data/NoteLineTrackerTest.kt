@@ -225,6 +225,76 @@ class NoteLineTrackerTest {
         // Note: child_1 should be soft-deleted by repository (not tracker's job)
     }
 
+    // Requirement: when a line is split, the fragment with more original content keeps the ID
+    @Test
+    fun `line split gives ID to fragment with more original content`() {
+        setLines("Line 1" to parentId, "Hello world." to "child_1")
+
+        // User splits "Hello world." before the period → "Hello world" and "."
+        tracker.updateTrackedLines("Line 1\nHello world\n.")
+
+        assertLines(
+            "Line 1" to parentId,
+            "Hello world" to "child_1",  // More original content
+            "." to null                   // Less original content
+        )
+    }
+
+    @Test
+    fun `line split at beginning gives ID to longer fragment`() {
+        setLines("Line 1" to parentId, "Hello world." to "child_1")
+
+        // User splits "Hello world." after "H" → "H" and "ello world."
+        tracker.updateTrackedLines("Line 1\nH\nello world.")
+
+        assertLines(
+            "Line 1" to parentId,
+            "H" to null,                    // Less original content
+            "ello world." to "child_1"      // More original content
+        )
+    }
+
+    @Test
+    fun `line split with subsequent edits preserves ID on original content`() {
+        setLines("Line 1" to parentId, "Hello world." to "child_1")
+
+        // User splits before period, then types a lot on the new line
+        tracker.updateTrackedLines("Line 1\nHello world\n. plus a whole lot of new content")
+
+        assertLines(
+            "Line 1" to parentId,
+            "Hello world" to "child_1",                     // Higher proportion of original
+            ". plus a whole lot of new content" to null      // Mostly new content
+        )
+    }
+
+    @Test
+    fun `line split at beginning with subsequent edits gives ID to fragment with more original content`() {
+        setLines("Line 1" to parentId, "Hello world." to "child_1")
+
+        // User splits after "H", then types a lot on the first fragment
+        tracker.updateTrackedLines("Line 1\nH plus a very long addition\nello world.")
+
+        assertLines(
+            "Line 1" to parentId,
+            "H plus a very long addition" to null,    // Mostly new content
+            "ello world." to "child_1"                // Higher proportion of original
+        )
+    }
+
+    @Test
+    fun `split with equal fragments gives ID to first`() {
+        setLines("Line 1" to parentId, "AABB" to "child_1")
+
+        // Split in the middle: "AA" and "BB"
+        tracker.updateTrackedLines("Line 1\nAA\nBB")
+
+        val lines = tracker.getTrackedLines()
+        // Both have equal proportion; one should get the ID, the other null
+        val idCount = lines.count { it.noteId == "child_1" }
+        assertEquals(1, idCount)
+    }
+
     @Test
     fun `whitespace-only line is NOT treated as empty`() {
         setLines("Line 1" to parentId)

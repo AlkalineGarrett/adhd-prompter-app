@@ -230,14 +230,13 @@ describe('edit operations preserve identity through save cycle', () => {
     state.lines[1]!.updateFull('\tHello World', 6)
     controller.splitLine(1)
 
-    // Both fragments should have task1 noteId
+    // Longer fragment (" World" = 6 chars content > "Hello" = 5 chars) keeps noteId
     expect(state.lines[1]!.text).toBe('\tHello')
     expect(state.lines[2]!.text).toBe('\t World')
-    expect(state.lines[1]!.noteIds).toEqual(['task1'])
+    expect(state.lines[1]!.noteIds).toEqual([])
     expect(state.lines[2]!.noteIds).toEqual(['task1'])
 
-    // Save — matchLinesToIds will see neither matches "\tHello World" exactly
-    // Both are new content, so positional fallback applies
+    // Save — matchLinesToIds uses similarity-based matching
     await simulateSave(repo, 'root', state, tracked)
 
     const stored = repo.getStored('root')

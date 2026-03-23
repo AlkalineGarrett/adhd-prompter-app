@@ -463,23 +463,32 @@ class EditorState {
             contentToIndices.getOrPut(content) { mutableListOf() }.add(i)
         }
 
-        lines.clear()
+        val matchedNoteIds = arrayOfNulls<List<String>>(newLines.size)
+
+        // Phase 1: Exact content match
         newLines.forEachIndexed { index, lineText ->
-            var noteIds = emptyList<String>()
-            // Phase 1: Exact content match
             val indices = contentToIndices[lineText]
             if (!indices.isNullOrEmpty()) {
                 val oldIdx = indices.removeAt(0)
-                noteIds = oldNoteIds[oldIdx]
+                matchedNoteIds[index] = oldNoteIds[oldIdx]
                 oldConsumed[oldIdx] = true
-            } else {
-                // Phase 2: Positional fallback
-                if (index < oldNoteIds.size && !oldConsumed[index]) {
-                    noteIds = oldNoteIds[index]
-                    oldConsumed[index] = true
-                }
             }
-            lines.add(LineState(lineText, lineText.length, noteIds))
+        }
+
+        // Phase 2: Similarity-based matching for modifications and splits
+        org.alkaline.taskbrain.data.performSimilarityMatching(
+            unmatchedNewIndices = newLines.indices.filter { matchedNoteIds[it] == null }.toSet(),
+            unconsumedOldIndices = oldContents.indices.filter { !oldConsumed[it] },
+            getOldContent = { oldContents[it] },
+            getNewContent = { newLines[it] },
+        ) { oldIdx, newIdx ->
+            matchedNoteIds[newIdx] = oldNoteIds[oldIdx]
+            oldConsumed[oldIdx] = true
+        }
+
+        lines.clear()
+        newLines.forEachIndexed { index, lineText ->
+            lines.add(LineState(lineText, lineText.length, matchedNoteIds[index] ?: emptyList()))
         }
         focusedLineIndex = focusedLineIndex.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
     }

@@ -95,7 +95,7 @@ class NoteIdPropagationTest {
     // ==================== Split line propagation ====================
 
     @Test
-    fun `splitLine gives both fragments the same noteIds when splitting in middle`() {
+    fun `splitLine gives noteIds to the longer fragment when splitting in middle`() {
         val state = EditorState()
         val controller = EditorController(state)
         state.initFromNoteLines(listOf(
@@ -109,7 +109,8 @@ class NoteIdPropagationTest {
 
         assertEquals("Hello", state.lines[0].text)
         assertEquals(" World", state.lines[1].text)
-        assertEquals(listOf("note1"), state.lines[0].noteIds)
+        // " World" (6 chars) > "Hello" (5 chars), so after half gets the noteId
+        assertTrue(state.lines[0].noteIds.isEmpty())
         assertEquals(listOf("note1"), state.lines[1].noteIds)
     }
 
@@ -228,7 +229,7 @@ class NoteIdPropagationTest {
     }
 
     @Test
-    fun `updateLineContent gives both fragments noteIds when newline in middle`() {
+    fun `updateLineContent gives noteIds to the longer fragment when newline in middle`() {
         val state = EditorState()
         val controller = EditorController(state)
         state.initFromNoteLines(listOf(
@@ -239,8 +240,9 @@ class NoteIdPropagationTest {
 
         controller.updateLineContent(0, "Hello\nWorld", 5)
 
+        // "Hello" (5 chars) = "World" (5 chars), so before half gets noteIds (>=)
         assertEquals(listOf("note1"), state.lines[0].noteIds)
-        assertEquals(listOf("note1"), state.lines[1].noteIds)
+        assertTrue(state.lines[1].noteIds.isEmpty())
     }
 
     // ==================== Merge line propagation ====================

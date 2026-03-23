@@ -44,15 +44,15 @@ class NoteLineTracker(
             }
         }
 
-        // Phase 2: Positional matches for modifications
-        newLinesContent.forEachIndexed { index, content ->
-            if (newIds[index] == null) {
-                // Try to take ID from old line at same position if it wasn't consumed
-                if (index < oldLines.size && !oldConsumed[index]) {
-                    newIds[index] = oldLines[index].noteId
-                    oldConsumed[index] = true
-                }
-            }
+        // Phase 2: Similarity-based matching for modifications and splits.
+        performSimilarityMatching(
+            unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
+            unconsumedOldIndices = oldLines.indices.filter { !oldConsumed[it] },
+            getOldContent = { oldLines[it].content },
+            getNewContent = { newLinesContent[it] },
+        ) { oldIdx, newIdx ->
+            newIds[newIdx] = oldLines[oldIdx].noteId
+            oldConsumed[oldIdx] = true
         }
 
         val newTrackedLines = newLinesContent.mapIndexed { index, content ->
