@@ -272,6 +272,35 @@ data class DisplayTextResult(
 )
 
 /**
+ * Maps a source text offset to the corresponding display text offset,
+ * accounting for directives that may have different lengths when rendered.
+ *
+ * @param mapInsideDirective controls where offsets inside a directive source map to:
+ *   true = end of display range (for selection/highlight), false = start (for cursor positioning)
+ */
+fun mapSourceToDisplayOffset(
+    sourceOffset: Int,
+    displayResult: DisplayTextResult,
+    mapInsideDirective: Boolean = true
+): Int {
+    if (displayResult.directiveDisplayRanges.isEmpty()) return sourceOffset
+
+    var displayOffset = sourceOffset
+    for (range in displayResult.directiveDisplayRanges) {
+        if (sourceOffset <= range.sourceRange.first) break
+        val sourceLength = range.sourceRange.last - range.sourceRange.first + 1
+        val displayLength = range.displayRange.last - range.displayRange.first + 1
+        if (sourceOffset > range.sourceRange.last) {
+            displayOffset += displayLength - sourceLength
+        } else {
+            return if (mapInsideDirective) range.displayRange.last + 1
+            else range.displayRange.first
+        }
+    }
+    return displayOffset.coerceAtLeast(0)
+}
+
+/**
  * Tracks where a directive appears in both source and display text.
  *
  * Milestone 8: Added hasWarning for no-effect warnings.

@@ -583,6 +583,7 @@ private fun EditorContent(
                 lineLayouts = lineLayouts,
                 longPressTimeoutMillis = viewConfiguration.longPressTimeoutMillis,
                 touchSlop = viewConfiguration.touchSlop,
+                density = LocalDensity.current.density,
                 scrollState = scrollState,
                 directiveResults = directiveResults,
                 onCursorPositioned = onCursorPositioned,

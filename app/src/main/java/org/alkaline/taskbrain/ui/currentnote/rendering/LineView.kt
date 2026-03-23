@@ -8,6 +8,7 @@ import org.alkaline.taskbrain.ui.currentnote.ime.DirectiveAwareLineInput
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
 import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
+import org.alkaline.taskbrain.dsl.directives.mapSourceToDisplayOffset
 import org.alkaline.taskbrain.ui.currentnote.selection.lineSelectionToPrefixSelection
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.LineState
@@ -249,29 +250,4 @@ private fun mapSourceRangeToDisplayRange(
 /**
  * Maps a cursor position from source text to display text.
  */
-private fun mapSourceToDisplayOffset(sourceOffset: Int, displayResult: DisplayTextResult): Int {
-    if (displayResult.directiveDisplayRanges.isEmpty()) {
-        return sourceOffset
-    }
-
-    var displayOffset = sourceOffset
-
-    for (range in displayResult.directiveDisplayRanges) {
-        if (sourceOffset <= range.sourceRange.first) {
-            // Offset is before this directive - no adjustment needed
-            break
-        } else if (sourceOffset > range.sourceRange.last) {
-            // Offset is after this directive - adjust for the length difference
-            val sourceLength = range.sourceRange.last - range.sourceRange.first + 1
-            val displayLength = range.displayRange.last - range.displayRange.first + 1
-            displayOffset += displayLength - sourceLength
-        } else {
-            // Offset is inside the directive - map to corresponding position in display
-            // Map proportionally or to the end of display directive
-            return range.displayRange.last + 1
-        }
-    }
-
-    return displayOffset.coerceAtLeast(0)
-}
 

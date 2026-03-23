@@ -1,6 +1,9 @@
 package org.alkaline.taskbrain.ui.currentnote.gestures
 
+import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EditorGestureHandlerTest {
@@ -245,5 +248,195 @@ class EditorGestureHandlerTest {
         assertEquals(0, findLineIndexAtY(15f, layouts, 2))
         assertEquals(1, findLineIndexAtY(80f, layouts, 2))
         assertEquals(2, findLineIndexAtY(145f, layouts, 2))
+    }
+
+    // ==================== GestureStateMachine ====================
+
+    private fun createGSM(
+        downPosition: Offset = Offset(100f, 100f),
+        downNearCursor: Boolean = false,
+        touchSlop: Float = 10f,
+        resolveOffset: (Offset) -> Int = { it.x.toInt() },
+        resolveBoundaries: (Int) -> Pair<Int, Int> = { it to it + 5 },
+        setSelection: (Int, Int) -> Unit = { _, _ -> },
+        hasSelection: () -> Boolean = { false },
+        isOffsetInSelection: (Int) -> Boolean = { false },
+        onCursorDragged: (Int) -> Unit = {}
+    ) = GestureStateMachine(
+        downPosition, downNearCursor, touchSlop,
+        resolveOffset, resolveBoundaries, setSelection,
+        hasSelection, isOffsetInSelection, onCursorDragged
+    )
+
+    @Test
+    fun `drag far from cursor becomes scroll gesture`() {
+        val gsm = createGSM(downNearCursor = false, touchSlop = 10f)
+        // Move past touch slop
+        gsm.onPointerMove(Offset(100f, 115f))
+        assertTrue(gsm.isScrollGesture)
+        assertFalse(gsm.isCursorDragGesture)
+    }
+
+    @Test
+    fun `drag near cursor becomes cursor drag gesture`() {
+        val draggedOffsets = mutableListOf<Int>()
+        val gsm = createGSM(
+            downNearCursor = true,
+            touchSlop = 10f,
+            onCursorDragged = { draggedOffsets.add(it) }
+        )
+        // Move past touch slop
+        val consumed = gsm.onPointerMove(Offset(100f, 115f))
+        assertTrue(consumed)
+        assertTrue(gsm.isCursorDragGesture)
+        assertFalse(gsm.isScrollGesture)
+        assertEquals(1, draggedOffsets.size)
+    }
+
+    @Test
+    fun `cursor drag continues moving cursor on subsequent moves`() {
+        val draggedOffsets = mutableListOf<Int>()
+        val gsm = createGSM(
+            downNearCursor = true,
+            touchSlop = 10f,
+            onCursorDragged = { draggedOffsets.add(it) }
+        )
+        gsm.onPointerMove(Offset(100f, 115f)) // enter cursor drag
+        gsm.onPointerMove(Offset(120f, 115f))
+        gsm.onPointerMove(Offset(140f, 115f))
+        assertEquals(3, draggedOffsets.size)
+        assertEquals(120, draggedOffsets[1])
+        assertEquals(140, draggedOffsets[2])
+    }
+
+    @Test
+    fun `long press is ignored during cursor drag`() {
+        var selectionSet = false
+        val gsm = createGSM(
+            downNearCursor = true,
+            touchSlop = 10f,
+            setSelection = { _, _ -> selectionSet = true },
+            onCursorDragged = {}
+        )
+        gsm.onPointerMove(Offset(100f, 115f)) // enter cursor drag
+        gsm.onLongPressTriggered()
+        assertFalse(gsm.longPressTriggered)
+        assertFalse(selectionSet)
+        assertTrue(gsm.isCursorDragGesture)
+    }
+
+    @Test
+    fun `long press triggers selection when not near cursor`() {
+        var selStart = -1
+        var selEnd = -1
+        val gsm = createGSM(
+            downNearCursor = false,
+            resolveBoundaries = { 10 to 15 },
+            setSelection = { s, e -> selStart = s; selEnd = e }
+        )
+        gsm.onLongPressTriggered()
+        assertTrue(gsm.longPressTriggered)
+        assertEquals(10, selStart)
+        assertEquals(15, selEnd)
+    }
+
+    @Test
+    fun `long press then drag extends selection`() {
+        var lastSelStart = -1
+        var lastSelEnd = -1
+        val gsm = createGSM(
+            downPosition = Offset(100f, 100f),
+            downNearCursor = false,
+            resolveBoundaries = { 10 to 15 },
+            setSelection = { s, e -> lastSelStart = s; lastSelEnd = e }
+        )
+        gsm.onLongPressTriggered()
+        // Drag to position that resolves to offset 20 (past the word end of 15)
+        val consumed = gsm.onPointerMove(Offset(120f, 100f))
+        assertTrue(consumed)
+        assertEquals(10, lastSelStart) // anchor start preserved
+        assertEquals(120, lastSelEnd) // extended to drag position
+    }
+
+    @Test
+    fun `tap positions cursor`() {
+        var cursorOffset = -1
+        val gsm = createGSM(
+            downPosition = Offset(50f, 100f),
+            resolveOffset = { 42 }
+        )
+        gsm.onGestureComplete(
+            onCursorPositioned = { cursorOffset = it },
+            onTapOnSelection = null,
+            onSelectionCompleted = null
+        )
+        assertEquals(42, cursorOffset)
+    }
+
+    @Test
+    fun `tap on selection triggers selection callback`() {
+        var tappedOnSelection = false
+        val gsm = createGSM(
+            hasSelection = { true },
+            isOffsetInSelection = { true }
+        )
+        gsm.onGestureComplete(
+            onCursorPositioned = {},
+            onTapOnSelection = { tappedOnSelection = true },
+            onSelectionCompleted = null
+        )
+        assertTrue(tappedOnSelection)
+    }
+
+    @Test
+    fun `cursor drag complete does not reposition cursor`() {
+        var cursorPositioned = false
+        val gsm = createGSM(
+            downNearCursor = true,
+            touchSlop = 10f,
+            onCursorDragged = {}
+        )
+        gsm.onPointerMove(Offset(100f, 115f)) // enter cursor drag
+        gsm.onGestureComplete(
+            onCursorPositioned = { cursorPositioned = true },
+            onTapOnSelection = null,
+            onSelectionCompleted = null
+        )
+        assertFalse(cursorPositioned)
+    }
+
+    @Test
+    fun `scroll gesture suppresses all callbacks`() {
+        var anyCalled = false
+        val gsm = createGSM(downNearCursor = false, touchSlop = 10f)
+        gsm.onPointerMove(Offset(100f, 115f)) // become scroll
+        gsm.onGestureComplete(
+            onCursorPositioned = { anyCalled = true },
+            onTapOnSelection = { anyCalled = true },
+            onSelectionCompleted = { anyCalled = true }
+        )
+        assertFalse(anyCalled)
+    }
+
+    @Test
+    fun `consumed by child suppresses all callbacks`() {
+        var anyCalled = false
+        val gsm = createGSM()
+        gsm.markConsumedByChild()
+        gsm.onGestureComplete(
+            onCursorPositioned = { anyCalled = true },
+            onTapOnSelection = { anyCalled = true },
+            onSelectionCompleted = { anyCalled = true }
+        )
+        assertFalse(anyCalled)
+    }
+
+    @Test
+    fun `small movement within touch slop is not scroll or cursor drag`() {
+        val gsm = createGSM(downNearCursor = true, touchSlop = 10f)
+        val consumed = gsm.onPointerMove(Offset(105f, 100f)) // 5px, within slop
+        assertFalse(consumed)
+        assertFalse(gsm.isScrollGesture)
+        assertFalse(gsm.isCursorDragGesture)
     }
 }

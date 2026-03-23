@@ -75,5 +75,8 @@ object EditorConfig {
 
     /** Estimated character width for hit testing (in pixels) */
     const val EstimatedCharWidthPx = 20f
+
+    /** Touch target radius (in dp) within which a touch activates cursor drag */
+    const val CursorDragRadiusDp = 24f
 }
 

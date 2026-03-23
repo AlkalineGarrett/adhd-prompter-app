@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegmenter
 import org.alkaline.taskbrain.dsl.directives.DisplayTextResult
+import org.alkaline.taskbrain.dsl.directives.mapSourceToDisplayOffset
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 
@@ -254,22 +255,83 @@ internal fun findWordBoundaries(text: String, offset: Int): Pair<Int, Int> {
 }
 
 // =============================================================================
+// Cursor Proximity Detection
+// =============================================================================
+
+
+/**
+ * Computes the cursor's screen position from layout info.
+ * Returns null if the cursor's line layout isn't available.
+ */
+private fun getCursorScreenPosition(
+    state: EditorState,
+    lineLayouts: List<LineLayoutInfo>,
+    directiveResults: Map<String, DirectiveResult>
+): Offset? {
+    val lineIndex = state.focusedLineIndex
+    val lineState = state.lines.getOrNull(lineIndex) ?: return null
+    val layoutInfo = lineLayouts.getOrNull(lineIndex) ?: return null
+    val textLayout = layoutInfo.textLayoutResult ?: return null
+
+    // Map source cursor position to display position for directive-aware lines
+    val contentCursor = lineState.contentCursorPosition
+    val displayResult = DirectiveSegmenter.buildDisplayText(
+        lineState.content, lineState.effectiveId, directiveResults
+    )
+    val displayCursor = mapSourceToDisplayOffset(contentCursor, displayResult, mapInsideDirective = false)
+        .coerceIn(0, displayResult.displayText.length)
+
+    val cursorRect = try {
+        textLayout.getCursorRect(displayCursor)
+    } catch (_: Exception) {
+        return null
+    }
+
+    return Offset(
+        x = cursorRect.left + layoutInfo.prefixWidthPx,
+        y = layoutInfo.yOffset + (cursorRect.top + cursorRect.bottom) / 2f
+    )
+}
+
+
+// =============================================================================
 // Gesture Tracking
 // =============================================================================
 
 /**
- * Tracks state for a single gesture from pointer down to pointer up.
+ * Pure state machine for gesture tracking, decoupled from Compose layout internals.
+ *
+ * Supports three gesture modes:
+ * - **Tap**: positions cursor on release
+ * - **Cursor drag**: if touch starts near cursor and moves before long press,
+ *   cursor follows the finger (like standard Android text editors)
+ * - **Selection**: long press selects a word, then drag extends selection
+ *
+ * @param downNearCursor whether the down position was within the cursor drag radius
+ * @param touchSlop pixel distance threshold to distinguish taps from drags
+ * @param resolveOffset converts a screen position to a global character offset
+ * @param resolveBoundaries finds word boundaries at a global offset
+ * @param setSelection sets a selection range on the editor state
+ * @param hasSelection returns whether a selection is active
+ * @param isOffsetInSelection returns whether an offset falls inside the current selection
+ * @param onCursorDragged called with a global offset when cursor drag moves
  */
-private class GestureTracker(
+internal class GestureStateMachine(
     private val downPosition: Offset,
-    private val state: EditorState,
-    private val lineLayouts: List<LineLayoutInfo>,
+    private val downNearCursor: Boolean,
     private val touchSlop: Float,
-    private val directiveResults: Map<String, DirectiveResult>
+    private val resolveOffset: (Offset) -> Int,
+    private val resolveBoundaries: (Int) -> Pair<Int, Int>,
+    private val setSelection: (Int, Int) -> Unit,
+    private val hasSelection: () -> Boolean,
+    private val isOffsetInSelection: (Int) -> Boolean,
+    private val onCursorDragged: (Int) -> Unit
 ) {
     var longPressTriggered = false
         private set
     var isScrollGesture = false
+        private set
+    var isCursorDragGesture = false
         private set
     var consumedByChild = false
         private set
@@ -280,24 +342,23 @@ private class GestureTracker(
     private var anchorEnd = -1
     private var totalDragDistance = 0f
 
-    /** Marks this gesture as consumed by a child composable. */
     fun markConsumedByChild() {
         consumedByChild = true
     }
 
     /**
      * Called when long press timer fires.
-     * Selects the word at the down position.
+     * Selects the word at the down position — but only if not already in cursor drag mode.
      */
     fun onLongPressTriggered() {
-        if (isScrollGesture) return
+        if (isScrollGesture || isCursorDragGesture) return
 
         longPressTriggered = true
-        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts, directiveResults)
-        val (wordStart, wordEnd) = findWordBoundaries(state.text, globalOffset)
+        val globalOffset = resolveOffset(downPosition)
+        val (wordStart, wordEnd) = resolveBoundaries(globalOffset)
         anchorStart = wordStart
         anchorEnd = wordEnd
-        state.setSelection(wordStart, wordEnd)
+        setSelection(wordStart, wordEnd)
     }
 
     /**
@@ -309,26 +370,38 @@ private class GestureTracker(
         totalDragDistance += dragDelta.getDistance()
         lastPosition = position
 
-        // Check if this becomes a scroll gesture
-        if (!longPressTriggered && !isScrollGesture && totalDragDistance > touchSlop) {
-            isScrollGesture = true
-            return false
+        // Already in cursor drag mode — move cursor to follow finger
+        if (isCursorDragGesture) {
+            onCursorDragged(resolveOffset(position))
+            return true
         }
 
-        // In selection mode - update selection
+        // In selection mode — update selection
         if (longPressTriggered && anchorStart >= 0) {
             updateDragSelection(position)
-            return true // Consume to prevent scroll
+            return true
+        }
+
+        // Check if drag exceeds touch slop (before long press)
+        if (!longPressTriggered && !isScrollGesture && totalDragDistance > touchSlop) {
+            if (downNearCursor) {
+                isCursorDragGesture = true
+                onCursorDragged(resolveOffset(position))
+                return true
+            } else {
+                isScrollGesture = true
+                return false
+            }
         }
 
         return false
     }
 
     private fun updateDragSelection(position: Offset) {
-        val globalOffset = positionToGlobalOffset(position, state, lineLayouts, directiveResults)
+        val globalOffset = resolveOffset(position)
         val selStart = minOf(anchorStart, globalOffset)
         val selEnd = maxOf(anchorEnd, globalOffset)
-        state.setSelection(selStart, selEnd)
+        setSelection(selStart, selEnd)
     }
 
     /**
@@ -342,12 +415,12 @@ private class GestureTracker(
         if (isScrollGesture || consumedByChild) return
 
         if (longPressTriggered) {
-            // Long press selection completed
-            if (state.hasSelection) {
+            if (hasSelection()) {
                 onSelectionCompleted?.invoke(lastPosition)
             }
+        } else if (isCursorDragGesture) {
+            // Cursor drag completed — cursor already positioned, nothing else to do
         } else {
-            // Tap gesture
             handleTap(onCursorPositioned, onTapOnSelection)
         }
     }
@@ -356,19 +429,42 @@ private class GestureTracker(
         onCursorPositioned: (Int) -> Unit,
         onTapOnSelection: ((Offset) -> Unit)?
     ) {
-        val globalOffset = positionToGlobalOffset(downPosition, state, lineLayouts, directiveResults)
-
-        // Check if tap is within existing selection
-        if (state.hasSelection && isOffsetInSelection(globalOffset)) {
+        val globalOffset = resolveOffset(downPosition)
+        if (hasSelection() && isOffsetInSelection(globalOffset)) {
             onTapOnSelection?.invoke(downPosition)
         } else {
             onCursorPositioned(globalOffset)
         }
     }
+}
 
-    private fun isOffsetInSelection(offset: Int): Boolean {
-        return offset >= state.selection.min && offset <= state.selection.max
-    }
+/**
+ * Creates a [GestureStateMachine] wired to the editor's layout and state.
+ */
+private fun createGestureTracker(
+    downPosition: Offset,
+    state: EditorState,
+    lineLayouts: List<LineLayoutInfo>,
+    touchSlop: Float,
+    cursorDragRadiusPx: Float,
+    directiveResults: Map<String, DirectiveResult>,
+    onCursorDragged: (Int) -> Unit
+): GestureStateMachine {
+    val cursorPos = getCursorScreenPosition(state, lineLayouts, directiveResults)
+    val downNearCursor = cursorPos != null &&
+        (downPosition - cursorPos).getDistance() <= cursorDragRadiusPx
+
+    return GestureStateMachine(
+        downPosition = downPosition,
+        downNearCursor = downNearCursor,
+        touchSlop = touchSlop,
+        resolveOffset = { positionToGlobalOffset(it, state, lineLayouts, directiveResults) },
+        resolveBoundaries = { findWordBoundaries(state.text, it) },
+        setSelection = { start, end -> state.setSelection(start, end) },
+        hasSelection = { state.hasSelection },
+        isOffsetInSelection = { it in state.selection.min..state.selection.max },
+        onCursorDragged = onCursorDragged
+    )
 }
 
 // =============================================================================
@@ -389,22 +485,26 @@ internal fun Modifier.editorPointerInput(
     lineLayouts: List<LineLayoutInfo>,
     longPressTimeoutMillis: Long,
     touchSlop: Float,
+    density: Float,
     scrollState: ScrollState?,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
     onCursorPositioned: (Int) -> Unit,
     onTapOnSelection: ((Offset) -> Unit)? = null,
     onSelectionCompleted: ((Offset) -> Unit)? = null
 ): Modifier = this.pointerInput(scrollState, directiveResults) {
+    val cursorDragRadiusPx = EditorConfig.CursorDragRadiusDp * density
     coroutineScope {
         awaitPointerEventScope {
             while (true) {
-                val tracker = awaitGestureStart(state, lineLayouts, touchSlop, directiveResults) ?: continue
+                val gsm = awaitGestureStart(
+                    state, lineLayouts, touchSlop, cursorDragRadiusPx, directiveResults, onCursorPositioned
+                ) ?: continue
 
-                val longPressJob = launchLongPressDetection(longPressTimeoutMillis, tracker)
+                val longPressJob = launchLongPressDetection(longPressTimeoutMillis, gsm)
 
-                trackPointerUntilRelease(tracker, longPressJob)
+                trackPointerUntilRelease(gsm, longPressJob)
 
-                tracker.onGestureComplete(onCursorPositioned, onTapOnSelection, onSelectionCompleted)
+                gsm.onGestureComplete(onCursorPositioned, onTapOnSelection, onSelectionCompleted)
             }
         }
     }
@@ -418,14 +518,19 @@ private suspend fun AwaitPointerEventScope.awaitGestureStart(
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
     touchSlop: Float,
-    directiveResults: Map<String, DirectiveResult>
-): GestureTracker? {
+    cursorDragRadiusPx: Float,
+    directiveResults: Map<String, DirectiveResult>,
+    onCursorDragged: (Int) -> Unit
+): GestureStateMachine? {
     // Use Main pass so children (like DirectiveEditRow) can consume in Initial pass first
     val down = awaitPointerEvent(PointerEventPass.Main)
     val downChange = down.changes.firstOrNull { it.pressed } ?: return null
     // Skip if a child already consumed this event
     if (downChange.isConsumed) return null
-    return GestureTracker(downChange.position, state, lineLayouts, touchSlop, directiveResults)
+    return createGestureTracker(
+        downChange.position, state, lineLayouts, touchSlop, cursorDragRadiusPx,
+        directiveResults, onCursorDragged
+    )
 }
 
 /**
@@ -433,17 +538,17 @@ private suspend fun AwaitPointerEventScope.awaitGestureStart(
  */
 private fun kotlinx.coroutines.CoroutineScope.launchLongPressDetection(
     timeoutMillis: Long,
-    tracker: GestureTracker
+    gsm: GestureStateMachine
 ): Job = launch {
     delay(timeoutMillis)
-    tracker.onLongPressTriggered()
+    gsm.onLongPressTriggered()
 }
 
 /**
  * Tracks pointer movement until release.
  */
 private suspend fun AwaitPointerEventScope.trackPointerUntilRelease(
-    tracker: GestureTracker,
+    gsm: GestureStateMachine,
     longPressJob: Job
 ) {
     while (true) {
@@ -454,7 +559,7 @@ private suspend fun AwaitPointerEventScope.trackPointerUntilRelease(
         // Skip if consumed by a child
         if (change.isConsumed) {
             longPressJob.cancel()
-            tracker.markConsumedByChild()
+            gsm.markConsumedByChild()
             break
         }
 
@@ -463,13 +568,13 @@ private suspend fun AwaitPointerEventScope.trackPointerUntilRelease(
             break
         }
 
-        val shouldConsume = tracker.onPointerMove(change.position)
+        val shouldConsume = gsm.onPointerMove(change.position)
         if (shouldConsume) {
             change.consume()
         }
 
-        // Cancel long press if scrolling started
-        if (tracker.isScrollGesture) {
+        // Cancel long press if scrolling or cursor dragging started
+        if (gsm.isScrollGesture || gsm.isCursorDragGesture) {
             longPressJob.cancel()
         }
     }
