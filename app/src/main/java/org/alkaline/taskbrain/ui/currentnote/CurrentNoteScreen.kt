@@ -49,6 +49,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.dsl.runtime.MutationType
+import org.alkaline.taskbrain.BuildConfig
 import org.alkaline.taskbrain.ui.currentnote.components.AgentCommandSection
 import org.alkaline.taskbrain.ui.currentnote.components.CommandBar
 import org.alkaline.taskbrain.ui.currentnote.components.NoteTextField
@@ -72,7 +73,9 @@ fun CurrentNoteScreen(
     val saveStatus by currentNoteViewModel.saveStatus.observeAsState()
     val loadStatus by currentNoteViewModel.loadStatus.observeAsState()
     val contentModified by currentNoteViewModel.contentModified.observeAsState(false)
-    val isAgentProcessing by currentNoteViewModel.isAgentProcessing.observeAsState(false)
+    val isAgentProcessing = if (BuildConfig.AGENT_COMMAND_ENABLED) {
+        currentNoteViewModel.isAgentProcessing.observeAsState(false).value
+    } else false
     val alarmCreated by currentNoteViewModel.alarmCreated.observeAsState()
     val alarmError by currentNoteViewModel.alarmError.observeAsState()
     val alarmPermissionWarning by currentNoteViewModel.alarmPermissionWarning.observeAsState(false)
@@ -110,6 +113,8 @@ fun CurrentNoteScreen(
     var isSaved by remember(displayedNoteId) { mutableStateOf(true) }
     var agentCommand by remember { mutableStateOf("") }
     var isAgentSectionExpanded by remember { mutableStateOf(false) }
+    @Suppress("KotlinConstantConditions")
+    val agentCommandEnabled = BuildConfig.AGENT_COMMAND_ENABLED
 
     val mainContentFocusRequester = remember { FocusRequester() }
     var isMainContentFocused by remember { mutableStateOf(false) }
@@ -562,18 +567,20 @@ fun CurrentNoteScreen(
             isAlarmEnabled = isMainContentFocused && !editorState.hasSelection && !inlineEditState.isActive
         )
 
-        AgentCommandSection(
-            isExpanded = isAgentSectionExpanded,
-            onExpandedChange = { isAgentSectionExpanded = it },
-            agentCommand = agentCommand,
-            onAgentCommandChange = { agentCommand = it },
-            isProcessing = isAgentProcessing,
-            onSendCommand = {
-                currentNoteViewModel.processAgentCommand(userContent, agentCommand)
-                agentCommand = ""
-            },
-            mainContentFocusRequester = mainContentFocusRequester
-        )
+        if (agentCommandEnabled) {
+            AgentCommandSection(
+                isExpanded = isAgentSectionExpanded,
+                onExpandedChange = { isAgentSectionExpanded = it },
+                agentCommand = agentCommand,
+                onAgentCommandChange = { agentCommand = it },
+                isProcessing = isAgentProcessing,
+                onSendCommand = {
+                    currentNoteViewModel.processAgentCommand(userContent, agentCommand)
+                    agentCommand = ""
+                },
+                mainContentFocusRequester = mainContentFocusRequester
+            )
+        }
     }
 }
 

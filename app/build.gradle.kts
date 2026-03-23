@@ -33,8 +33,10 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            buildConfigField("Boolean", "AGENT_COMMAND_ENABLED", "false")
         }
         release {
+            buildConfigField("Boolean", "AGENT_COMMAND_ENABLED", "false")
             // -- not truly release
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
@@ -60,6 +62,7 @@ android {
     buildFeatures {
         viewBinding = true
         compose = true
+        buildConfig = true
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
