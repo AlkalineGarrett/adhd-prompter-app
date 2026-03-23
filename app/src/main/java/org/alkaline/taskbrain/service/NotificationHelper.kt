@@ -67,7 +67,7 @@ class NotificationHelper(private val context: Context) {
         return when (alarmType) {
             AlarmType.NOTIFY -> showReminderNotification(alarm, silent)
             AlarmType.URGENT -> showUrgentNotification(alarm, silent)
-            AlarmType.ALARM -> showAlarmNotification(alarm)
+            AlarmType.ALARM -> showAlarmNotification(alarm, silent)
         }
     }
 
@@ -132,28 +132,35 @@ class NotificationHelper(private val context: Context) {
         return true
     }
 
-    private fun showAlarmNotification(alarm: Alarm): Boolean {
-        val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.ALARM)
+    private fun showAlarmNotification(alarm: Alarm, silent: Boolean = false): Boolean {
         val urgentPrefix = context.getString(R.string.alarm_urgent_prefix)
+        val channelId = if (silent) NotificationChannels.SILENT_CHANNEL_ID else NotificationChannels.ALARM_CHANNEL_ID
 
-        val notification = NotificationCompat.Builder(context, NotificationChannels.ALARM_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_octopus)
             .setColor(URGENT_COLOR)
             .setLargeIcon(createTintedLargeIcon(URGENT_COLOR))
             .setContentTitle(urgentPrefix + alarm.displayName)
             .setContentText(formatDueText(alarm.dueTime))
-            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setAutoCancel(false)
-            .setOngoing(true)
-            .setFullScreenIntent(fullScreenIntent, true)
             .setContentIntent(createContentIntent(alarm))
             .addAction(createSnoozeNotificationAction(alarm))
             .addAction(createSkipAction(alarm))
             .addAction(createDoneAction(alarm))
-            .build()
 
-        notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), notification)
+        if (silent) {
+            builder.setSilent(true)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setAutoCancel(true)
+        } else {
+            val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.ALARM)
+            builder.setPriority(NotificationCompat.PRIORITY_MAX)
+                .setAutoCancel(false)
+                .setOngoing(true)
+                .setFullScreenIntent(fullScreenIntent, true)
+        }
+
+        notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), builder.build())
         return true
     }
 

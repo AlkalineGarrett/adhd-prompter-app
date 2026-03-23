@@ -593,22 +593,31 @@ class EditorController(
         val line = state.lines.getOrNull(lineIndex) ?: return
         val cursor = line.cursorPosition
 
-        // At start of line content (after prefix)
+        // At start of line content (at or before prefix end)
         if (cursor <= line.prefix.length) {
-            // Try to remove prefix character first
-            if (line.prefix.isNotEmpty()) {
-                val newPrefix = line.prefix.dropLast(1)
-                line.updateFull(newPrefix + line.content, newPrefix.length)
-                state.requestFocusUpdate()
-                state.notifyChange()
-                undoManager.markContentChanged()
-            } else if (lineIndex > 0) {
-                // Skip hidden lines when merging backward
-                var target = lineIndex - 1
-                while (target >= 0 && target in hiddenIndices) target--
-                if (target >= 0) {
-                    mergeToPreviousLine(lineIndex, target)
-                }
+            if (lineIndex <= 0) return
+            // Skip hidden lines when merging backward
+            var target = lineIndex - 1
+            while (target >= 0 && target in hiddenIndices) target--
+            if (target < 0) return
+
+            val previousLine = state.lines.getOrNull(target) ?: return
+            val currentHasContent = line.content.isNotEmpty()
+            val previousHasContent = previousLine.content.isNotEmpty()
+
+            when {
+                // Previous has content: merge current's content onto previous
+                previousHasContent -> mergeToPreviousLine(lineIndex, target)
+                // Previous empty, current has content: delete the empty previous line
+                currentHasContent -> deleteLineAndMergeIds(
+                    survivor = line, other = previousLine,
+                    removeIndex = target, focusIndex = target
+                )
+                // Neither has content: keep previous, delete current
+                else -> deleteLineAndMergeIds(
+                    survivor = previousLine, other = line,
+                    removeIndex = lineIndex, focusIndex = target
+                )
             }
             return
         }
@@ -752,6 +761,24 @@ class EditorController(
     }
 
     /**
+     * Deletes a line and transfers its noteIds to the surviving line.
+     * Used by deleteBackward when one or both lines have no content.
+     */
+    private fun deleteLineAndMergeIds(
+        survivor: LineState, other: LineState,
+        removeIndex: Int, focusIndex: Int
+    ) {
+        undoManager.captureStateBeforeChange(state)
+        state.clearSelection()
+        survivor.noteIds = mergeNoteIds(survivor, other)
+        state.lines.removeAt(removeIndex)
+        state.focusedLineIndex = focusIndex
+        state.requestFocusUpdate()
+        state.notifyChange()
+        undoManager.beginEditingLine(state, state.focusedLineIndex)
+    }
+
+    /**
      * Merge current line with previous line.
      * Creates an undo boundary before the merge.
      */
@@ -769,7 +796,7 @@ class EditorController(
         val mergedNoteIds = mergeNoteIds(previousLine, currentLine)
 
         val previousLength = previousLine.text.length
-        previousLine.updateFull(previousLine.text + currentLine.text, previousLength)
+        previousLine.updateFull(previousLine.text + currentLine.content, previousLength)
         previousLine.noteIds = mergedNoteIds
         state.lines.removeAt(lineIndex)
         state.focusedLineIndex = targetIndex
@@ -798,7 +825,7 @@ class EditorController(
         val mergedNoteIds = mergeNoteIds(currentLine, nextLine)
 
         val currentLength = currentLine.text.length
-        currentLine.updateFull(currentLine.text + nextLine.text, currentLength)
+        currentLine.updateFull(currentLine.text + nextLine.content, currentLength)
         currentLine.noteIds = mergedNoteIds
         state.lines.removeAt(targetIndex)
         state.requestFocusUpdate()

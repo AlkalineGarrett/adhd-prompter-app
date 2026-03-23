@@ -466,19 +466,26 @@ export class EditorController {
     const cursor = line.cursorPosition
 
     if (cursor <= line.prefix.length) {
-      if (line.prefix.length > 0) {
-        const newPrefix = line.prefix.slice(0, -1)
-        line.updateFull(newPrefix + line.content, newPrefix.length)
-        this.state.requestFocusUpdate()
-        this.state.notifyChange()
-        this.undoManager.markContentChanged()
-      } else if (lineIndex > 0) {
-        // Skip hidden lines when merging backward
-        let target = lineIndex - 1
-        while (target >= 0 && this.hiddenIndices.has(target)) target--
-        if (target >= 0) {
-          this.mergeToPreviousLine(lineIndex, target)
-        }
+      if (lineIndex <= 0) return
+      // Skip hidden lines when merging backward
+      let target = lineIndex - 1
+      while (target >= 0 && this.hiddenIndices.has(target)) target--
+      if (target < 0) return
+      const previousLine = this.state.lines[target]
+      if (!previousLine) return
+
+      const currentHasContent = line.content.length > 0
+      const previousHasContent = previousLine.content.length > 0
+
+      if (previousHasContent) {
+        // Previous line has content: merge current content into it
+        this.mergeToPreviousLine(lineIndex, target)
+      } else if (currentHasContent) {
+        // Current has content, previous is empty: delete previous line, keep current
+        this.deleteLineAndMergeIds(line, previousLine, target, target)
+      } else {
+        // Neither has content: keep previous, delete current
+        this.deleteLineAndMergeIds(previousLine, line, lineIndex, target)
       }
       return
     }
@@ -582,6 +589,26 @@ export class EditorController {
     this.undoManager.continueAfterStructuralChange(this.state.focusedLineIndex)
   }
 
+  /**
+   * Deletes a line and transfers its noteIds to the surviving line.
+   * Used by deleteBackward when one or both lines have no content.
+   */
+  private deleteLineAndMergeIds(
+    survivor: LineState, other: LineState,
+    removeIndex: number, focusIndex: number,
+  ): void {
+    this.undoManager.captureStateBeforeChange(this.state.lines, this.state.focusedLineIndex)
+    this.state.clearSelection()
+    survivor.noteIds = mergeNoteIds(survivor, other)
+    this.state.lines.splice(removeIndex, 1)
+    this.state.focusedLineIndex = focusIndex
+    this.state.requestFocusUpdate()
+    this.state.notifyChange()
+    this.undoManager.beginEditingLine(
+      this.state.lines, this.state.focusedLineIndex, this.state.focusedLineIndex,
+    )
+  }
+
   mergeToPreviousLine(lineIndex: number, targetIndex?: number): void {
     const prevIdx = targetIndex ?? lineIndex - 1
     if (prevIdx < 0) return
@@ -593,7 +620,7 @@ export class EditorController {
 
     const mergedNoteIds = mergeNoteIds(previousLine, currentLine)
     const previousLength = previousLine.text.length
-    previousLine.updateFull(previousLine.text + currentLine.text, previousLength)
+    previousLine.updateFull(previousLine.text + currentLine.content, previousLength)
     previousLine.noteIds = mergedNoteIds
     this.state.lines.splice(lineIndex, 1)
     this.state.focusedLineIndex = prevIdx
@@ -616,7 +643,7 @@ export class EditorController {
 
     const mergedNoteIds = mergeNoteIds(currentLine, nextLine)
     const currentLength = currentLine.text.length
-    currentLine.updateFull(currentLine.text + nextLine.text, currentLength)
+    currentLine.updateFull(currentLine.text + nextLine.content, currentLength)
     currentLine.noteIds = mergedNoteIds
     this.state.lines.splice(nextIdx, 1)
     this.state.requestFocusUpdate()

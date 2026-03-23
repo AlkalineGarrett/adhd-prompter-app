@@ -265,8 +265,8 @@ describe('edit operations preserve identity through save cycle', () => {
     controller.mergeToPreviousLine(2)
 
     // Merged line should have noteA first (longer content)
-    // Note: merge concatenates full text, so "\tFirst part" + "\tSecond" = "\tFirst part\tSecond"
-    expect(state.lines[1]!.text).toBe('\tFirst part\tSecond')
+    // Note: merge appends content (prefix stripped) of merged line
+    expect(state.lines[1]!.text).toBe('\tFirst partSecond')
     expect(state.lines[1]!.noteIds).toEqual(['noteA', 'noteB'])
 
     // Save
@@ -274,7 +274,7 @@ describe('edit operations preserve identity through save cycle', () => {
 
     const stored = repo.getStored('root')
     expect(stored.length).toBe(2) // parent + merged line
-    expect(stored[1]!.content).toBe('\tFirst part\tSecond')
+    expect(stored[1]!.content).toBe('\tFirst partSecond')
     // matchLinesToIds won't find exact match, uses positional: line 1 gets noteA
     expect(stored[1]!.noteId).toBe('noteA')
   })
