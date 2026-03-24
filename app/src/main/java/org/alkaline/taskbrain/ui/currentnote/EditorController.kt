@@ -481,11 +481,17 @@ class EditorController(
     fun sortCompletedToBottom(): Boolean {
         recentlyCheckedIndices.clear()
         val currentTexts = state.lines.map { it.text }
-        val sorted = CompletedLineUtils.sortCompletedToBottom(currentTexts)
+        val permutation = CompletedLineUtils.sortCompletedToBottomIndexed(currentTexts)
+        val sorted = permutation.map { currentTexts[it] }
         if (sorted == currentTexts) return false
+        val oldNoteIds = state.lines.map { it.noteIds }
+        val oldContentLengths = state.lines.map { it.noteIdContentLengths }
         executeOperation(OperationType.SORT_COMPLETED) {
             state.lines.forEachIndexed { i, line ->
+                val origIndex = permutation[i]
                 line.updateFull(sorted[i], line.cursorPosition.coerceIn(0, sorted[i].length))
+                line.noteIds = oldNoteIds[origIndex]
+                line.noteIdContentLengths = oldContentLengths[origIndex]
             }
             state.notifyChange()
         }

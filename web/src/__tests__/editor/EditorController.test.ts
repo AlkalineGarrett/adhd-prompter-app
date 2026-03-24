@@ -337,6 +337,70 @@ describe('EditorController toggleCheckbox tracks recentlyCheckedIndices for all 
   })
 })
 
+describe('EditorController sortCompletedToBottom noteId reordering', () => {
+  function controllerWithNoteIds(
+    lines: { text: string; noteIds: string[] }[],
+  ): EditorController {
+    const state = new EditorState()
+    state.lines = lines.map((l) => new LineState(l.text, undefined, l.noteIds))
+    state.focusedLineIndex = 0
+    return new EditorController(state)
+  }
+
+  it('noteIds follow their text when sorted', () => {
+    const ctrl = controllerWithNoteIds([
+      { text: 'Title', noteIds: ['id-title'] },
+      { text: '☑ Done', noteIds: ['id-done'] },
+      { text: '☐ Active', noteIds: ['id-active'] },
+    ])
+    ctrl.sortCompletedToBottom()
+    expect(ctrl.state.lines.map((l) => l.text)).toEqual(['Title', '☐ Active', '☑ Done'])
+    expect(ctrl.state.lines.map((l) => l.noteIds)).toEqual([['id-title'], ['id-active'], ['id-done']])
+  })
+
+  it('noteIds follow subtrees when sorted', () => {
+    const ctrl = controllerWithNoteIds([
+      { text: 'Title', noteIds: ['id-title'] },
+      { text: '☑ Done', noteIds: ['id-done'] },
+      { text: '\tChild of done', noteIds: ['id-child'] },
+      { text: '☐ Active', noteIds: ['id-active'] },
+    ])
+    ctrl.sortCompletedToBottom()
+    expect(ctrl.state.lines.map((l) => l.text)).toEqual([
+      'Title', '☐ Active', '☑ Done', '\tChild of done',
+    ])
+    expect(ctrl.state.lines.map((l) => l.noteIds)).toEqual([
+      ['id-title'], ['id-active'], ['id-done'], ['id-child'],
+    ])
+  })
+
+  it('noteIdContentLengths follow their text when sorted', () => {
+    const ctrl = controllerWithNoteIds([
+      { text: 'Title', noteIds: ['id-title'] },
+      { text: '☑ Done', noteIds: ['id-done'] },
+      { text: '☐ Active', noteIds: ['id-active'] },
+    ])
+    ctrl.state.lines[1]!.noteIdContentLengths = [4]
+    ctrl.state.lines[2]!.noteIdContentLengths = [6]
+    ctrl.sortCompletedToBottom()
+    expect(ctrl.state.lines[1]!.noteIdContentLengths).toEqual([6]) // Active's lengths
+    expect(ctrl.state.lines[2]!.noteIdContentLengths).toEqual([4]) // Done's lengths
+  })
+
+  it('returns false and preserves noteIds when no reordering needed', () => {
+    const ctrl = controllerWithNoteIds([
+      { text: 'Title', noteIds: ['id-title'] },
+      { text: '☐ Active', noteIds: ['id-active'] },
+      { text: '☑ Done', noteIds: ['id-done'] },
+    ])
+    const result = ctrl.sortCompletedToBottom()
+    expect(result).toBe(false)
+    expect(ctrl.state.lines.map((l) => l.noteIds)).toEqual([
+      ['id-title'], ['id-active'], ['id-done'],
+    ])
+  })
+})
+
 describe('EditorController paste undo boundary', () => {
   it('typing after paste creates separate undo entry', () => {
     const ctrl = controllerWithLines('hello')

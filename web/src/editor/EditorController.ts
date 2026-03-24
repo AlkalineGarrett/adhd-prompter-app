@@ -3,7 +3,7 @@ import { EditorState } from './EditorState'
 import { CommandType, UndoManager, type UndoSnapshot } from './UndoManager'
 import * as LP from './LinePrefixes'
 import { parseClipboardContent } from './ClipboardParser'
-import { sortCompletedToBottom as sortCompleted } from './CompletedLineUtils'
+import { sortCompletedToBottomIndexed } from './CompletedLineUtils'
 import { executePaste } from './PasteHandler'
 import { splitNoteIds } from './ContentSimilarity'
 
@@ -332,11 +332,17 @@ export class EditorController {
   sortCompletedToBottom(): boolean {
     ;(this.recentlyCheckedIndices as Set<number> & { clear(): void }).clear()
     const currentTexts = this.state.lines.map((l) => l.text)
-    const sorted = sortCompleted(currentTexts)
+    const permutation = sortCompletedToBottomIndexed(currentTexts)
+    const sorted = permutation.map((origIdx) => currentTexts[origIdx]!)
     if (sorted.every((t, i) => t === currentTexts[i])) return false
+    const oldNoteIds = this.state.lines.map((l) => [...l.noteIds])
+    const oldContentLengths = this.state.lines.map((l) => [...l.noteIdContentLengths])
     this.executeOperation(OperationType.SORT_COMPLETED, () => {
       this.state.lines.forEach((line, i) => {
+        const origIndex = permutation[i]!
         line.updateFull(sorted[i]!, Math.min(line.cursorPosition, sorted[i]!.length))
+        line.noteIds = oldNoteIds[origIndex]!
+        line.noteIdContentLengths = oldContentLengths[origIndex]!
       })
       this.state.notifyChange()
     })

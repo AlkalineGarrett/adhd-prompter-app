@@ -261,6 +261,13 @@ export function EditorLine({
           // Let the native paste event fire — handled by onPaste
           return
         }
+        if (e.key === 's') {
+          // Handled by the global window keydown listener (save).
+          // Must not fall through to syncCursorAfterNativeNav, which would
+          // queue a stale-content write via setTimeout(0) that fires after
+          // sortCompletedToBottom has already updated line text.
+          return
+        }
         // Unhandled Cmd/Ctrl combo (e.g. Cmd+Left/Right) — let browser handle, sync cursor
         syncCursorAfterNativeNav()
         return

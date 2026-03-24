@@ -92,6 +92,7 @@ export function computeDisplayItemsFromHidden(lines: string[], hidden: Set<numbe
 
 interface TreeNode {
   text: string
+  originalIndex: number
   children: TreeNode[]
 }
 
@@ -107,13 +108,25 @@ export function sortCompletedToBottom(lineTexts: string[]): string[] {
   return [lineTexts[0]!, ...flatten(sorted)]
 }
 
+/**
+ * Returns the index permutation produced by sorting completed lines to the bottom.
+ * `result[i]` is the original line index that should appear at position `i` after sorting.
+ */
+export function sortCompletedToBottomIndexed(lineTexts: string[]): number[] {
+  if (lineTexts.length <= 1) return lineTexts.map((_, i) => i)
+  const roots = parseForest(lineTexts.slice(1))
+  const sorted = partitionNodes(roots)
+  return [0, ...flattenIndices(sorted)]
+}
+
 function parseForest(lines: string[]): TreeNode[] {
   const roots: TreeNode[] = []
   const stack: { depth: number; node: TreeNode }[] = []
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!
     const depth = getIndentLevelFromText(line)
-    const node: TreeNode = { text: line, children: [] }
+    const node: TreeNode = { text: line, originalIndex: index + 1, children: [] }
 
     while (stack.length > 0 && stack[stack.length - 1]!.depth >= depth) {
       stack.pop()
@@ -163,6 +176,7 @@ function partitionNodes(nodes: TreeNode[]): TreeNode[] {
     } else {
       const recursed = section.map((node) => ({
         text: node.text,
+        originalIndex: node.originalIndex,
         children: partitionNodes(node.children),
       }))
       const unchecked: TreeNode[] = []
@@ -185,6 +199,15 @@ function flatten(nodes: TreeNode[]): string[] {
   for (const node of nodes) {
     result.push(node.text)
     result.push(...flatten(node.children))
+  }
+  return result
+}
+
+function flattenIndices(nodes: TreeNode[]): number[] {
+  const result: number[] = []
+  for (const node of nodes) {
+    result.push(node.originalIndex)
+    result.push(...flattenIndices(node.children))
   }
   return result
 }

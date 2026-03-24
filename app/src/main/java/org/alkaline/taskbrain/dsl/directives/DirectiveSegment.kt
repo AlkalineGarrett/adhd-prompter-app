@@ -48,12 +48,18 @@ sealed class DirectiveSegment {
         val isComputed: Boolean
             get() = result?.isComputed ?: false || isAlarmDirective(sourceText)
 
-        /** The synthesized result for alarm directives (key-mismatch-proof) */
+        /**
+         * The authoritative result for this directive.
+         * For alarm directives, always parses the ID from the source text rather than
+         * relying on the result cache, which can return wrong results after line reordering
+         * (the cache is keyed by noteId + offset, so a stale noteId can collide with a
+         * different alarm directive at the same offset).
+         */
         val effectiveResult: DirectiveResult?
-            get() = result ?: run {
+            get() {
                 alarmIdFromSource(sourceText)?.let { return DirectiveResult.success(AlarmVal(it)) }
                 recurringAlarmIdFromSource(sourceText)?.let { return DirectiveResult.success(AlarmVal(it)) }
-                null
+                return result
             }
 
         companion object {
@@ -230,7 +236,9 @@ object DirectiveSegmenter {
                     val isViewResult = resultValue is ViewVal
                     val isButtonResult = resultValue is ButtonVal
                     val isAlarmResult = resultValue is AlarmVal
-                    val alarmId = (resultValue as? AlarmVal)?.alarmId
+                    // Extract alarm IDs directly from source text — immune to
+                    // result cache key mismatches caused by stale noteIds.
+                    val alarmId = DirectiveSegment.Directive.alarmIdFromSource(segment.sourceText)
                     val recurringAlarmId = DirectiveSegment.Directive.recurringAlarmIdFromSource(segment.sourceText)
 
                     directiveRanges.add(

@@ -78,6 +78,7 @@ object CompletedLineUtils {
 
     private data class TreeNode(
         val text: String,
+        val originalIndex: Int = -1,
         val children: MutableList<TreeNode> = mutableListOf(),
     )
 
@@ -94,16 +95,28 @@ object CompletedLineUtils {
     }
 
     /**
+     * Returns the index permutation produced by sorting completed lines to the bottom.
+     * `result[i]` is the original line index that should appear at position `i` after sorting.
+     */
+    fun sortCompletedToBottomIndexed(lineTexts: List<String>): List<Int> {
+        if (lineTexts.size <= 1) return lineTexts.indices.toList()
+        val roots = parseForest(lineTexts.drop(1))
+        val sorted = partitionNodes(roots)
+        return listOf(0) + flattenIndices(sorted)
+    }
+
+    /**
      * Parses a flat list of tab-indented lines (excluding title) into a forest of TreeNodes.
+     * Each node records its original index (offset by +1 for the title line).
      */
     private fun parseForest(lines: List<String>): List<TreeNode> {
         val roots = mutableListOf<TreeNode>()
         data class StackEntry(val depth: Int, val node: TreeNode)
         val stack = mutableListOf<StackEntry>()
 
-        for (line in lines) {
+        for ((index, line) in lines.withIndex()) {
             val depth = IndentationUtils.getIndentLevel(line)
-            val node = TreeNode(line)
+            val node = TreeNode(line, originalIndex = index + 1)
 
             // Pop stack until we find a parent at a shallower depth
             while (stack.isNotEmpty() && stack.last().depth >= depth) {
@@ -156,7 +169,7 @@ object CompletedLineUtils {
             } else {
                 // Recurse into each node's children first
                 val recursed = section.map { node ->
-                    TreeNode(node.text, partitionNodes(node.children).toMutableList())
+                    TreeNode(node.text, node.originalIndex, partitionNodes(node.children).toMutableList())
                 }
                 // Then partition: unchecked first, checked last
                 val (checked, unchecked) = recursed.partition { isCheckedCheckbox(it.text) }
@@ -175,6 +188,15 @@ object CompletedLineUtils {
         for (node in nodes) {
             result.add(node.text)
             result.addAll(flatten(node.children))
+        }
+        return result
+    }
+
+    private fun flattenIndices(nodes: List<TreeNode>): List<Int> {
+        val result = mutableListOf<Int>()
+        for (node in nodes) {
+            result.add(node.originalIndex)
+            result.addAll(flattenIndices(node.children))
         }
         return result
     }

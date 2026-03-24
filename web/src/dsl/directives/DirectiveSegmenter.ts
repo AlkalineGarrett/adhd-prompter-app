@@ -171,7 +171,9 @@ export function buildDisplayText(
         isView: resultValue?.kind === 'ViewVal',
         isButton: resultValue?.kind === 'ButtonVal',
         isAlarm: resultValue?.kind === 'AlarmVal' || synthesizedAlarmId != null || synthesizedRecurringId != null,
-        alarmId: resultValue?.kind === 'AlarmVal' ? resultValue.alarmId : synthesizedAlarmId,
+        // Always extract alarm ID from source text — immune to result cache
+        // key mismatches caused by stale noteIds after line reordering.
+        alarmId: synthesizedAlarmId ?? (resultValue?.kind === 'AlarmVal' ? resultValue.alarmId : undefined),
         recurringAlarmId: synthesizedRecurringId,
       })
     }

@@ -4,6 +4,7 @@ import {
   computeHiddenIndices,
   computeDisplayItems,
   sortCompletedToBottom,
+  sortCompletedToBottomIndexed,
   nearestVisibleLine,
 } from '../../editor/CompletedLineUtils'
 
@@ -187,6 +188,54 @@ describe('sortCompletedToBottom', () => {
       '\t\t☐ Active grandchild',
       '\t\t☑ Done grandchild',
     ])
+  })
+})
+
+describe('sortCompletedToBottomIndexed', () => {
+  it('empty input returns empty', () => {
+    expect(sortCompletedToBottomIndexed([])).toEqual([])
+  })
+
+  it('single line returns identity', () => {
+    expect(sortCompletedToBottomIndexed(['Title'])).toEqual([0])
+  })
+
+  it('no checked lines returns identity', () => {
+    const lines = ['Title', '☐ A', '☐ B']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 1, 2])
+  })
+
+  it('checked lines move to bottom', () => {
+    const lines = ['Title', '☑ Done', '☐ Active']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 2, 1])
+  })
+
+  it('multiple checked and unchecked', () => {
+    const lines = ['Title', '☑ Done A', '☐ Active B', '☐ Active C', '☑ Done D']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 2, 3, 1, 4])
+  })
+
+  it('checked subtrees stay intact', () => {
+    const lines = ['Title', '☑ Done', '\tChild', '☐ Active']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 3, 1, 2])
+  })
+
+  it('nested levels sort independently', () => {
+    const lines = ['Title', 'Parent', '\t☑ Done child', '\t☐ Active child']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 1, 3, 2])
+  })
+
+  it('empty lines act as barriers', () => {
+    const lines = ['Title', '☑ Done A', '☐ Active B', '', '☑ Done C', '☐ Active D']
+    expect(sortCompletedToBottomIndexed(lines)).toEqual([0, 2, 1, 3, 5, 4])
+  })
+
+  it('permutation produces same text as sortCompletedToBottom', () => {
+    const lines = ['Title', '☑ Done A', '☐ Active B', 'Parent', '\t☑ Child done', '\t☐ Child active']
+    const sortedTexts = sortCompletedToBottom(lines)
+    const permutation = sortCompletedToBottomIndexed(lines)
+    const textsFromPermutation = permutation.map((i) => lines[i])
+    expect(textsFromPermutation).toEqual(sortedTexts)
   })
 })
 

@@ -21,6 +21,7 @@ import kotlinx.coroutines.withContext
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import org.alkaline.taskbrain.data.Alarm
 import org.alkaline.taskbrain.data.AlarmMarkers
@@ -273,12 +274,16 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     // Current Note ID being edited — initialized from SharedPreferences so that LiveData
     // exposes the correct value immediately, preventing a race where the sync LaunchedEffect
     // in CurrentNoteScreen sets displayedNoteId to a stale default before loadContent runs.
+    // For new users (no stored pref), starts as null/empty — loadContent will create a note.
     private val LAST_VIEWED_NOTE_KEY = "last_viewed_note_id"
-    private var currentNoteId = sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
+    private var currentNoteId = sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, null) ?: ""
 
-    // Expose current note ID for UI (e.g., undo state persistence)
-    private val _currentNoteIdLiveData = MutableLiveData<String>(currentNoteId)
-    val currentNoteIdLiveData: LiveData<String> = _currentNoteIdLiveData
+    // Expose current note ID for UI (e.g., undo state persistence).
+    // Nullable: null means no note loaded yet (new user before first note is created).
+    private val _currentNoteIdLiveData = MutableLiveData<String?>(
+        sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, null)
+    )
+    val currentNoteIdLiveData: LiveData<String?> = _currentNoteIdLiveData
 
     /**
      * Gets the current note ID synchronously.
@@ -355,8 +360,28 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     }
 
     fun loadContent(noteId: String? = null, recentTabsViewModel: RecentTabsViewModel? = null) {
-        // If noteId is provided, use it. Otherwise, load from preferences. If neither, default to "root_note"
-        currentNoteId = noteId ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, "root_note") ?: "root_note"
+        val resolvedId = noteId?.takeIf { it.isNotEmpty() }
+            ?: sharedPreferences.getString(LAST_VIEWED_NOTE_KEY, null)
+
+        if (resolvedId == null) {
+            // New user with no notes — create their first note
+            _loadStatus.value = LoadStatus.Loading
+            viewModelScope.launch {
+                repository.createNote().fold(
+                    onSuccess = { newId ->
+                        Log.d(TAG, "loadContent: created first note for new user: $newId")
+                        loadContent(newId, recentTabsViewModel)
+                    },
+                    onFailure = { e ->
+                        Log.e(TAG, "loadContent: failed to create first note", e)
+                        _loadStatus.value = LoadStatus.Error(e)
+                    }
+                )
+            }
+            return
+        }
+
+        currentNoteId = resolvedId
         _currentNoteIdLiveData.value = currentNoteId
         Log.d(TAG, "loadContent: switching to noteId=$currentNoteId, cachedNotes=${cachedNotes?.size}, cachedNotesNull=${cachedNotes == null}")
 
@@ -465,11 +490,26 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     loadAlarmStates()
                 },
                 onFailure = { e ->
-                    Log.e(TAG, "Error loading note", e)
-                    _loadStatus.value = LoadStatus.Error(e)
+                    if (isPermissionDenied(e)) {
+                        // Note belongs to a different user (stale SharedPreferences
+                        // from a previous sign-in). Clear the stale pref and create
+                        // a fresh note for the current user.
+                        Log.w(TAG, "Permission denied loading note $currentNoteId — creating new note for current user")
+                        sharedPreferences.edit().remove(LAST_VIEWED_NOTE_KEY).apply()
+                        loadContent(null, recentTabsViewModel)
+                    } else {
+                        Log.e(TAG, "Error loading note", e)
+                        _loadStatus.value = LoadStatus.Error(e)
+                    }
                 }
             )
         }
+    }
+
+    private fun isPermissionDenied(e: Throwable): Boolean {
+        val firestoreException = e as? FirebaseFirestoreException
+            ?: e.cause as? FirebaseFirestoreException
+        return firestoreException?.code == FirebaseFirestoreException.Code.PERMISSION_DENIED
     }
 
     /**

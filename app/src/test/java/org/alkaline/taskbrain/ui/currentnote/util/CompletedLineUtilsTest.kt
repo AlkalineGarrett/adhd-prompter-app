@@ -225,6 +225,68 @@ class CompletedLineUtilsTest {
         assertEquals(expected, CompletedLineUtils.sortCompletedToBottom(lines))
     }
 
+    // ==================== sortCompletedToBottomIndexed ====================
+
+    @Test
+    fun `indexed empty input returns empty`() {
+        assertEquals(emptyList<Int>(), CompletedLineUtils.sortCompletedToBottomIndexed(emptyList()))
+    }
+
+    @Test
+    fun `indexed single line returns identity`() {
+        assertEquals(listOf(0), CompletedLineUtils.sortCompletedToBottomIndexed(listOf("Title")))
+    }
+
+    @Test
+    fun `indexed no checked lines returns identity`() {
+        val lines = listOf("Title", "☐ A", "☐ B")
+        assertEquals(listOf(0, 1, 2), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed checked lines move to bottom`() {
+        val lines = listOf("Title", "☑ Done", "☐ Active")
+        // "☐ Active" (orig 2) moves to position 1, "☑ Done" (orig 1) moves to position 2
+        assertEquals(listOf(0, 2, 1), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed multiple checked and unchecked`() {
+        val lines = listOf("Title", "☑ Done A", "☐ Active B", "☐ Active C", "☑ Done D")
+        // Unchecked first: Active B (2), Active C (3); then checked: Done A (1), Done D (4)
+        assertEquals(listOf(0, 2, 3, 1, 4), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed checked subtrees stay intact`() {
+        val lines = listOf("Title", "☑ Done", "\tChild", "☐ Active")
+        // Active (3) first, then Done (1) + Child (2)
+        assertEquals(listOf(0, 3, 1, 2), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed nested levels sort independently`() {
+        val lines = listOf("Title", "Parent", "\t☑ Done child", "\t☐ Active child")
+        // Title (0), Parent (1), Active child (3), Done child (2)
+        assertEquals(listOf(0, 1, 3, 2), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed empty lines act as barriers`() {
+        val lines = listOf("Title", "☑ Done A", "☐ Active B", "", "☑ Done C", "☐ Active D")
+        // Section 1: Active B (2), Done A (1); barrier (3); Section 2: Active D (5), Done C (4)
+        assertEquals(listOf(0, 2, 1, 3, 5, 4), CompletedLineUtils.sortCompletedToBottomIndexed(lines))
+    }
+
+    @Test
+    fun `indexed permutation produces same text as sortCompletedToBottom`() {
+        val lines = listOf("Title", "☑ Done A", "☐ Active B", "Parent", "\t☑ Child done", "\t☐ Child active")
+        val sortedTexts = CompletedLineUtils.sortCompletedToBottom(lines)
+        val permutation = CompletedLineUtils.sortCompletedToBottomIndexed(lines)
+        val textsFromPermutation = permutation.map { lines[it] }
+        assertEquals(sortedTexts, textsFromPermutation)
+    }
+
     // ==================== nearestVisibleLine ====================
 
     @Test

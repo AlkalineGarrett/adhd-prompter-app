@@ -169,8 +169,12 @@ fun CurrentNoteScreen(
     val context = LocalContext.current
     val currentNoteId by currentNoteViewModel.currentNoteIdLiveData.observeAsState()
 
+    // Sync displayedNoteId from ViewModel when the screen didn't specify a noteId via
+    // navigation (default CurrentNote route). This allows the ViewModel to redirect to a
+    // different note (e.g., when a stale SharedPreferences noteId causes permission denied
+    // and loadContent falls back to creating a new note for the current user).
     LaunchedEffect(currentNoteId) {
-        if (displayedNoteId == null && currentNoteId != null) displayedNoteId = currentNoteId
+        if (noteId == null && currentNoteId != null) displayedNoteId = currentNoteId
     }
 
     // Undo/redo state observation
