@@ -6,7 +6,7 @@ service cloud.firestore {
 
     // Allowlist of permitted user IDs
     function isAllowedUser() {
-      return request.auth.uid in ['USER_ID_1', 'USER_ID_2'];
+      return request.auth.uid == 'USER_ID_1' || request.auth.uid == 'USER_ID_2';
     }
 
     // Check if user is authenticated and allowed
