@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.alkaline.taskbrain.R
@@ -50,6 +51,7 @@ import org.alkaline.taskbrain.data.AlarmType
 import org.alkaline.taskbrain.data.SnoozeDuration
 import org.alkaline.taskbrain.receiver.AlarmActionReceiver
 import org.alkaline.taskbrain.service.AlarmStateManager
+import org.alkaline.taskbrain.service.NotificationHelper
 
 /**
  * Full-screen activity shown when an alarm fires.
@@ -141,6 +143,14 @@ fun AlarmScreen(
                 onFailure = { loadError = "Failed to load alarm: ${it.message}" }
             )
             isLoading = false
+        }
+    }
+
+    // Auto-dismiss alarm after timeout
+    if (alarmType == AlarmType.ALARM) {
+        LaunchedEffect(Unit) {
+            delay(NotificationHelper.ALARM_TIMEOUT_MS)
+            onDismiss()
         }
     }
 

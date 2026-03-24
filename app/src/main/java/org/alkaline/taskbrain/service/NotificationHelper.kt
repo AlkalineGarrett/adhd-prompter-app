@@ -36,6 +36,8 @@ class NotificationHelper(private val context: Context) {
         /** Urgent alarm red (#B71C1C) — tints the notification icon on urgent notifications. */
         private const val URGENT_COLOR = 0xFFB71C1C.toInt()
         private const val LARGE_ICON_SIZE_DP = 48
+        /** Alarm notifications auto-dismiss after this duration. */
+        const val ALARM_TIMEOUT_MS = 60_000L
     }
 
     private val largeIconCache = mutableMapOf<Int, Bitmap>()
@@ -120,12 +122,7 @@ class NotificationHelper(private val context: Context) {
             builder.setSilent(true)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
         } else {
-            // Full urgent notification with full-screen intent:
-            // - If device is LOCKED: Android shows the full-screen activity
-            // - If device is UNLOCKED: Android shows a heads-up notification
-            val fullScreenIntent = createFullScreenIntent(alarm, AlarmType.URGENT)
-            builder.setPriority(NotificationCompat.PRIORITY_MAX)
-                .setFullScreenIntent(fullScreenIntent, true)
+            builder.setPriority(NotificationCompat.PRIORITY_HIGH)
         }
 
         notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), builder.build())
@@ -158,6 +155,7 @@ class NotificationHelper(private val context: Context) {
                 .setAutoCancel(false)
                 .setOngoing(true)
                 .setFullScreenIntent(fullScreenIntent, true)
+                .setTimeoutAfter(ALARM_TIMEOUT_MS)
         }
 
         notificationManager?.notify(AlarmUtils.getNotificationId(alarm.id), builder.build())

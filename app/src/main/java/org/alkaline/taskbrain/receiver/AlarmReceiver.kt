@@ -114,8 +114,7 @@ private class AndroidAlarmPresenter(private val context: Context) : AlarmPresent
             return
         }
 
-        if ((alarmType == AlarmType.URGENT || alarmType == AlarmType.ALARM) &&
-            !notificationHelper.canUseFullScreenIntent()) {
+        if (alarmType == AlarmType.ALARM && !notificationHelper.canUseFullScreenIntent()) {
             Log.w(TAG, "Full-screen intent permission NOT granted on Android 14+")
             showError("Permission Required",
                 "Full-screen intent permission is not granted.\n\n" +
