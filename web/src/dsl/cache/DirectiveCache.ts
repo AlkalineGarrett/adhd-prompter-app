@@ -43,28 +43,11 @@ class LruCache<V> {
   }
 }
 
-const DEFAULT_GLOBAL_CACHE_SIZE = 1000
 const DEFAULT_PER_NOTE_CACHE_SIZE = 100
 const DEFAULT_MAX_NOTES = 500
 
 /**
- * Global cache for self-less directives.
- */
-class GlobalDirectiveCache {
-  private readonly cache: LruCache<CachedDirectiveResult>
-
-  constructor(maxSize: number = DEFAULT_GLOBAL_CACHE_SIZE) {
-    this.cache = new LruCache(maxSize)
-  }
-
-  get(key: string): CachedDirectiveResult | undefined { return this.cache.get(key) }
-  put(key: string, result: CachedDirectiveResult): void { this.cache.put(key, result) }
-  remove(key: string): void { this.cache.remove(key) }
-  clear(): void { this.cache.clear() }
-}
-
-/**
- * Per-note cache for self-referencing directives.
+ * Per-note directive cache. All directive results are scoped to the note containing them.
  */
 class PerNoteDirectiveCache {
   private readonly noteCaches: LruCache<LruCache<CachedDirectiveResult>>
@@ -97,34 +80,29 @@ class PerNoteDirectiveCache {
  * Central manager for all directive caches.
  */
 export class DirectiveCacheManager {
-  private readonly globalCache: GlobalDirectiveCache
   private readonly perNoteCache: PerNoteDirectiveCache
 
   constructor() {
-    this.globalCache = new GlobalDirectiveCache()
     this.perNoteCache = new PerNoteDirectiveCache()
   }
 
-  get(directiveKey: string, noteId: string, _usesSelfAccess: boolean): CachedDirectiveResult | undefined {
-    // Always use per-note cache: directive results are scoped to the parent note
-    // that contains them, even for directives that don't reference the current note.
+  get(directiveKey: string, noteId: string): CachedDirectiveResult | undefined {
     return this.perNoteCache.get(noteId, directiveKey)
   }
 
   getIfValid(
     directiveKey: string,
     noteId: string,
-    usesSelfAccess: boolean,
     currentNotes: Note[],
     currentNote: Note | null,
   ): CachedDirectiveResult | undefined {
-    const cached = this.get(directiveKey, noteId, usesSelfAccess)
+    const cached = this.get(directiveKey, noteId)
     if (!cached) return undefined
     if (StalenessChecker.shouldReExecute(cached, currentNotes, currentNote)) return undefined
     return cached
   }
 
-  put(directiveKey: string, noteId: string, _usesSelfAccess: boolean, result: CachedDirectiveResult): void {
+  put(directiveKey: string, noteId: string, result: CachedDirectiveResult): void {
     this.perNoteCache.put(noteId, directiveKey, result)
   }
 
@@ -133,7 +111,6 @@ export class DirectiveCacheManager {
   }
 
   clearAll(): void {
-    this.globalCache.clear()
     this.perNoteCache.clear()
   }
 }

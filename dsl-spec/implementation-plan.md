@@ -1419,7 +1419,6 @@ data class DirectiveDependencies(
     val dependsOnViewed: Boolean,
     val dependsOnNoteExistence: Boolean,
     val hierarchyDeps: List<HierarchyDependency>,
-    val usesSelfAccess: Boolean
 )
 ```
 
@@ -1428,7 +1427,7 @@ data class DirectiveDependencies(
 Implemented in `StalenessChecker` and `DirectiveCacheManager`:
 - On-demand metadata hashing (lazy, field-level)
 - Short-circuit staleness check (stop at first stale dependency)
-- Global vs per-note cache based on self-access
+- Per-note cache for all directives
 
 ### Tests (RefreshExprTest.kt, RefreshTriggerAnalyzerTest.kt) ✅ All passing
 - `refresh[...]` syntax recognized ✅
@@ -1720,7 +1719,7 @@ For production reliability, schedule execution should move to Firebase Cloud Fun
 
 ## Directive Caching Infrastructure ✅ COMPLETE
 
-Comprehensive caching infrastructure was implemented as part of the view caching work. See `docs/view-caching-plan.md` for full design details.
+Comprehensive caching infrastructure was implemented as part of the view caching work. See `docs/directive-caching.md` and `docs/directive-caching-details.md` for design details.
 
 ### Components Implemented
 
@@ -1760,15 +1759,13 @@ Comprehensive caching infrastructure was implemented as part of the view caching
 │                   ViewModel                      │
 │  ┌─────────────────────────────────────────┐    │
 │  │         In-Memory Cache (L1)            │    │
-│  │  - Global cache (self-less directives)  │    │
-│  │  - Per-note cache (self-referencing)    │    │
+│  │  - Per-note LRU cache                  │    │
 │  └─────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────┘
                         │
                         ▼
 ┌─────────────────────────────────────────────────┐
 │                   Firestore (L2)                 │
-│  users/{uid}/directiveCache/{hash}    (global)  │
 │  users/{uid}/notes/{id}/directiveResults/{hash} │
 └─────────────────────────────────────────────────┘
 ```

@@ -143,3 +143,22 @@ Directives that modify notes (e.g., `[.root.name: "x"]`) receive special handlin
 - **Never re-executed due to staleness** — once executed, the cached result is used indefinitely
 - This prevents user edits from being overwritten by the original mutation value
 - The `DependencyAnalyzer` detects mutating directives via AST analysis
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `dsl/cache/CachedDirectiveExecutor.kt` | Main orchestrator for cached execution |
+| `dsl/cache/StalenessChecker.kt` | Determines if cache entry is stale |
+| `dsl/cache/DependencyAnalyzer.kt` | Static AST analysis for dependencies |
+| `dsl/cache/DirectiveDependencies.kt` | Data structures for dependency tracking |
+| `dsl/cache/TransitiveDependencyCollector.kt` | Runtime dependency collection |
+| `dsl/cache/MetadataHasher.kt` | Computes hashes for metadata fields |
+| `dsl/cache/ContentHasher.kt` | Computes hashes for note content |
+| `dsl/cache/EditSessionManager.kt` | Manages inline edit sessions |
+| `dsl/cache/DirectiveCache.kt` | LRU cache implementation |
+| `ui/currentnote/CurrentNoteViewModel.kt` | Integration point with UI |
+
+## Known Limitations
+
+- **Single edit session**: Only one inline edit session can be active at a time. Starting a new session ends the previous one, flushing its pending invalidations.

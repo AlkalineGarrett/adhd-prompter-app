@@ -5,12 +5,8 @@ import org.alkaline.taskbrain.util.CacheStats
 import org.alkaline.taskbrain.util.LruCache
 
 /**
- * Per-note cache for self-referencing directives (uses `.` to access current note).
- *
- * These directives depend on the note containing them, so results must be
- * cached per-note. Keyed by directive hash within each note's cache.
- *
- * Example: `[.name]` - result depends on which note contains the directive
+ * Per-note directive cache. All directive results are scoped to the note containing them.
+ * Keyed by directive hash within each note's cache.
  *
  * This class manages multiple note caches with a total entry limit.
  */

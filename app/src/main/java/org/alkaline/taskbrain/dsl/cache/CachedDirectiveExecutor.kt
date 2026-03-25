@@ -408,7 +408,7 @@ class CachedDirectiveExecutor(
     )
 
     companion object {
-        /** Placeholder noteId for global (self-less) directives */
+        /** Placeholder noteId when no current note is available */
         private const val GLOBAL_CACHE_PLACEHOLDER = "__global__"
     }
 }

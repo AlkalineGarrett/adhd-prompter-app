@@ -50,14 +50,6 @@ describe('TransitiveDependency', () => {
       expect(result.hierarchyDeps[1]!.path.kind).toBe('Root')
     })
 
-    it('merges usesSelfAccess with OR', () => {
-      const a: DirectiveDependencies = { ...EMPTY_DEPENDENCIES, usesSelfAccess: false }
-      const b: DirectiveDependencies = { ...EMPTY_DEPENDENCIES, usesSelfAccess: true }
-      const result = mergeDependencies(a, b)
-
-      expect(result.usesSelfAccess).toBe(true)
-    })
-
     it('merges all flags correctly', () => {
       const a: DirectiveDependencies = {
         ...EMPTY_DEPENDENCIES,
@@ -72,7 +64,6 @@ describe('TransitiveDependency', () => {
         dependsOnViewed: true,
         dependsOnAllNames: true,
         nonFirstLineNotes: new Set(['n2']),
-        usesSelfAccess: true,
       }
       const result = mergeDependencies(a, b)
 
@@ -82,7 +73,6 @@ describe('TransitiveDependency', () => {
       expect(result.dependsOnViewed).toBe(true)
       expect(result.dependsOnNoteExistence).toBe(true)
       expect(result.dependsOnAllNames).toBe(true)
-      expect(result.usesSelfAccess).toBe(true)
       expect(result.firstLineNotes).toEqual(new Set(['n1']))
       expect(result.nonFirstLineNotes).toEqual(new Set(['n2']))
     })
@@ -95,7 +85,6 @@ describe('TransitiveDependency', () => {
 
     it('returns false when any flag is set', () => {
       expect(isDependenciesEmpty({ ...EMPTY_DEPENDENCIES, dependsOnPath: true })).toBe(false)
-      expect(isDependenciesEmpty({ ...EMPTY_DEPENDENCIES, usesSelfAccess: true })).toBe(false)
     })
 
     it('returns false when note sets are non-empty', () => {

@@ -35,28 +35,6 @@ function lambda(params: string[], body: Expression, position = 0): Expression {
 }
 
 describe('DependencyAnalyzer', () => {
-  describe('self access detection', () => {
-    it('detects current note reference', () => {
-      const result = analyze(selfRef())
-      expect(result.usesSelfAccess).toBe(true)
-    })
-
-    it('detects self access via property', () => {
-      const result = analyze(prop(selfRef(), 'name'))
-      expect(result.usesSelfAccess).toBe(true)
-    })
-
-    it('does not flag variable as self access', () => {
-      const result = analyze(varRef('x'))
-      expect(result.usesSelfAccess).toBe(false)
-    })
-
-    it('does not flag literal as self access', () => {
-      const result = analyze(numLit(42))
-      expect(result.usesSelfAccess).toBe(false)
-    })
-  })
-
   describe('field dependency detection', () => {
     it('detects path dependency', () => {
       const result = analyze(prop(selfRef(), 'path'))
@@ -193,7 +171,6 @@ describe('DependencyAnalyzer', () => {
       const deps = analysisToPartialDependencies(analysis)
       expect(deps.dependsOnPath).toBe(true)
       expect(deps.dependsOnNoteExistence).toBe(true)
-      expect(deps.usesSelfAccess).toBe(false)
     })
   })
 
@@ -208,7 +185,6 @@ describe('DependencyAnalyzer', () => {
         position: 0,
       }
       const result = analyze(expr)
-      expect(result.usesSelfAccess).toBe(true)
       expect(result.dependsOnPath).toBe(true)
       expect(result.dependsOnModified).toBe(true)
     })
@@ -218,7 +194,6 @@ describe('DependencyAnalyzer', () => {
     it('analyzes lambda body for dependencies', () => {
       const expr = lambda(['x'], prop(selfRef(), 'viewed'))
       const result = analyze(expr)
-      expect(result.usesSelfAccess).toBe(true)
       expect(result.dependsOnViewed).toBe(true)
     })
   })

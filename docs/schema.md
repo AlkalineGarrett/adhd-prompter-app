@@ -182,7 +182,6 @@ Path: `/users/{userId}/directiveCache/{directiveHash}`
     "dependsOnCreated": "Boolean",
     "dependsOnViewed": "Boolean",
     "dependsOnNoteExistence": "Boolean",
-    "usesSelfAccess": "Boolean",
     "hierarchyDeps": [
       {
         "path": "String",

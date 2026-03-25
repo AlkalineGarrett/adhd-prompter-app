@@ -50,7 +50,6 @@ export class CachedDirectiveExecutor {
 
     const { cacheKey, analysis } = analysisResult
     const noteId = currentNote?.id ?? GLOBAL_CACHE_PLACEHOLDER
-    const usesSelfAccess = analysis.usesSelfAccess
     const isMutating = analysis.isMutating
     const baseDependencies = analysisToPartialDependencies(analysis)
 
@@ -61,7 +60,7 @@ export class CachedDirectiveExecutor {
 
     // Step 3: Mutating directives never re-execute from cache
     if (isMutating) {
-      const cached = this.cacheManager.get(cacheKey, noteId, usesSelfAccess)
+      const cached = this.cacheManager.get(cacheKey, noteId)
       if (cached) {
         return {
           result: this.cachedToDirectiveResult(cached),
@@ -73,8 +72,8 @@ export class CachedDirectiveExecutor {
 
     // Step 4: Check cache
     const cached = shouldSuppressStaleness
-      ? this.cacheManager.get(cacheKey, noteId, usesSelfAccess)
-      : this.cacheManager.getIfValid(cacheKey, noteId, usesSelfAccess, notes, currentNote)
+      ? this.cacheManager.get(cacheKey, noteId)
+      : this.cacheManager.getIfValid(cacheKey, noteId, notes, currentNote)
 
     if (cached) {
       return {
@@ -87,7 +86,7 @@ export class CachedDirectiveExecutor {
     // Step 5: Cache miss - execute and cache
     return this.executeFreshWithCaching(
       sourceText, notes, currentNote, noteOperations, viewStack,
-      cacheKey, baseDependencies, usesSelfAccess,
+      cacheKey, baseDependencies,
     )
   }
 
@@ -123,7 +122,6 @@ export class CachedDirectiveExecutor {
     viewStack: string[],
     cacheKey: string,
     baseDependencies: DirectiveDependencies,
-    usesSelfAccess: boolean,
   ): CachedExecutionResult {
     const result = executeDirective(sourceText, notes, currentNote, noteOperations, viewStack)
     const noteId = currentNote?.id ?? GLOBAL_CACHE_PLACEHOLDER
@@ -151,7 +149,7 @@ export class CachedDirectiveExecutor {
     const isComputed = result.result !== null && result.error === null
     if (isComputed || (result.error && classifyError(result.error).isDeterministic)) {
       const cached = this.buildCachedResult(result, finalDependencies, notes)
-      this.cacheManager.put(cacheKey, noteId, usesSelfAccess, cached)
+      this.cacheManager.put(cacheKey, noteId, cached)
     }
 
     return { result, cacheHit: false, dependencies: finalDependencies }

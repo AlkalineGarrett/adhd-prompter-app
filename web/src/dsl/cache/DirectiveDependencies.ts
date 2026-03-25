@@ -22,9 +22,6 @@ export interface DirectiveDependencies {
 
   /** Dependencies on parent/ancestor notes */
   hierarchyDeps: HierarchyDependency[]
-
-  /** Whether this directive references the current note (.) */
-  usesSelfAccess: boolean
 }
 
 export const EMPTY_DEPENDENCIES: DirectiveDependencies = {
@@ -37,7 +34,6 @@ export const EMPTY_DEPENDENCIES: DirectiveDependencies = {
   dependsOnNoteExistence: false,
   dependsOnAllNames: false,
   hierarchyDeps: [],
-  usesSelfAccess: false,
 }
 
 export function mergeDependencies(a: DirectiveDependencies, b: DirectiveDependencies): DirectiveDependencies {
@@ -51,7 +47,6 @@ export function mergeDependencies(a: DirectiveDependencies, b: DirectiveDependen
     dependsOnNoteExistence: a.dependsOnNoteExistence || b.dependsOnNoteExistence,
     dependsOnAllNames: a.dependsOnAllNames || b.dependsOnAllNames,
     hierarchyDeps: [...a.hierarchyDeps, ...b.hierarchyDeps],
-    usesSelfAccess: a.usesSelfAccess || b.usesSelfAccess,
   }
 }
 
@@ -65,8 +60,7 @@ export function isDependenciesEmpty(deps: DirectiveDependencies): boolean {
     !deps.dependsOnViewed &&
     !deps.dependsOnNoteExistence &&
     !deps.dependsOnAllNames &&
-    deps.hierarchyDeps.length === 0 &&
-    !deps.usesSelfAccess
+    deps.hierarchyDeps.length === 0
   )
 }
 

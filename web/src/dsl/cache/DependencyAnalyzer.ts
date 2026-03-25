@@ -6,7 +6,6 @@ import { NoteField, EMPTY_DEPENDENCIES } from './DirectiveDependencies'
  * Result of analyzing a directive AST for dependencies.
  */
 export interface DirectiveAnalysis {
-  usesSelfAccess: boolean
   dependsOnPath: boolean
   dependsOnModified: boolean
   dependsOnCreated: boolean
@@ -20,7 +19,6 @@ export interface DirectiveAnalysis {
 }
 
 export const EMPTY_ANALYSIS: DirectiveAnalysis = {
-  usesSelfAccess: false,
   dependsOnPath: false,
   dependsOnModified: false,
   dependsOnCreated: false,
@@ -42,14 +40,12 @@ export function analysisToPartialDependencies(analysis: DirectiveAnalysis): Dire
     dependsOnViewed: analysis.dependsOnViewed,
     dependsOnNoteExistence: analysis.dependsOnNoteExistence,
     dependsOnAllNames: analysis.dependsOnAllNames,
-    usesSelfAccess: analysis.usesSelfAccess,
   }
 }
 
 // --- Analysis context ---
 
 interface AnalysisContext {
-  usesSelfAccess: boolean
   dependsOnPath: boolean
   dependsOnModified: boolean
   dependsOnCreated: boolean
@@ -64,7 +60,6 @@ interface AnalysisContext {
 
 function newContext(): AnalysisContext {
   return {
-    usesSelfAccess: false,
     dependsOnPath: false,
     dependsOnModified: false,
     dependsOnCreated: false,
@@ -106,7 +101,6 @@ function analyzeExpression(expr: Expression, ctx: AnalysisContext): void {
       break
 
     case 'CurrentNoteRef':
-      ctx.usesSelfAccess = true
       break
 
     case 'PropertyAccess':
@@ -241,7 +235,6 @@ function analyzeCallExpr(expr: Expression & { kind: 'CallExpr' }, ctx: AnalysisC
 function analyzeTarget(target: Expression, ctx: AnalysisContext): TargetInfo {
   switch (target.kind) {
     case 'CurrentNoteRef':
-      ctx.usesSelfAccess = true
       return { isSelf: true, isHierarchy: false, hierarchyPath: null }
 
     case 'PropertyAccess': {

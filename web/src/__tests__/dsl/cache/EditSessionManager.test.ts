@@ -25,7 +25,7 @@ describe('EditSessionManager', () => {
       const manager = new EditSessionManager(cacheManager)
 
       // Put something in cache for the first origin note
-      cacheManager.put('key1', 'origin1', true, cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
+      cacheManager.put('key1', 'origin1', cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
 
       manager.startEditSession('edit1', 'origin1')
       // Suppress invalidation for origin1
@@ -35,7 +35,7 @@ describe('EditSessionManager', () => {
       manager.startEditSession('edit2', 'origin2')
 
       // The pending invalidation from origin1 should have been flushed
-      expect(cacheManager.get('key1', 'origin1', true)).toBeUndefined()
+      expect(cacheManager.get('key1', 'origin1')).toBeUndefined()
     })
   })
 
@@ -65,7 +65,7 @@ describe('EditSessionManager', () => {
       const cacheManager = new DirectiveCacheManager()
       const manager = new EditSessionManager(cacheManager)
 
-      cacheManager.put('key1', 'originNote', true, cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
+      cacheManager.put('key1', 'originNote', cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
 
       manager.startEditSession('editNote', 'originNote')
       const invalidated = manager.requestInvalidation('originNote', InvalidationReason.CONTENT_CHANGED)
@@ -73,37 +73,37 @@ describe('EditSessionManager', () => {
       // Should NOT have been invalidated immediately
       expect(invalidated).toBe(false)
       // Cache should still have the entry
-      expect(cacheManager.get('key1', 'originNote', true)).toBeDefined()
+      expect(cacheManager.get('key1', 'originNote')).toBeDefined()
     })
 
     it('immediately invalidates non-originating notes', () => {
       const cacheManager = new DirectiveCacheManager()
       const manager = new EditSessionManager(cacheManager)
 
-      cacheManager.put('key1', 'otherNote', true, cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
+      cacheManager.put('key1', 'otherNote', cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
 
       manager.startEditSession('editNote', 'originNote')
       const invalidated = manager.requestInvalidation('otherNote', InvalidationReason.CONTENT_CHANGED)
 
       expect(invalidated).toBe(true)
-      expect(cacheManager.get('key1', 'otherNote', true)).toBeUndefined()
+      expect(cacheManager.get('key1', 'otherNote')).toBeUndefined()
     })
 
     it('flushes pending invalidations on session end', () => {
       const cacheManager = new DirectiveCacheManager()
       const manager = new EditSessionManager(cacheManager)
 
-      cacheManager.put('key1', 'originNote', true, cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
+      cacheManager.put('key1', 'originNote', cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
 
       manager.startEditSession('editNote', 'originNote')
       manager.requestInvalidation('originNote', InvalidationReason.CONTENT_CHANGED)
 
       // Cache still has it
-      expect(cacheManager.get('key1', 'originNote', true)).toBeDefined()
+      expect(cacheManager.get('key1', 'originNote')).toBeDefined()
 
       // End session should flush
       manager.endEditSession()
-      expect(cacheManager.get('key1', 'originNote', true)).toBeUndefined()
+      expect(cacheManager.get('key1', 'originNote')).toBeUndefined()
     })
   })
 
@@ -112,7 +112,7 @@ describe('EditSessionManager', () => {
       const cacheManager = new DirectiveCacheManager()
       const manager = new EditSessionManager(cacheManager)
 
-      cacheManager.put('key1', 'originNote', true, cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
+      cacheManager.put('key1', 'originNote', cachedResultSuccess(numberVal(1), EMPTY_DEPENDENCIES))
 
       manager.startEditSession('editNote', 'originNote')
       manager.requestInvalidation('originNote', InvalidationReason.CONTENT_CHANGED)
@@ -122,7 +122,7 @@ describe('EditSessionManager', () => {
       // Session should be ended
       expect(manager.isEditSessionActive()).toBe(false)
       // Cache should still have the entry (invalidation was discarded)
-      expect(cacheManager.get('key1', 'originNote', true)).toBeDefined()
+      expect(cacheManager.get('key1', 'originNote')).toBeDefined()
     })
   })
 

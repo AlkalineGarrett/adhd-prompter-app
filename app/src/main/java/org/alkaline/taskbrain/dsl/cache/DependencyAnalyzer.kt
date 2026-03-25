@@ -22,7 +22,6 @@ import org.alkaline.taskbrain.dsl.language.VariableRef
  * AST analysis for dependency detection.
  *
  * This analyzer walks the AST and identifies:
- * - Self-access (`.`) - determines if cache can be shared globally
  * - Field access (path, modified, created, viewed) - metadata dependencies
  * - Hierarchy access (.up, .root) - parent/ancestor dependencies
  * - find() usage - note existence dependency
@@ -46,7 +45,6 @@ object DependencyAnalyzer {
      * Internal context for collecting dependency information during analysis.
      */
     private class AnalysisContext {
-        var usesSelfAccess: Boolean = false
         var dependsOnPath: Boolean = false
         var dependsOnModified: Boolean = false
         var dependsOnCreated: Boolean = false
@@ -60,7 +58,6 @@ object DependencyAnalyzer {
 
         fun toResult(): DirectiveAnalysis {
             return DirectiveAnalysis(
-                usesSelfAccess = usesSelfAccess,
                 dependsOnPath = dependsOnPath,
                 dependsOnModified = dependsOnModified,
                 dependsOnCreated = dependsOnCreated,
@@ -87,8 +84,7 @@ object DependencyAnalyzer {
             }
 
             is CurrentNoteRef -> {
-                // Direct reference to current note
-                ctx.usesSelfAccess = true
+                // Direct reference to current note - no dependencies to track
             }
 
             is PropertyAccess -> analyzePropertyAccess(expr, ctx)
@@ -305,7 +301,6 @@ object DependencyAnalyzer {
     private fun analyzeTarget(target: Expression, ctx: AnalysisContext): TargetInfo {
         return when (target) {
             is CurrentNoteRef -> {
-                ctx.usesSelfAccess = true
                 TargetInfo(isSelf = true, isHierarchy = false, hierarchyPath = null)
             }
 
@@ -421,9 +416,6 @@ object DependencyAnalyzer {
  * when the directive is executed and cached.
  */
 data class DirectiveAnalysis(
-    /** Whether this directive references the current note (.) */
-    val usesSelfAccess: Boolean,
-
     /** Depends on note paths */
     val dependsOnPath: Boolean,
 
@@ -455,12 +447,6 @@ data class DirectiveAnalysis(
     val hierarchyAccesses: List<HierarchyAccessPattern>
 ) {
     /**
-     * Check if this directive can be cached globally (shared across notes).
-     * Directives that reference the current note (self-access) must use per-note cache.
-     */
-    fun canShareGlobally(): Boolean = !usesSelfAccess
-
-    /**
      * Convert to DirectiveDependencies with empty per-note data.
      * Per-note content hashes and hierarchy resolutions are filled in at runtime.
      */
@@ -473,14 +459,12 @@ data class DirectiveAnalysis(
         dependsOnViewed = dependsOnViewed,
         dependsOnNoteExistence = dependsOnNoteExistence,
         dependsOnAllNames = dependsOnAllNames,
-        hierarchyDeps = emptyList(),      // Filled at runtime with resolved IDs
-        usesSelfAccess = usesSelfAccess
+        hierarchyDeps = emptyList()       // Filled at runtime with resolved IDs
     )
 
     companion object {
         /** Analysis result for a directive with no dependencies */
         val EMPTY = DirectiveAnalysis(
-            usesSelfAccess = false,
             dependsOnPath = false,
             dependsOnModified = false,
             dependsOnCreated = false,

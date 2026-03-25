@@ -7,7 +7,7 @@ package org.alkaline.taskbrain.dsl.cache
  *
  * Dependencies are categorized into:
  * 1. Per-note content dependencies (first line, non-first line)
- * 2. Global metadata dependencies (path, modified, created, viewed, existence)
+ * 2. Metadata dependencies (path, modified, created, viewed, existence)
  * 3. Hierarchy dependencies (for .up, .root access)
  */
 data class DirectiveDependencies(
@@ -17,7 +17,7 @@ data class DirectiveDependencies(
     /** Note IDs where content beyond first line was accessed */
     val nonFirstLineNotes: Set<String> = emptySet(),
 
-    // Global metadata dependencies (true = this directive depends on this field)
+    // Metadata dependencies (true = this directive depends on this field)
     /** Depends on note paths (find(path: ...), note.path) */
     val dependsOnPath: Boolean = false,
     /** Depends on modified timestamps (find with modified filter) */
@@ -33,11 +33,7 @@ data class DirectiveDependencies(
 
     // Hierarchy dependencies (for .up, .root access)
     /** Dependencies on parent/ancestor notes */
-    val hierarchyDeps: List<HierarchyDependency> = emptyList(),
-
-    // Self-access flag (set from static analysis)
-    /** Whether this directive references the current note (.) */
-    val usesSelfAccess: Boolean = false
+    val hierarchyDeps: List<HierarchyDependency> = emptyList()
 ) {
     /**
      * Merge with another DirectiveDependencies (for transitive dependencies).
@@ -52,8 +48,7 @@ data class DirectiveDependencies(
         dependsOnViewed = dependsOnViewed || other.dependsOnViewed,
         dependsOnNoteExistence = dependsOnNoteExistence || other.dependsOnNoteExistence,
         dependsOnAllNames = dependsOnAllNames || other.dependsOnAllNames,
-        hierarchyDeps = hierarchyDeps + other.hierarchyDeps,
-        usesSelfAccess = usesSelfAccess || other.usesSelfAccess
+        hierarchyDeps = hierarchyDeps + other.hierarchyDeps
     )
 
     /**
@@ -68,14 +63,7 @@ data class DirectiveDependencies(
             !dependsOnViewed &&
             !dependsOnNoteExistence &&
             !dependsOnAllNames &&
-            hierarchyDeps.isEmpty() &&
-            !usesSelfAccess
-
-    /**
-     * Check if this directive can be cached globally (shared across notes).
-     * Directives that reference the current note (self-access) must use per-note cache.
-     */
-    fun canShareGlobally(): Boolean = !usesSelfAccess
+            hierarchyDeps.isEmpty()
 
     companion object {
         /** Empty dependencies - no external data accessed */

@@ -11,43 +11,6 @@ import org.junit.Test
  */
 class DependencyAnalyzerTest {
 
-    // region Self-access detection
-
-    @Test
-    fun `detects self-access via CurrentNoteRef`() {
-        val analysis = analyze("[.]")
-        assertTrue(analysis.usesSelfAccess)
-        assertFalse(analysis.canShareGlobally())
-    }
-
-    @Test
-    fun `detects self-access via property access on self`() {
-        val analysis = analyze("[.path]")
-        assertTrue(analysis.usesSelfAccess)
-    }
-
-    @Test
-    fun `no self-access for literals`() {
-        val analysis = analyze("[42]")
-        assertFalse(analysis.usesSelfAccess)
-        assertTrue(analysis.canShareGlobally())
-    }
-
-    @Test
-    fun `no self-access for find without self`() {
-        val analysis = analyze("[find(path: \"inbox\")]")
-        assertFalse(analysis.usesSelfAccess)
-        assertTrue(analysis.canShareGlobally())
-    }
-
-    @Test
-    fun `detects self-access in find predicate using self`() {
-        val analysis = analyze("[find(path: .path)]")
-        assertTrue(analysis.usesSelfAccess)
-    }
-
-    // endregion
-
     // region Field access detection - path
 
     @Test
@@ -162,7 +125,6 @@ class DependencyAnalyzerTest {
     @Test
     fun `detects up hierarchy access`() {
         val analysis = analyze("[.up]")
-        assertTrue(analysis.usesSelfAccess)
         assertEquals(1, analysis.hierarchyAccesses.size)
         assertEquals(HierarchyPath.Up, analysis.hierarchyAccesses[0].path)
         assertNull(analysis.hierarchyAccesses[0].field)
@@ -218,7 +180,6 @@ class DependencyAnalyzerTest {
     @Test
     fun `detects root hierarchy access`() {
         val analysis = analyze("[.root]")
-        assertTrue(analysis.usesSelfAccess)
         assertEquals(1, analysis.hierarchyAccesses.size)
         assertEquals(HierarchyPath.Root, analysis.hierarchyAccesses[0].path)
     }
@@ -241,7 +202,6 @@ class DependencyAnalyzerTest {
         val analysis = analyze("[a: .path; b: .modified; a]")
         assertTrue(analysis.dependsOnPath)
         assertTrue(analysis.dependsOnModified)
-        assertTrue(analysis.usesSelfAccess)
     }
 
     // endregion
@@ -258,7 +218,6 @@ class DependencyAnalyzerTest {
     fun `analyzes lambda invocation`() {
         val analysis = analyze("[f: [i.modified]; f(.)]")
         assertTrue(analysis.dependsOnModified)
-        assertTrue(analysis.usesSelfAccess)
     }
 
     // endregion
@@ -269,14 +228,12 @@ class DependencyAnalyzerTest {
     fun `analyzes once block body`() {
         val analysis = analyze("[once[.path]]")
         assertTrue(analysis.dependsOnPath)
-        assertTrue(analysis.usesSelfAccess)
     }
 
     @Test
     fun `analyzes refresh block body`() {
         val analysis = analyze("[refresh[.modified]]")
         assertTrue(analysis.dependsOnModified)
-        assertTrue(analysis.usesSelfAccess)
     }
 
     // endregion
@@ -291,8 +248,6 @@ class DependencyAnalyzerTest {
         assertTrue(deps.dependsOnPath)
         assertTrue(deps.dependsOnModified)
         assertTrue(deps.dependsOnNoteExistence)
-        assertTrue(deps.usesSelfAccess)
-        assertFalse(deps.canShareGlobally())
         assertTrue(deps.firstLineNotes.isEmpty()) // Filled at runtime
         assertTrue(deps.hierarchyDeps.isEmpty())  // Filled at runtime
     }
@@ -309,7 +264,6 @@ class DependencyAnalyzerTest {
         assertTrue(analysis.dependsOnNoteExistence)
         assertTrue(analysis.dependsOnPath)
         assertTrue(analysis.dependsOnModified)
-        assertFalse(analysis.usesSelfAccess) // No self reference
     }
 
     @Test
@@ -334,7 +288,6 @@ class DependencyAnalyzerTest {
     @Test
     fun `EMPTY has no dependencies`() {
         val empty = DirectiveAnalysis.EMPTY
-        assertFalse(empty.usesSelfAccess)
         assertFalse(empty.dependsOnPath)
         assertFalse(empty.dependsOnModified)
         assertFalse(empty.dependsOnCreated)
@@ -343,7 +296,6 @@ class DependencyAnalyzerTest {
         assertFalse(empty.accessesFirstLine)
         assertFalse(empty.accessesNonFirstLine)
         assertTrue(empty.hierarchyAccesses.isEmpty())
-        assertTrue(empty.canShareGlobally())
     }
 
     // endregion

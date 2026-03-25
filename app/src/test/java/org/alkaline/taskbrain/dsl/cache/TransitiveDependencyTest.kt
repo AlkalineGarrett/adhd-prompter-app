@@ -469,15 +469,13 @@ class TransitiveDependencyTest {
 
         // Lambda B is resolved with its dependencies
         val lambdaBDeps = DirectiveDependencies.EMPTY.copy(
-            dependsOnModified = true,
-            usesSelfAccess = true
+            dependsOnModified = true
         )
         collector.addReferencedDependencies(lambdaBDeps)
 
         val result = collector.finishDirective()
 
         assertTrue(result.dependsOnModified)
-        assertTrue(result.usesSelfAccess)
     }
 
     @Test
