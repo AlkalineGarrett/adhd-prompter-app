@@ -3,7 +3,6 @@ package org.alkaline.taskbrain.ui.currentnote
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
 import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
@@ -24,10 +23,8 @@ fun rememberDirectiveCallbacks(
     onMarkUnsaved: () -> Unit,
 ): DirectiveCallbacks = remember(editorState, controller, currentNoteViewModel) {
     DirectiveCallbacks(
-        onDirectiveTap = { positionKey, sourceText ->
-            resolveDirectiveUuid(currentNoteViewModel, positionKey)?.let { uuid ->
-                currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
-            }
+        onDirectiveTap = { _, sourceText ->
+            currentNoteViewModel.toggleDirectiveCollapsed(sourceText)
         },
         onViewDirectiveConfirm = { lineIndex, _, sourceText, newText ->
             handleDirectiveConfirm(
@@ -36,16 +33,14 @@ fun rememberDirectiveCallbacks(
                 onContentChanged, onMarkUnsaved
             )
         },
-        onViewDirectiveCancel = { lineIndex, positionKey, sourceText ->
-            resolveDirectiveUuid(currentNoteViewModel, positionKey)?.let { uuid ->
-                currentNoteViewModel.toggleDirectiveCollapsed(uuid)
-            }
+        onViewDirectiveCancel = { lineIndex, _, sourceText ->
+            currentNoteViewModel.toggleDirectiveCollapsed(sourceText)
             moveCursorToEndOfDirective(editorState, controller, lineIndex, sourceText)
         },
-        onViewDirectiveRefresh = { lineIndex, positionKey, sourceText, newText ->
+        onViewDirectiveRefresh = { lineIndex, _, sourceText, newText ->
             handleDirectiveRefresh(
-                lineIndex, positionKey, sourceText, newText,
-                editorState, controller, currentNoteViewModel, userContent,
+                lineIndex, sourceText, newText,
+                editorState, controller, currentNoteViewModel,
                 onContentChanged, onMarkUnsaved
             )
         },
@@ -56,17 +51,15 @@ fun rememberDirectiveCallbacks(
                 newContent = noteContent,
                 onSuccess = {
                     recentTabsViewModel.invalidateCache(noteId)
-                    currentNoteViewModel.forceRefreshAllDirectives(userContent) {
+                    currentNoteViewModel.forceRefreshAllDirectives {
                         currentNoteViewModel.endInlineEditSession()
                         inlineEditState.endSession()
                     }
                 }
             )
         },
-        onViewEditDirective = { directiveKey, sourceText ->
-            resolveDirectiveUuid(currentNoteViewModel, directiveKey)?.let { uuid ->
-                currentNoteViewModel.toggleDirectiveCollapsed(uuid, sourceText)
-            }
+        onViewEditDirective = { _, sourceText ->
+            currentNoteViewModel.toggleDirectiveCollapsed(sourceText)
         },
     )
 }
@@ -91,16 +84,6 @@ fun rememberButtonCallbacks(
 
 // --- Private helpers ---
 
-private fun resolveDirectiveUuid(
-    viewModel: CurrentNoteViewModel,
-    positionKey: String
-): String? {
-    val startOffset = DirectiveFinder.startOffsetFromKey(positionKey) ?: return null
-    // Key format: "lineId:startOffset" where lineId is a noteId or temp UUID
-    val lineId = positionKey.substringBeforeLast(':')
-    return viewModel.getDirectiveUuidByNoteId(lineId, startOffset)
-}
-
 private fun handleDirectiveConfirm(
     lineIndex: Int,
     sourceText: String,
@@ -113,38 +96,32 @@ private fun handleDirectiveConfirm(
 ) {
     val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
     val startOffset = lineContent.indexOf(sourceText)
-    val uuid = if (startOffset >= 0) viewModel.getDirectiveUuid(lineIndex, startOffset) else null
 
     if (sourceText != newText && startOffset >= 0) {
         val endOffset = startOffset + sourceText.length
         controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
         onContentChanged(editorState.text)
         onMarkUnsaved()
-        viewModel.executeDirectivesLive(editorState.text)
+        viewModel.bumpDirectiveCacheGeneration()
 
         val cursorPos = startOffset + newText.length
         val prefixLength = editorState.lines.getOrNull(lineIndex)?.prefix?.length ?: 0
         controller.setCursor(lineIndex, prefixLength + cursorPos)
 
-        val newUuid = viewModel.getDirectiveUuid(lineIndex, startOffset)
-        if (newUuid != null) {
-            viewModel.confirmDirective(newUuid, newText)
-        }
-    } else if (startOffset >= 0 && uuid != null) {
+        viewModel.confirmDirective(newText)
+    } else if (startOffset >= 0) {
         moveCursorToEndOfDirective(editorState, controller, lineIndex, sourceText)
-        viewModel.confirmDirective(uuid, sourceText)
+        viewModel.confirmDirective(sourceText)
     }
 }
 
 private fun handleDirectiveRefresh(
     lineIndex: Int,
-    positionKey: String,
     sourceText: String,
     newText: String,
     editorState: EditorState,
     controller: EditorController,
     viewModel: CurrentNoteViewModel,
-    userContent: String,
     onContentChanged: (String) -> Unit,
     onMarkUnsaved: () -> Unit,
 ) {
@@ -156,19 +133,10 @@ private fun handleDirectiveRefresh(
         controller.confirmDirectiveEdit(lineIndex, startOffset, endOffset, newText)
         onContentChanged(editorState.text)
         onMarkUnsaved()
-        viewModel.executeDirectivesLive(editorState.text)
-
-        val newUuid = viewModel.getDirectiveUuid(lineIndex, startOffset)
-        if (newUuid != null) {
-            viewModel.refreshDirective(newUuid, newText)
-        }
+        viewModel.bumpDirectiveCacheGeneration()
+        viewModel.refreshDirective(newText)
     } else {
-        val uuid = resolveDirectiveUuid(viewModel, positionKey)
-        if (uuid != null) {
-            viewModel.refreshDirective(uuid, sourceText)
-        } else {
-            viewModel.executeDirectivesLive(userContent)
-        }
+        viewModel.refreshDirective(sourceText)
     }
 }
 

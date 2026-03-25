@@ -24,7 +24,6 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import org.alkaline.taskbrain.data.Alarm
-import org.alkaline.taskbrain.data.AlarmMarkers
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStage
 import org.alkaline.taskbrain.data.Note
@@ -50,18 +49,15 @@ import org.alkaline.taskbrain.dsl.cache.EditSessionManager
 import org.alkaline.taskbrain.dsl.cache.MetadataHasher
 import org.alkaline.taskbrain.dsl.cache.RefreshScheduler
 import org.alkaline.taskbrain.dsl.cache.RefreshTriggerAnalyzer
-import org.alkaline.taskbrain.dsl.directives.DirectiveExecutionResult
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
-import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
 import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
 import org.alkaline.taskbrain.dsl.directives.ScheduleManager
-import org.alkaline.taskbrain.dsl.directives.matchDirectiveInstances
 import org.alkaline.taskbrain.dsl.runtime.values.AlarmVal
 import org.alkaline.taskbrain.dsl.runtime.values.DateTimeVal
 import org.alkaline.taskbrain.dsl.runtime.values.DateVal
 import org.alkaline.taskbrain.dsl.runtime.values.TimeVal
-import org.alkaline.taskbrain.dsl.directives.parseAllDirectiveLocations
 import org.alkaline.taskbrain.dsl.language.Lexer
 import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.language.RefreshExpr
@@ -177,14 +173,13 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private val _showCompleted = MutableLiveData<Boolean>(true)
     val showCompleted: LiveData<Boolean> = _showCompleted
 
-    // Directive execution results - maps directive UUID to result
-    private val _directiveResults = MutableLiveData<Map<String, DirectiveResult>>(emptyMap())
-    val directiveResults: LiveData<Map<String, DirectiveResult>> = _directiveResults
-
-    // Bumped after async directive execution completes, triggering recomposition
-    // so the synchronous computeDirectiveResults() picks up newly cached results.
+    // Bumped after directive cache or expanded state changes, triggering recomposition
+    // so the synchronous computeDirectiveResults() picks up new results/state.
     private val _directiveCacheGeneration = MutableLiveData(0)
     val directiveCacheGeneration: LiveData<Int> = _directiveCacheGeneration
+
+    // Tracks which directives are expanded (by hash key). Default state is collapsed.
+    private val expandedDirectiveHashes = mutableSetOf<String>()
 
     // Button execution states - maps directive key to execution state
     private val _buttonExecutionStates = MutableLiveData<Map<String, ButtonExecutionState>>(emptyMap())
@@ -200,9 +195,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         current.remove(directiveKey)
         _buttonErrors.value = current
     }
-
-    // Directive instances with stable UUIDs - survives text edits
-    private var directiveInstances: List<DirectiveInstance> = emptyList()
 
     // Cached notes for find() operations in directives
     private var cachedNotes: List<Note>? = null
@@ -232,13 +224,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         refreshScheduler.start()
         // When an edit session ends, refresh the current view
         editSessionManager.addSessionEndListener {
-            viewModelScope.launch {
-                // Re-execute directives to pick up any changes that were suppressed
-                val content = (_loadStatus.value as? LoadStatus.Success)?.content
-                if (content != null && DirectiveFinder.containsDirectives(content)) {
-                    executeDirectivesLive(content)
-                }
-            }
+            // Re-execute directives to pick up any changes that were suppressed
+            bumpDirectiveCacheGeneration()
         }
     }
 
@@ -404,6 +391,9 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // Recreate line tracker with new parent note ID
         lineTracker = NoteLineTracker(currentNoteId)
 
+        // Clear expanded state from previous note
+        expandedDirectiveHashes.clear()
+
         // Check cache first for instant tab switching
         val cached = recentTabsViewModel?.getCachedContent(currentNoteId)
         if (cached != null) {
@@ -413,8 +403,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             _isNoteDeleted.value = cached.isDeleted
             lineTracker.setTrackedLines(cached.noteLines)
             _loadStatus.value = LoadStatus.Success(fullContent, noteLinesToNoteIds(cached.noteLines))
-            // Pre-populate alarm results for instant icon rendering
-            prePopulateAlarmResults(fullContent)
             // Still update lastAccessedAt, load showCompleted, and directive results in background
             viewModelScope.launch {
                 repository.updateLastAccessed(currentNoteId)
@@ -486,9 +474,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                         loadedLines,
                         _isNoteDeleted.value ?: false
                     )
-
-                    // Pre-populate alarm results for instant icon rendering
-                    prePopulateAlarmResults(fullContent)
 
                     // Load cached directive results and execute any missing directives
                     loadDirectiveResults(fullContent)
@@ -1094,168 +1079,35 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * UUIDs are preserved when directives move due to text insertions/deletions.
      */
     /**
-     * Re-parses directive positions from content and updates [directiveInstances]
-     * to keep position keys in sync with current line indices. Does NOT execute
-     * any directives. Call this on every content change so existing results remain
-     * addressable by their position key even when lines shift.
+     * Bumps the directive cache generation counter, triggering recomposition
+     * so computeDirectiveResults() re-runs with current cache state.
      */
-    fun updateDirectivePositions(content: String) {
-        if (!DirectiveFinder.containsDirectives(content)) return
-        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-        directiveInstances = matchDirectiveInstances(directiveInstances, newLocations)
-        // Trigger recomposition so getResultsByPosition() uses updated positions
-        _directiveResults.value = _directiveResults.value
-    }
-
-    fun executeDirectivesLive(content: String) {
-        if (!DirectiveFinder.containsDirectives(content)) {
-            return
-        }
-
-        viewModelScope.launch {
-            // Parse all directive locations from content
-            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-
-            // Match to existing instances to preserve UUIDs
-            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
-            directiveInstances = updatedInstances
-
-            // Find directives that need execution (no existing result)
-            val currentResults = _directiveResults.value ?: emptyMap()
-            val missingInstances = updatedInstances.filter { currentResults[it.uuid] == null }
-
-            if (missingInstances.isEmpty()) {
-                return@launch
-            }
-
-            // Load notes for find() operations
-            val notes = ensureNotesLoaded()
-            Log.d(TAG, "executeDirectivesLive: after ensureNotesLoaded, cachedCurrentNote=${cachedCurrentNote?.id}")
-
-            // Execute missing directives with caching (pass current note for [.] reference - Milestone 6)
-            // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
-            val allMutations = mutableListOf<NoteMutation>()
-            val executedResults = missingInstances.associate { instance ->
-                Log.d(TAG, "executeDirectivesLive: executing '${instance.sourceText}' with currentNote=${cachedCurrentNote?.id}")
-                val cachedResult = cachedDirectiveExecutor.execute(instance.sourceText, notes, cachedCurrentNote, noteOperations)
-                allMutations.addAll(cachedResult.mutations)
-                // Register refresh triggers if this is a refresh directive
-                registerRefreshTriggersIfNeeded(instance.sourceText, cachedCurrentNote?.id)
-                instance.uuid to cachedResult.result
-            }
-            // Process mutations but skip editor callback during live execution to avoid index issues
-            processMutations(allMutations, skipEditorCallback = true)
-
-            // Merge new results into CURRENT state (not the captured snapshot)
-            // This avoids overwriting changes made by toggleDirectiveCollapsed while
-            // this coroutine was running (race condition fix)
-            val latestResults = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-            for ((uuid, result) in executedResults) {
-                // Only add if still missing (another coroutine might have added it)
-                if (latestResults[uuid] == null) {
-                    latestResults[uuid] = result
-                }
-            }
-
-            _directiveResults.value = latestResults
-            _directiveCacheGeneration.value = (_directiveCacheGeneration.value ?: 0) + 1
-            Log.d(TAG, "Live executed ${executedResults.size} directives")
-        }
+    fun bumpDirectiveCacheGeneration() {
+        _directiveCacheGeneration.value = (_directiveCacheGeneration.value ?: 0) + 1
     }
 
     /**
      * Force re-execute all directives with fresh data from Firestore.
      * Used after inline editing a viewed note to refresh the view.
      *
-     * Unlike executeDirectivesLive, this:
-     * 1. Always refreshes cachedNotes from Firestore first
-     * 2. Clears the directive executor cache
-     * 3. Re-executes ALL directives (doesn't skip existing results)
-     * 4. Updates results in place (preserves collapsed state, no UI flicker)
+     * Refreshes notes cache, clears directive executor cache, and bumps
+     * cache generation so computeDirectiveResults() re-runs with fresh data.
      */
-    fun forceRefreshAllDirectives(content: String, onComplete: (() -> Unit)? = null) {
-        Log.d("InlineEditCache", "=== forceRefreshAllDirectives START ===")
-        Log.d("InlineEditCache", "content preview: '${content.take(100).replace("\n", "\\n")}...'")
-        if (!DirectiveFinder.containsDirectives(content)) {
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: no directives, returning")
-            onComplete?.invoke()
-            return
-        }
-
+    fun forceRefreshAllDirectives(onComplete: (() -> Unit)? = null) {
         viewModelScope.launch {
-            // 1. Refresh notes from Firestore FIRST to get fresh data
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: calling refreshNotesCache...")
-            val notes = refreshNotesCache()
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: got ${notes.size} notes from Firestore")
-            notes.forEach { note ->
-                val firstLine = note.content.lines().firstOrNull() ?: ""
-                Log.d("InlineEditCache", "  note ${note.id}: firstLine='$firstLine', content='${note.content.take(80).replace("\n", "\\n")}...'")
-            }
-
-            // 2. Clear executor cache so directives re-evaluate with fresh data
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: clearing directiveCacheManager...")
+            refreshNotesCache()
             directiveCacheManager.clearAll()
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: cache cleared")
-
-            // 3. Parse and match directive instances
-            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
-            directiveInstances = updatedInstances
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: found ${updatedInstances.size} directives to re-execute")
-            updatedInstances.forEach { inst ->
-                Log.d("InlineEditCache", "  directive: uuid=${inst.uuid}, sourceText='${inst.sourceText}'")
-            }
-
-            // 4. Re-execute ALL directives (not just missing ones)
-            val freshResults = mutableMapOf<String, DirectiveResult>()
-            for (instance in updatedInstances) {
-                Log.d("InlineEditCache", "forceRefreshAllDirectives: executing '${instance.sourceText}'...")
-                val cachedResult = cachedDirectiveExecutor.execute(
-                    instance.sourceText, notes, cachedCurrentNote, noteOperations
-                )
-                freshResults[instance.uuid] = cachedResult.result
-                Log.d("InlineEditCache", "  result: cacheHit=${cachedResult.cacheHit}, error=${cachedResult.result.error}")
-
-                // Log view directive content
-                val viewVal = cachedResult.result.toValue() as? ViewVal
-                if (viewVal != null) {
-                    Log.d("InlineEditCache", "  VIEW directive: ${viewVal.notes.size} notes")
-                    viewVal.notes.forEachIndexed { idx, note ->
-                        val noteContent = viewVal.renderedContents?.getOrNull(idx) ?: note.content
-                        Log.d("InlineEditCache", "    note[$idx] id=${note.id}: '${noteContent.take(60).replace("\n", "\\n")}...'")
-                    }
-                }
-            }
-
-            // 5. Merge with current collapsed state (preserves UI state, avoids flicker)
-            val currentResults = _directiveResults.value ?: emptyMap()
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: merging ${freshResults.size} fresh results with ${currentResults.size} current results")
-            val mergedResults = freshResults.mapValues { (uuid, result) ->
-                val currentCollapsed = currentResults[uuid]?.collapsed ?: result.collapsed
-                result.copy(collapsed = currentCollapsed)
-            }
-
-            // 6. Update results
-            Log.d("InlineEditCache", "forceRefreshAllDirectives: UPDATING _directiveResults NOW with ${mergedResults.size} entries")
-            mergedResults.forEach { (key, result) ->
-                val content = result.toValue()?.toDisplayString()?.take(50)
-                Log.d("InlineEditCache", "  NEW [$key]: '$content...'")
-            }
-            _directiveResults.value = mergedResults
-            Log.d("InlineEditCache", "=== forceRefreshAllDirectives DONE - _directiveResults UPDATED ===")
-
-            // Call completion callback AFTER results are updated
+            bumpDirectiveCacheGeneration()
             onComplete?.invoke()
         }
     }
 
     /**
-     * Execute all directives in the content and store results.
+     * Execute all directives in the content and store results in Firestore.
      * Called after note save succeeds.
-     * Preserves collapsed state from local results.
      *
-     * Uses UUID-based keys for in-memory state, but stores with text hash in Firestore
-     * for cross-session caching.
+     * Refreshes notes cache, executes directives via the cached executor,
+     * stores results in Firestore keyed by text hash, and bumps cache generation.
      */
     private fun executeAndStoreDirectives(content: String) {
         if (!DirectiveFinder.containsDirectives(content)) {
@@ -1263,261 +1115,147 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
 
         viewModelScope.launch {
-            // Parse all directive locations and match to existing instances
-            val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-            val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
-            directiveInstances = updatedInstances
-
             // Refresh notes cache (notes may have changed after save)
-            // The staleness checker will detect which directives need re-execution
-            // based on their dependencies (e.g., dependsOnAllNames for find(name:...))
             val notes = refreshNotesCache()
 
             // Notify observers that notes cache was refreshed (for view directive updates)
             _notesCacheRefreshed.tryEmit(Unit)
 
-            // Execute all directives with caching (pass current note for [.] reference - Milestone 6)
+            // Execute all directives and collect mutations
             val allMutations = mutableListOf<NoteMutation>()
-            val freshResults = mutableMapOf<String, DirectiveResult>()
-            for (instance in updatedInstances) {
-                val cachedResult = cachedDirectiveExecutor.execute(instance.sourceText, notes, cachedCurrentNote, noteOperations)
-                allMutations.addAll(cachedResult.mutations)
-                freshResults[instance.uuid] = cachedResult.result
-                // Register refresh triggers if this is a refresh directive
-                registerRefreshTriggersIfNeeded(instance.sourceText, cachedCurrentNote?.id)
+            for (line in content.lines()) {
+                for (directive in DirectiveFinder.findDirectives(line)) {
+                    val cachedResult = cachedDirectiveExecutor.execute(
+                        directive.sourceText, notes, cachedCurrentNote, noteOperations
+                    )
+                    allMutations.addAll(cachedResult.mutations)
+                    registerRefreshTriggersIfNeeded(directive.sourceText, cachedCurrentNote?.id)
+
+                    // Store in Firestore using text hash (skip view/alarm results)
+                    val resultValue = cachedResult.result.toValue()
+                    val isViewResult = resultValue is ViewVal
+                    val isAlarmResult = resultValue is AlarmVal
+                    if (!isViewResult && !isAlarmResult) {
+                        val textHash = DirectiveResult.hashDirective(directive.sourceText)
+                        directiveResultRepository.saveResult(currentNoteId, textHash, cachedResult.result)
+                            .onFailure { e ->
+                                Log.e(TAG, "Failed to save directive result: $textHash", e)
+                            }
+                    }
+                }
             }
 
             // Process any mutations that occurred (alreadyPersisted=true since this runs during save)
             processMutations(allMutations, alreadyPersisted = true)
-
-            // Merge fresh results with CURRENT collapsed state (read at merge time to avoid race)
-            // This ensures we don't overwrite collapsed state changes made while executing
-            val mergedResults = mergeDirectiveResults(freshResults, _directiveResults.value)
-
-            // Update local state
-            _directiveResults.value = mergedResults
-
-            // Store results in Firestore using text hash as key for cross-session caching
-            // Skip view directive results - they depend on other notes and can become stale
-            for (instance in updatedInstances) {
-                val result = mergedResults[instance.uuid] ?: continue
-                val isViewResult = result.toValue() is ViewVal
-                if (!isViewResult) {
-                    val textHash = DirectiveResult.hashDirective(instance.sourceText)
-                    directiveResultRepository.saveResult(currentNoteId, textHash, result)
-                        .onFailure { e ->
-                            Log.e(TAG, "Failed to save directive result: $textHash", e)
-                        }
-                }
-            }
-
-            Log.d(TAG, "Executed ${mergedResults.size} directives")
 
             // Register any schedule directives found in this note
             cachedCurrentNote?.let { note ->
                 ScheduleManager.registerSchedulesFromNote(note)
             }
 
-            // IMPORTANT: Invalidate notes cache after execution completes.
-            // The refreshNotesCache() above may have fetched stale data from Firestore
-            // due to eventual consistency (the save write hasn't propagated yet).
-            // Setting cachedNotes = null ensures the next tab switch fetches truly fresh data.
-            //
-            // Phase 2 note: With Phase 1's dependency tracking in place, if we executed with
-            // stale data, the content hashes stored in the cache entry won't match the fresh
-            // data on next execution. The StalenessChecker will detect this and trigger
-            // re-execution automatically.
+            // Invalidate notes cache — Firestore eventual consistency means
+            // refreshNotesCache() above may have fetched stale data.
             cachedNotes = null
-            // Phase 3: Invalidate metadata hash cache when notes change
             MetadataHasher.invalidateCache()
+
+            bumpDirectiveCacheGeneration()
         }
     }
 
     /**
-     * Load cached directive results for the current note, and execute any missing directives.
-     * Called when note is loaded.
+     * Loads cached directive results from Firestore into the L1 cache,
+     * then executes any directives that aren't cached. Called when note is loaded.
      *
-     * Cached results in Firestore are keyed by text hash. We create fresh UUID-based instances
-     * and map cached results to them.
+     * Alarm directives are trivial pure functions — computeDirectiveResults handles
+     * them synchronously, so no pre-population is needed.
      */
-    /**
-     * Pre-populates directive results for alarm directives synchronously.
-     * Alarm directives are trivial pure functions ([alarm("id")] → AlarmVal(id))
-     * that don't need notes data or Firestore. This provides instant rendering
-     * while the full loadDirectiveResults pipeline handles complex directives async.
-     */
-    private fun prePopulateAlarmResults(content: String) {
-        if (!DirectiveFinder.containsDirectives(content)) return
-
-        val locations = parseAllDirectiveLocations(content, getLineNoteIds())
-        val newInstances = locations.map { loc ->
-            DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
-        }
-        directiveInstances = newInstances
-
-        val uuidResults = mutableMapOf<String, DirectiveResult>()
-        for (instance in newInstances) {
-            val alarmMatch = AlarmMarkers.ALARM_DIRECTIVE_REGEX.matchEntire(instance.sourceText)
-            val recurringMatch = AlarmMarkers.RECURRING_ALARM_DIRECTIVE_REGEX.matchEntire(instance.sourceText)
-            if (alarmMatch != null) {
-                val alarmId = alarmMatch.groupValues[1]
-                uuidResults[instance.uuid] = DirectiveResult.success(AlarmVal(alarmId))
-            } else if (recurringMatch != null) {
-                val recurringId = recurringMatch.groupValues[1]
-                uuidResults[instance.uuid] = DirectiveResult.success(AlarmVal(recurringId))
-            }
-        }
-
-        if (uuidResults.isNotEmpty()) {
-            _directiveResults.value = uuidResults
-        }
-    }
-
     private suspend fun loadDirectiveResults(content: String) {
-        // First load cached results (keyed by text hash in Firestore)
+        if (!DirectiveFinder.containsDirectives(content)) {
+            _directiveCacheGeneration.postValue((_directiveCacheGeneration.value ?: 0) + 1)
+            return
+        }
+
+        // Load cached results from Firestore (keyed by text hash)
         val cachedByHash = directiveResultRepository.getResults(currentNoteId)
             .getOrElse { e ->
                 Log.e(TAG, "Failed to load directive results", e)
                 emptyMap()
             }
 
-        if (!DirectiveFinder.containsDirectives(content)) {
-            directiveInstances = emptyList()
-            _directiveResults.postValue(emptyMap())
-            _directiveCacheGeneration.postValue((_directiveCacheGeneration.value ?: 0) + 1)
-            return
-        }
-
-        // Parse directive locations and match to existing instances (preserves UUIDs
-        // from prePopulateAlarmResults so pre-populated results stay valid)
-        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-        val newInstances = if (directiveInstances.isNotEmpty()) {
-            matchDirectiveInstances(directiveInstances, newLocations)
-        } else {
-            newLocations.map { loc ->
-                DirectiveInstance.create(loc.lineIndex, loc.startOffset, loc.sourceText, loc.noteId)
+        // Prime the L1 cache with Firestore results (skip stale/unreliable types)
+        val directiveTexts = mutableSetOf<String>()
+        for (line in content.lines()) {
+            for (directive in DirectiveFinder.findDirectives(line)) {
+                directiveTexts.add(directive.sourceText)
             }
         }
-        directiveInstances = newInstances
 
-        // Start with any pre-populated results (from prePopulateAlarmResults)
-        val prePopulated = _directiveResults.value ?: emptyMap()
-        val uuidResults = prePopulated.toMutableMap()
-        val missingInstances = mutableListOf<DirectiveInstance>()
-
-        for (instance in newInstances) {
-            // Skip if already pre-populated (e.g., alarm results from prePopulateAlarmResults)
-            if (uuidResults.containsKey(instance.uuid)) continue
-
-            val textHash = DirectiveResult.hashDirective(instance.sourceText)
+        val missingTexts = mutableListOf<String>()
+        for (sourceText in directiveTexts) {
+            val textHash = DirectiveResult.hashDirective(sourceText)
             val cached = cachedByHash[textHash]
             val cachedValue = cached?.toValue()
             val cachedResultType = cached?.result?.get("type") as? String
 
-            // Skip cached view results - they depend on other notes and can become stale
-            // Views should always be re-executed to get fresh data
-            // Check BOTH the deserialized value AND the raw type field (in case deserialization fails)
+            // Skip view/temporal/alarm results — re-execute these fresh
             val isViewResult = cachedValue is ViewVal || cachedResultType == "view"
-
-            // Skip cached bare temporal values - they are now invalid and need re-execution
-            // to get the proper error message. This handles old cache entries from before
-            // the "bare temporal not allowed" rule was added.
             val isBareTemporalResult = cachedValue is DateVal ||
                     cachedValue is TimeVal ||
                     cachedValue is DateTimeVal ||
                     cachedResultType in listOf("date", "time", "datetime")
-
-            // Skip cached alarm results - alarm() is a trivial pure function and
-            // cached results may fail to deserialize from Firestore, causing the
-            // directive to show as raw text instead of the ⏰ symbol
             val isAlarmResult = cachedValue is AlarmVal || cachedResultType == "alarm"
 
             if (cached != null && !isViewResult && !isBareTemporalResult && !isAlarmResult) {
-                uuidResults[instance.uuid] = cached
+                // Prime L1 cache with this Firestore result
+                cachedDirectiveExecutor.primeCache(sourceText, currentNoteId, cached)
             } else {
-                missingInstances.add(instance)
+                missingTexts.add(sourceText)
             }
         }
 
-        if (missingInstances.isEmpty()) {
-            // All directives have cached results
-            _directiveResults.postValue(uuidResults)
+        if (missingTexts.isEmpty()) {
             _directiveCacheGeneration.postValue((_directiveCacheGeneration.value ?: 0) + 1)
             return
         }
 
-        // Load notes for find() operations
+        // Load notes and execute missing directives
         val notes = ensureNotesLoaded()
-
-        // Execute missing directives with caching (pass current note for [.] reference - Milestone 6)
-        // Pass noteOperations - idempotency analyzer blocks non-idempotent operations
         val allMutations = mutableListOf<NoteMutation>()
-        for (instance in missingInstances) {
-            val cachedResult = cachedDirectiveExecutor.execute(instance.sourceText, notes, cachedCurrentNote, noteOperations)
+        for (sourceText in missingTexts) {
+            val cachedResult = cachedDirectiveExecutor.execute(sourceText, notes, cachedCurrentNote, noteOperations)
             allMutations.addAll(cachedResult.mutations)
-            uuidResults[instance.uuid] = cachedResult.result
+            registerRefreshTriggersIfNeeded(sourceText, cachedCurrentNote?.id)
 
-            val viewVal = cachedResult.result.toValue() as? ViewVal
-
-            // Register refresh triggers if this is a refresh directive
-            registerRefreshTriggersIfNeeded(instance.sourceText, cachedCurrentNote?.id)
-            // Store in Firestore using text hash
-            // Skip view directive results - they depend on other notes and can become stale
-            // Skip alarm results - trivial to re-execute and avoids deserialization issues
-            val isViewResult = viewVal != null
-            val isAlarmResult = cachedResult.result.toValue() is AlarmVal
+            // Store in Firestore (skip view/alarm results)
+            val resultValue = cachedResult.result.toValue()
+            val isViewResult = resultValue is ViewVal
+            val isAlarmResult = resultValue is AlarmVal
             if (!isViewResult && !isAlarmResult) {
-                val textHash = DirectiveResult.hashDirective(instance.sourceText)
+                val textHash = DirectiveResult.hashDirective(sourceText)
                 directiveResultRepository.saveResult(currentNoteId, textHash, cachedResult.result)
                     .onFailure { e ->
                         Log.e(TAG, "Failed to save directive result: $textHash", e)
                     }
             }
         }
-        // Process mutations (skip editor callback since we're loading)
         processMutations(allMutations, skipEditorCallback = true)
 
-        _directiveResults.postValue(uuidResults)
         _directiveCacheGeneration.postValue((_directiveCacheGeneration.value ?: 0) + 1)
     }
 
     /**
-     * Toggle the collapsed state of a directive result.
-     * If no result exists for this UUID, executes the directive first.
+     * Toggle the collapsed/expanded state of a directive.
      *
-     * @param directiveUuid The UUID of the directive instance
-     * @param sourceText The source text of the directive (e.g., "[42]"), needed to execute if no result exists
+     * @param sourceText The source text of the directive (e.g., "[42]")
      */
-    fun toggleDirectiveCollapsed(directiveUuid: String, sourceText: String? = null) {
-        val current = _directiveResults.value ?: mutableMapOf()
-        val existingResult = current[directiveUuid]
-
-        if (existingResult == null) {
-            // No result exists - execute the directive and create result with collapsed = false
-            if (sourceText == null) {
-                Log.w(TAG, "Cannot toggle directive without sourceText when no result exists")
-                return
-            }
-
-            // Launch coroutine to ensure notes are loaded before executing
-            viewModelScope.launch {
-                ensureNotesLoaded()
-                Log.d(TAG, "toggleDirectiveCollapsed: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
-                // Execute with caching - idempotency analyzer blocks non-idempotent operations
-                val cachedResult = cachedDirectiveExecutor.execute(sourceText, cachedNotes ?: emptyList(), cachedCurrentNote, noteOperations)
-                processMutations(cachedResult.mutations, skipEditorCallback = true)
-                val updated = (_directiveResults.value ?: mutableMapOf()).toMutableMap()
-                updated[directiveUuid] = cachedResult.result.copy(collapsed = false)
-                _directiveResults.value = updated
-            }
+    fun toggleDirectiveCollapsed(sourceText: String) {
+        val hash = DirectiveResult.hashDirective(sourceText)
+        if (hash in expandedDirectiveHashes) {
+            expandedDirectiveHashes.remove(hash)
         } else {
-            // Result exists - toggle collapsed state
-            val newCollapsed = !existingResult.collapsed
-            val updated = current.toMutableMap()
-            updated[directiveUuid] = existingResult.copy(collapsed = newCollapsed)
-            _directiveResults.value = updated
+            expandedDirectiveHashes.add(hash)
         }
-        // Firestore sync happens on save via executeAndStoreDirectives
+        bumpDirectiveCacheGeneration()
     }
 
     /**
@@ -1525,50 +1263,27 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Called when user confirms a directive edit (including when no changes were made).
      * This ensures dynamic directives like [now] get fresh values on confirm.
      *
-     * @param directiveUuid The UUID of the directive instance
      * @param sourceText The source text of the directive (e.g., "[now]")
      */
-    fun confirmDirective(directiveUuid: String, sourceText: String) {
-        viewModelScope.launch {
-            ensureNotesLoaded()
-            Log.d(TAG, "confirmDirective: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
-
-            val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-
-            // Always re-execute to get fresh value (important for dynamic directives like [now])
-            // Execute with caching - idempotency analyzer blocks non-idempotent operations
-            val cachedResult = cachedDirectiveExecutor.execute(sourceText, cachedNotes ?: emptyList(), cachedCurrentNote, noteOperations)
-            processMutations(cachedResult.mutations, skipEditorCallback = true)
-            current[directiveUuid] = cachedResult.result.copy(collapsed = true)
-            _directiveResults.value = current
-
-            Log.d(TAG, "Confirmed directive $directiveUuid with fresh result")
-        }
+    fun confirmDirective(sourceText: String) {
+        val hash = DirectiveResult.hashDirective(sourceText)
+        expandedDirectiveHashes.remove(hash)
+        // Clear L1 cache so computeDirectiveResults re-executes with fresh value
+        cachedDirectiveExecutor.clearCacheEntry(sourceText, currentNoteId)
+        bumpDirectiveCacheGeneration()
     }
 
     /**
      * Re-executes a directive and keeps it expanded.
      * Called when user refreshes a directive edit (recompute without closing).
      *
-     * @param directiveUuid The UUID of the directive instance
      * @param sourceText The source text of the directive (e.g., "[now]")
      */
-    fun refreshDirective(directiveUuid: String, sourceText: String) {
-        viewModelScope.launch {
-            ensureNotesLoaded()
-            Log.d(TAG, "refreshDirective: executing '$sourceText' with cachedCurrentNote=${cachedCurrentNote?.id}")
-
-            val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-
-            // Re-execute to get fresh value but keep expanded
-            // Execute with caching - idempotency analyzer blocks non-idempotent operations
-            val cachedResult = cachedDirectiveExecutor.execute(sourceText, cachedNotes ?: emptyList(), cachedCurrentNote, noteOperations)
-            processMutations(cachedResult.mutations, skipEditorCallback = true)
-            current[directiveUuid] = cachedResult.result.copy(collapsed = false)
-            _directiveResults.value = current
-
-            Log.d(TAG, "Refreshed directive $directiveUuid with fresh result (kept expanded)")
-        }
+    fun refreshDirective(sourceText: String) {
+        // Keep expanded — hash stays in expandedDirectiveHashes
+        // Clear L1 cache so computeDirectiveResults re-executes with fresh value
+        cachedDirectiveExecutor.clearCacheEntry(sourceText, currentNoteId)
+        bumpDirectiveCacheGeneration()
     }
 
     /**
@@ -1662,36 +1377,15 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Gets the UUID for a directive at the given position.
-     * Returns null if no directive instance exists at that position.
-     */
-    fun getDirectiveUuid(lineIndex: Int, startOffset: Int): String? {
-        return directiveInstances.find { it.lineIndex == lineIndex && it.startOffset == startOffset }?.uuid
-    }
-
-    fun getDirectiveUuidByNoteId(noteId: String, startOffset: Int): String? {
-        return directiveInstances.find { it.noteId == noteId && it.startOffset == startOffset }?.uuid
-    }
-
-    /**
-     * Gets directive results keyed by position (lineId:offset).
-     *
-     * @param effectiveIds The effective IDs from the editor's LineState (noteId or tempId).
-     *   Keys are generated using these IDs so they match what the rendering layer will look up.
-     */
-    fun getResultsByPosition(effectiveIds: List<String>): Map<String, DirectiveResult> {
-        val uuidResults = _directiveResults.value ?: return emptyMap()
-        return mapResultsByPosition(directiveInstances, uuidResults, effectiveIds)
-    }
-
-    /**
      * Compute directive results synchronously using the CachedDirectiveExecutor.
      * Results are keyed by directiveHash(sourceText) — same key the rendering layer uses.
      * Cache hits return instantly; misses execute and cache for next call.
-     * Returns empty map if notes haven't loaded yet.
+     *
+     * Applies collapsed state from [expandedDirectiveHashes].
+     * When notes haven't loaded yet, still returns alarm results (trivial pure functions).
      */
     fun computeDirectiveResults(content: String): Map<String, DirectiveResult> {
-        val notes = cachedNotes ?: return emptyMap()
+        val notes = cachedNotes
         val currentNote = cachedCurrentNote
 
         val hashResults = mutableMapOf<String, DirectiveResult>()
@@ -1699,75 +1393,39 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             for (directive in DirectiveFinder.findDirectives(line)) {
                 val hash = DirectiveResult.hashDirective(directive.sourceText)
                 if (hashResults.containsKey(hash)) continue
-                val result = cachedDirectiveExecutor.execute(
-                    directive.sourceText, notes, currentNote, noteOperations
-                )
-                hashResults[hash] = result.result
+
+                val result = if (notes != null) {
+                    cachedDirectiveExecutor.execute(
+                        directive.sourceText, notes, currentNote, noteOperations
+                    ).result
+                } else {
+                    // Notes not loaded yet — only alarm directives can be resolved
+                    val alarmId = DirectiveSegment.Directive.alarmIdFromSource(directive.sourceText)
+                        ?: DirectiveSegment.Directive.recurringAlarmIdFromSource(directive.sourceText)
+                    if (alarmId != null) DirectiveResult.success(AlarmVal(alarmId)) else continue
+                }
+
+                val collapsed = hash !in expandedDirectiveHashes
+                hashResults[hash] = result.copy(collapsed = collapsed)
             }
         }
         return hashResults
     }
 
     /**
-     * Gets the positions of all currently expanded directive edit rows.
-     * Used before undo/redo to preserve expanded state by position.
+     * Gets a snapshot of currently expanded directive hashes.
+     * Used before undo/redo to preserve expanded state.
      */
-    fun getExpandedDirectivePositions(content: String): Set<DirectivePosition> {
-        val current = _directiveResults.value ?: return emptySet()
-        return findExpandedPositions(directiveInstances, current)
-    }
+    fun getExpandedDirectiveHashes(): Set<String> = expandedDirectiveHashes.toSet()
 
     /**
-     * Restores expanded state for directives at the given positions.
-     * Called after undo/redo to preserve edit row state for directives that still exist.
-     * Re-runs directive matching to assign UUIDs to the new content.
+     * Restores expanded state from a snapshot of directive hashes.
+     * Called after undo/redo to preserve edit row state.
      */
-    fun restoreExpandedDirectivesByPosition(content: String, positions: Set<DirectivePosition>) {
-        if (positions.isEmpty()) return
-
-        // Re-parse directives and match to existing instances
-        val newLocations = parseAllDirectiveLocations(content, getLineNoteIds())
-        val updatedInstances = matchDirectiveInstances(directiveInstances, newLocations)
-        directiveInstances = updatedInstances
-
-        val current = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-
-        // Find directives that need execution
-        val needsExecution = mutableListOf<DirectiveInstance>()
-
-        // Find directives at the target positions and expand them
-        for (instance in updatedInstances) {
-            val pos = DirectivePosition(instance.lineIndex, instance.startOffset)
-            if (pos in positions) {
-                val existing = current[instance.uuid]
-                if (existing != null) {
-                    current[instance.uuid] = existing.copy(collapsed = false)
-                } else {
-                    needsExecution.add(instance)
-                }
-            }
-        }
-
-        _directiveResults.value = current
-
-        // Execute directives that don't have results yet (in coroutine to ensure notes are loaded)
-        if (needsExecution.isNotEmpty()) {
-            viewModelScope.launch {
-                ensureNotesLoaded()
-                Log.d(TAG, "restoreExpandedDirectivesByPosition: executing ${needsExecution.size} directives with cachedCurrentNote=${cachedCurrentNote?.id}")
-
-                // Execute with caching - idempotency analyzer blocks non-idempotent operations
-                val allMutations = mutableListOf<NoteMutation>()
-                val updated = _directiveResults.value?.toMutableMap() ?: mutableMapOf()
-                for (instance in needsExecution) {
-                    val cachedResult = cachedDirectiveExecutor.execute(instance.sourceText, cachedNotes ?: emptyList(), cachedCurrentNote, noteOperations)
-                    allMutations.addAll(cachedResult.mutations)
-                    updated[instance.uuid] = cachedResult.result.copy(collapsed = false)
-                }
-                processMutations(allMutations, skipEditorCallback = true)
-                _directiveResults.value = updated
-            }
-        }
+    fun restoreExpandedDirectiveHashes(hashes: Set<String>) {
+        expandedDirectiveHashes.clear()
+        expandedDirectiveHashes.addAll(hashes)
+        bumpDirectiveCacheGeneration()
     }
 
     /**
@@ -1781,42 +1439,31 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * @param onResults Callback with the results when execution completes
      */
     fun executeDirectivesForContent(content: String, onResults: (Map<String, DirectiveResult>) -> Unit) {
-        Log.d("InlineEditCache", "=== executeDirectivesForContent START ===")
-        Log.d("InlineEditCache", "content preview: '${content.take(100).replace("\n", "\\n")}...'")
         if (!DirectiveFinder.containsDirectives(content)) {
-            Log.d("InlineEditCache", "executeDirectivesForContent: no directives found")
             onResults(emptyMap())
             return
         }
 
         viewModelScope.launch {
-            Log.d("InlineEditCache", "executeDirectivesForContent: calling ensureNotesLoaded...")
             val notes = ensureNotesLoaded()
-            Log.d("InlineEditCache", "executeDirectivesForContent: got ${notes.size} notes")
-            val locations = parseAllDirectiveLocations(content)
-            Log.d("InlineEditCache", "executeDirectivesForContent: found ${locations.size} directive locations")
 
             val results = mutableMapOf<String, DirectiveResult>()
-            for (loc in locations) {
-                val lineId = loc.noteId ?: "inline:${loc.lineIndex}"
-                val key = DirectiveFinder.directiveKey(lineId, loc.startOffset)
-                Log.d("InlineEditCache", "executeDirectivesForContent: executing '${loc.sourceText}' at key=$key")
-                // Execute directive (mutations are skipped for inline view - read-only context)
-                try {
-                    val cachedResult = cachedDirectiveExecutor.execute(
-                        loc.sourceText, notes, cachedCurrentNote, null // null noteOperations = read-only
-                    )
-                    results[key] = cachedResult.result
-                    val displayText = cachedResult.result.toValue()?.toDisplayString()
-                    Log.d("InlineEditCache", "  result: cacheHit=${cachedResult.cacheHit}, display='${displayText?.take(50)}', error=${cachedResult.result.error}")
-                } catch (e: Exception) {
-                    Log.e("InlineEditCache", "executeDirectivesForContent: error executing '${loc.sourceText}'", e)
-                    // Store error result
-                    results[key] = DirectiveResult.failure(e.message ?: "Execution error")
+            for (line in content.lines()) {
+                for (directive in DirectiveFinder.findDirectives(line)) {
+                    val hash = DirectiveResult.hashDirective(directive.sourceText)
+                    if (results.containsKey(hash)) continue
+                    try {
+                        val cachedResult = cachedDirectiveExecutor.execute(
+                            directive.sourceText, notes, cachedCurrentNote, null
+                        )
+                        results[hash] = cachedResult.result
+                    } catch (e: Exception) {
+                        Log.e(TAG, "executeDirectivesForContent: error executing '${directive.sourceText}'", e)
+                        results[hash] = DirectiveResult.failure(e.message ?: "Execution error")
+                    }
                 }
             }
 
-            Log.d("InlineEditCache", "=== executeDirectivesForContent DONE - returning ${results.size} results ===")
             onResults(results)
         }
     }

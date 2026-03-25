@@ -354,6 +354,13 @@ class DirectiveCacheManager(
     }
 
     /**
+     * Remove a specific directive entry from a note's cache (L1 only).
+     */
+    fun remove(directiveKey: String, noteId: String) {
+        perNoteCache.remove(noteId, directiveKey)
+    }
+
+    /**
      * Clear a specific note's cache (L1 only).
      */
     fun clearNote(noteId: String) {

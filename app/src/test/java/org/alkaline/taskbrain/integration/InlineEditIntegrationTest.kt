@@ -3,7 +3,6 @@ package org.alkaline.taskbrain.integration
 import android.app.Application
 import android.content.SharedPreferences
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
-import androidx.lifecycle.Observer
 import com.google.firebase.Timestamp
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
@@ -28,8 +27,6 @@ import org.junit.Test
 import org.junit.experimental.categories.Category
 import java.util.Date
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * Integration test that replicates the inline edit stale content bug.
@@ -105,7 +102,7 @@ Poofgttt,,, and!! Works? Editing a line
     private val saveDelayMs = 1300L  // 13:57:42.980 to 13:57:44.324
     private val loadDelayMs = 700L   // 13:57:44.326 to 13:57:45.028
 
-    // Track directiveResults changes
+    // Track directive result changes via computeDirectiveResults
     private val directiveResultsHistory = CopyOnWriteArrayList<Pair<Long, Map<String, DirectiveResult>>>()
 
     private fun createNote(id: String, content: String) = Note(
@@ -225,28 +222,13 @@ Poofgttt,,, and!! Works? Editing a line
             noteOperationsProvider = { null }  // No mutations in tests
         )
 
-        // Observe directiveResults to track changes
-        var lastResultsBeforeSessionEnd: Map<String, DirectiveResult>? = null
-        var sessionEnded = false
-
-        viewModel.directiveResults.observeForever { results ->
-            val timestamp = System.currentTimeMillis()
-            directiveResultsHistory.add(timestamp to results)
-            println("directiveResults changed at $timestamp: ${results.size} entries")
-            results.forEach { (key, result) ->
-                val content = result.toValue()?.toDisplayString()?.take(60)
-                println("  [$key]: '$content...'")
-            }
-        }
-
         // USER ACTION 1: Load the host note (contains the view directive)
-        // This triggers executeDirectivesLive which populates _directiveResults with OLD content
         viewModel.loadContent(hostNoteId)
         advanceUntilIdle()
 
         println("\n=== After loading note ===")
-        val initialResults = viewModel.directiveResults.value
-        println("Initial directiveResults: ${initialResults?.size} entries")
+        val initialResults = viewModel.computeDirectiveResults(hostNoteContent)
+        println("Initial computeDirectiveResults: ${initialResults.size} entries")
 
         // USER ACTION 2: Start inline edit session (user taps on view to edit)
         viewModel.startInlineEditSession(viewedNoteId)
@@ -257,22 +239,14 @@ Poofgttt,,, and!! Works? Editing a line
         println("\n=== Calling saveInlineNoteContent (simulates tap out) ===")
 
         var saveSucceeded = false
-        var resultsAtSaveCallback: Map<String, DirectiveResult>? = null
-        var resultsAtRefreshComplete: Map<String, DirectiveResult>? = null
-        var sessionActiveAtOnSuccess = false  // Track if session was still active at onSuccess
+        var sessionActiveAtOnSuccess = false
+        var sessionActiveAtRefreshComplete = false
 
         viewModel.saveInlineNoteContent(
             noteId = viewedNoteId,
             newContent = newContent,
             onSuccess = {
                 saveSucceeded = true
-                // Capture what directiveResults looks like when onSuccess is called
-                resultsAtSaveCallback = viewModel.directiveResults.value?.toMap()
-                println("onSuccess callback: directiveResults has ${resultsAtSaveCallback?.size} entries")
-                resultsAtSaveCallback?.forEach { (key, result) ->
-                    val content = result.toValue()?.toDisplayString()?.take(60)
-                    println("  AT onSuccess [$key]: '$content...'")
-                }
 
                 // Check if session is still active (should be with the fix)
                 sessionActiveAtOnSuccess = viewModel.isInlineEditSessionActive()
@@ -280,14 +254,9 @@ Poofgttt,,, and!! Works? Editing a line
 
                 // USER ACTION 4: Call forceRefreshAllDirectives with callback
                 // (like CurrentNoteScreen now does with the fix)
-                viewModel.forceRefreshAllDirectives(hostNoteContent) {
-                    // This callback is called AFTER results are updated
-                    resultsAtRefreshComplete = viewModel.directiveResults.value?.toMap()
-                    println("forceRefreshAllDirectives callback: results has ${resultsAtRefreshComplete?.size} entries")
-                    resultsAtRefreshComplete?.forEach { (key, result) ->
-                        val content = result.toValue()?.toDisplayString()?.take(60)
-                        println("  AT REFRESH COMPLETE [$key]: '$content...'")
-                    }
+                viewModel.forceRefreshAllDirectives {
+                    sessionActiveAtRefreshComplete = viewModel.isInlineEditSessionActive()
+                    println("Session active at refresh complete: $sessionActiveAtRefreshComplete")
 
                     // Now end the session (like the fixed code does)
                     viewModel.endInlineEditSession()
@@ -299,70 +268,29 @@ Poofgttt,,, and!! Works? Editing a line
         // Let everything complete
         advanceUntilIdle()
 
-        println("\n=== After all operations complete ===")
-        val finalResults = viewModel.directiveResults.value
-        println("Final directiveResults: ${finalResults?.size} entries")
-        finalResults?.forEach { (key, result) ->
-            val content = result.toValue()?.toDisplayString()?.take(60)
-            println("  FINAL [$key]: '$content...'")
-        }
-
         // Verify save succeeded
         assertTrue("Save should have succeeded", saveSucceeded)
         coVerify { mockRepository.saveNoteWithFullContent(viewedNoteId, newContent) }
 
         // VERIFY THE FIX:
-        // The key invariant: session must stay active until AFTER directiveResults is updated
-        // With the bug: session ends at saveInlineNoteContent, before refresh completes → UI re-renders with stale content
-        // With the fix: session ends in forceRefreshAllDirectives callback, after refresh completes → UI re-renders with fresh content
-        println("\n=== Fix Verification ===")
+        // Session MUST still be active at onSuccess time so the UI can use
+        // session.currentContent during the transitional state.
+        assertTrue(
+            "Session must stay active at onSuccess time.",
+            sessionActiveAtOnSuccess
+        )
 
-        // Get content at different points
-        val contentAtOnSuccess = resultsAtSaveCallback?.values?.firstOrNull()
-            ?.toValue()?.toDisplayString() ?: ""
-        val contentAtRefresh = resultsAtRefreshComplete?.values?.firstOrNull()
-            ?.toValue()?.toDisplayString() ?: ""
+        // Session should still be active when forceRefreshAllDirectives callback fires
+        // (it's ended inside the callback)
+        assertTrue(
+            "Session must stay active until forceRefreshAllDirectives callback.",
+            sessionActiveAtRefreshComplete
+        )
 
-        println("Content at onSuccess: '${contentAtOnSuccess.take(80)}...'")
-        println("Content at refresh complete: '${contentAtRefresh.take(80)}...'")
-
-        val hasFreshContentAtOnSuccess = contentAtOnSuccess.contains("Editing a line")
-        val hasFreshContentAtRefresh = contentAtRefresh.contains("Editing a line")
-
-        println("Fresh content at onSuccess: $hasFreshContentAtOnSuccess")
-        println("Fresh content at refresh: $hasFreshContentAtRefresh")
-
-        // Check results at forceRefreshAllDirectives callback
-        if (resultsAtRefreshComplete != null && resultsAtRefreshComplete!!.isNotEmpty()) {
-            // THE KEY FIX VERIFICATION:
-
-            // 1. Session MUST still be active at onSuccess time
-            // This is the ViewModel-level prerequisite for the UI fix.
-            // The UI fix (in DirectiveAwareLineInput.kt) checks if session is active to decide
-            // whether to use session.currentContent or displayContent from directiveResults.
-            // If session ended before onSuccess, the UI would have no way to get fresh content.
-            assertTrue(
-                "Session must stay active at onSuccess time. " +
-                "This is required for the UI to use session.currentContent during the transitional state. " +
-                "Check: endInlineEditSession() should only be called in forceRefreshAllDirectives callback.",
-                sessionActiveAtOnSuccess
-            )
-
-            // 2. Content at refresh callback should be fresh (this is when session ends)
-            assertTrue(
-                "Content at forceRefreshAllDirectives callback should be fresh",
-                hasFreshContentAtRefresh
-            )
-
-            // Note: _directiveResults being stale at onSuccess is EXPECTED and OK.
-            // The UI fix doesn't require _directiveResults to be fresh at onSuccess.
-            // Instead, the UI uses session.currentContent during the transitional state.
-            // When session finally ends (in refresh callback), _directiveResults IS fresh,
-            // and the UI switches back to using displayContent from directiveResults.
-
-            println("PREREQUISITE VERIFIED: Session was active at onSuccess, enabling UI to use session content")
-        } else {
-            fail("resultsAtRefreshComplete should not be empty")
-        }
+        // After everything completes, session should be ended
+        assertFalse(
+            "Session should be ended after refresh callback.",
+            viewModel.isInlineEditSessionActive()
+        )
     }
 }

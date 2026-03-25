@@ -164,36 +164,6 @@ object DirectiveSegmenter {
     }
 
     /**
-     * Adjusts directive result keys from full-line offsets to content-only offsets.
-     *
-     * Directive results are keyed by position in the full line text (including prefix like
-     * bullets/checkboxes/tabs), but [buildDisplayText] operates on content-only text (prefix
-     * stripped). This adjusts the keys so lookups match.
-     *
-     * @param results The directive results keyed by full-line offsets
-     * @param lineId The line's effective ID (noteId or temp UUID)
-     * @param prefixLength The length of the prefix to subtract from offsets
-     * @return Results with adjusted keys
-     */
-    fun adjustKeysForPrefix(
-        results: Map<String, DirectiveResult>,
-        lineId: String,
-        prefixLength: Int
-    ): Map<String, DirectiveResult> {
-        if (prefixLength == 0) return results
-        val keyPrefix = "$lineId:"
-        return results.mapKeys { (key, _) ->
-            if (key.startsWith(keyPrefix)) {
-                val fullOffset = key.removePrefix(keyPrefix).toIntOrNull() ?: return@mapKeys key
-                val contentOffset = fullOffset - prefixLength
-                if (contentOffset >= 0) "$keyPrefix$contentOffset" else key
-            } else {
-                key
-            }
-        }
-    }
-
-    /**
      * Build the display text for a line, replacing directive source with results.
      * Also returns offset mapping from display to source positions.
      *

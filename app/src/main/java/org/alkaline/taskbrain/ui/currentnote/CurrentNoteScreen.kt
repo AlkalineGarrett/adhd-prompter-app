@@ -163,7 +163,7 @@ fun CurrentNoteScreen(
                         recentTabsViewModel.invalidateCache(session.noteId)
                         currentNoteViewModel.executeDirectivesForContent(session.currentContent) { results ->
                             session.updateDirectiveResults(results)
-                            currentNoteViewModel.forceRefreshAllDirectives(userContent) {}
+                            currentNoteViewModel.forceRefreshAllDirectives {}
                         }
                     }
                 )
@@ -387,9 +387,7 @@ fun CurrentNoteScreen(
             val oldBracketCount = oldText.count { it == ']' }
             val newBracketCount = newValue.text.count { it == ']' }
             if (newBracketCount > oldBracketCount) {
-                currentNoteViewModel.executeDirectivesLive(newValue.text)
-            } else {
-                currentNoteViewModel.updateDirectivePositions(newValue.text)
+                currentNoteViewModel.bumpDirectiveCacheGeneration()
             }
         }
     }
@@ -676,7 +674,7 @@ private fun DataLoadingEffects(
     LaunchedEffect(Unit) {
         currentNoteViewModel.notesCacheRefreshed.collect {
             if (userContent.isNotEmpty()) {
-                currentNoteViewModel.executeDirectivesLive(userContent)
+                currentNoteViewModel.bumpDirectiveCacheGeneration()
             }
         }
     }
@@ -822,7 +820,7 @@ private fun ContentSyncEffects(
             }
             currentNoteViewModel.saveContent(editorState.text, editorState.lines.map { it.noteIds })
             // Immediately render the new alarm icon (without waiting for snapshot reload)
-            currentNoteViewModel.executeDirectivesLive(editorState.text)
+            currentNoteViewModel.bumpDirectiveCacheGeneration()
             currentNoteViewModel.clearAlarmCreatedEvent()
         }
     }
@@ -902,28 +900,26 @@ private fun NoteStatusBar(
         canUndo = canUndo,
         canRedo = canRedo,
         onUndoClick = {
-            val expandedPositions = currentNoteViewModel.getExpandedDirectivePositions(userContent)
+            val expandedHashes = currentNoteViewModel.getExpandedDirectiveHashes()
             controller.commitUndoState()
             val snapshot = controller.undo()
             if (snapshot != null) {
                 onContentChanged(editorState.text)
                 onMarkUnsaved()
-                currentNoteViewModel.executeDirectivesLive(editorState.text)
-                currentNoteViewModel.restoreExpandedDirectivesByPosition(editorState.text, expandedPositions)
+                currentNoteViewModel.restoreExpandedDirectiveHashes(expandedHashes)
                 snapshot.createdAlarm?.let { alarm ->
                     currentNoteViewModel.deleteAlarmPermanently(alarm.id)
                 }
             }
         },
         onRedoClick = {
-            val expandedPositions = currentNoteViewModel.getExpandedDirectivePositions(userContent)
+            val expandedHashes = currentNoteViewModel.getExpandedDirectiveHashes()
             controller.commitUndoState()
             val snapshot = controller.redo()
             if (snapshot != null) {
                 onContentChanged(editorState.text)
                 onMarkUnsaved()
-                currentNoteViewModel.executeDirectivesLive(editorState.text)
-                currentNoteViewModel.restoreExpandedDirectivesByPosition(editorState.text, expandedPositions)
+                currentNoteViewModel.restoreExpandedDirectiveHashes(expandedHashes)
                 snapshot.createdAlarm?.let { alarm ->
                     currentNoteViewModel.recreateAlarm(
                         alarmSnapshot = alarm,

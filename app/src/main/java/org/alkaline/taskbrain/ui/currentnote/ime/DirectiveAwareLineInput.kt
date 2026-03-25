@@ -1326,16 +1326,10 @@ private fun InlineEditorLine(
         org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes.hasCheckbox(prefix)
     }
 
-    // Adjust directive result keys: results are keyed by offset in full line text (including
-    // prefix), but buildDisplayText operates on content-only text (prefix stripped).
-    val prefixLength = prefix.length
     val lineId = lineState.effectiveId
-    val adjustedResults = remember(directiveResults, lineId, prefixLength) {
-        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineId, prefixLength)
-    }
 
-    val displayResult = remember(content, lineId, adjustedResults) {
-        DirectiveSegmenter.buildDisplayText(content, lineId, adjustedResults)
+    val displayResult = remember(content, lineId, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
     }
 
     // Map source cursor to display cursor

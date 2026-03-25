@@ -6,9 +6,6 @@ import org.alkaline.taskbrain.data.AlarmMarkers
 import org.alkaline.taskbrain.data.AlarmRepository
 import org.alkaline.taskbrain.data.AlarmStatus
 import org.alkaline.taskbrain.data.NoteLine
-import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
-import org.alkaline.taskbrain.dsl.directives.DirectiveInstance
-import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmOverlayMapping
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolBadge
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
@@ -153,72 +150,6 @@ internal fun computeSymbolOverlays(
         } else {
             SymbolOverlay(symbol = AlarmMarkers.ALARM_SYMBOL, badge = SymbolBadge.None)
         }
-    }
-}
-
-// ==================== Directive position ====================
-
-/**
- * A position identifier for a directive: line index and start offset within line content.
- * Used for undo/redo to restore expanded state by matching positions.
- */
-data class DirectivePosition(val lineIndex: Int, val startOffset: Int)
-
-// ==================== Directive result mapping ====================
-
-/**
- * Converts UUID-keyed directive results to position-keyed results for UI display.
- *
- * Keys use noteId when available (e.g., "noteId:offset"), falling back to
- * effective ID (e.g., "lineId:offset").
- *
- * @param editorNoteIds The noteIds from the editor's LineState — must be the SAME
- *   noteIds that the rendering layer will use for key lookups. This ensures key
- *   generation and key lookup always agree, regardless of whether the tracker
- *   and editor are momentarily out of sync.
- */
-internal fun mapResultsByPosition(
-    instances: List<DirectiveInstance>,
-    uuidResults: Map<String, DirectiveResult>,
-    effectiveIds: List<String>
-): Map<String, DirectiveResult> {
-    val positionResults = mutableMapOf<String, DirectiveResult>()
-    for (instance in instances) {
-        val result = uuidResults[instance.uuid] ?: continue
-        val lineId = effectiveIds.getOrNull(instance.lineIndex) ?: continue
-        val key = DirectiveFinder.directiveKey(lineId, instance.startOffset)
-        positionResults[key] = result
-    }
-    return positionResults
-}
-
-/**
- * Finds positions of all expanded (non-collapsed) directives.
- */
-internal fun findExpandedPositions(
-    instances: List<DirectiveInstance>,
-    results: Map<String, DirectiveResult>
-): Set<DirectivePosition> {
-    val expandedUuids = results.filter { !it.value.collapsed }.keys
-    if (expandedUuids.isEmpty()) return emptySet()
-
-    return instances
-        .filter { it.uuid in expandedUuids }
-        .map { DirectivePosition(it.lineIndex, it.startOffset) }
-        .toSet()
-}
-
-/**
- * Merges fresh directive results with existing collapsed state.
- * Preserves the collapsed flag from [currentResults] for each UUID.
- */
-internal fun mergeDirectiveResults(
-    freshResults: Map<String, DirectiveResult>,
-    currentResults: Map<String, DirectiveResult>?
-): Map<String, DirectiveResult> {
-    return freshResults.mapValues { (uuid, result) ->
-        val existingCollapsed = currentResults?.get(uuid)?.collapsed ?: true
-        result.copy(collapsed = existingCollapsed)
     }
 }
 

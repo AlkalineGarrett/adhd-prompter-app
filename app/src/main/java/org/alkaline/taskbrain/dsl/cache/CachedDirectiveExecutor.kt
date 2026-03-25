@@ -375,6 +375,40 @@ class CachedDirectiveExecutor(
     }
 
     /**
+     * Prime the L1 cache with a pre-loaded DirectiveResult (e.g., from Firestore).
+     * The entry has no dependency tracking, so it won't be invalidated by staleness
+     * checks — it serves as a bootstrap until fresh execution replaces it.
+     *
+     * @param sourceText The directive source text
+     * @param noteId The note containing this directive
+     * @param result The pre-loaded result
+     */
+    fun primeCache(sourceText: String, noteId: String, result: DirectiveResult) {
+        val cacheKey = DirectiveResult.hashDirective(sourceText)
+        val value = result.toValue()
+        val cached = if (value != null) {
+            CachedDirectiveResult.success(value, DirectiveDependencies.EMPTY)
+        } else {
+            CachedDirectiveResult.error(
+                DirectiveErrorFactory.fromExecutionException(result.error ?: "Unknown error")
+            )
+        }
+        cacheManager.put(cacheKey, noteId, false, cached)
+    }
+
+    /**
+     * Clear a specific directive's L1 cache entry, forcing re-execution
+     * on the next call to [execute].
+     *
+     * @param sourceText The directive source text
+     * @param noteId The note containing this directive
+     */
+    fun clearCacheEntry(sourceText: String, noteId: String) {
+        val cacheKey = DirectiveResult.hashDirective(sourceText)
+        cacheManager.remove(cacheKey, noteId)
+    }
+
+    /**
      * Clear all caches.
      */
     fun clearAll() {

@@ -277,15 +277,12 @@ private fun computeGutterLineLayouts(
         currentY += lineHeight
 
         // Add gap height for each expanded directive on this line
-        val lineState = state.lines.getOrNull(index)
-        val lineContent = lineState?.content ?: ""
-        val lineId = lineState?.effectiveId
-        val lineDirectives = DirectiveFinder.findDirectives(lineContent)
-        for (found in lineDirectives) {
-            val key = lineId?.let { DirectiveFinder.directiveKey(it, found.startOffset) }
-            val directiveResult = key?.let { directiveResults[it] }
+        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        for (found in DirectiveFinder.findDirectives(lineContent)) {
+            val hashKey = DirectiveResult.hashDirective(found.sourceText)
+            val directiveResult = directiveResults[hashKey]
             if (directiveResult != null && !directiveResult.collapsed) {
-                val measuredHeight = directiveEditHeights[key]
+                val measuredHeight = directiveEditHeights[hashKey]
                 currentY += measuredHeight?.toFloat() ?: fallbackGapHeight
             }
         }
@@ -402,15 +399,12 @@ private fun GutterContent(
         )
 
         // Add gaps for expanded directive edit rows on this line
-        val gutterLineState = state.lines.getOrNull(index)
-        val lineContent = gutterLineState?.content ?: ""
-        val gutterLineId = gutterLineState?.effectiveId
-        val lineDirectives = DirectiveFinder.findDirectives(lineContent)
-        for (found in lineDirectives) {
-            val key = gutterLineId?.let { DirectiveFinder.directiveKey(it, found.startOffset) }
-            val result = key?.let { directiveResults[it] }
+        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        for (found in DirectiveFinder.findDirectives(lineContent)) {
+            val hashKey = DirectiveResult.hashDirective(found.sourceText)
+            val result = directiveResults[hashKey]
             if (result != null && !result.collapsed) {
-                val measuredHeight = directiveEditHeights[key]
+                val measuredHeight = directiveEditHeights[hashKey]
                 val gapHeight = with(density) {
                     (measuredHeight?.toFloat() ?: fallbackGapHeight).toDp()
                 }

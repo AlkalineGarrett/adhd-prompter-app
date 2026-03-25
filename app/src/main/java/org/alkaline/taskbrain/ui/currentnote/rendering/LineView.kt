@@ -106,17 +106,11 @@ internal fun ControlledLineView(
         textMeasurer.measure(" ", textStyle).size.width.toFloat()
     }
 
-    // Adjust directive result keys: results are keyed by offset in full line text (including
-    // prefix), but buildDisplayText operates on content-only text (prefix stripped).
-    val prefixLength = prefix.length
     val lineId = lineState.effectiveId
-    val adjustedDirectiveResults = remember(directiveResults, lineId, prefixLength) {
-        DirectiveSegmenter.adjustKeysForPrefix(directiveResults, lineId, prefixLength)
-    }
 
     // Build display text info to map between source and display coordinates
-    val displayResult = remember(content, lineId, adjustedDirectiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, lineId, adjustedDirectiveResults)
+    val displayResult = remember(content, lineId, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
     }
 
     // Convert line selection to content selection range (in source coordinates)
@@ -209,7 +203,7 @@ internal fun ControlledLineView(
                 hasExternalSelection = hasExternalSelection,
                 textStyle = textStyle,
                 focusRequester = focusRequester,
-                directiveResults = adjustedDirectiveResults,
+                directiveResults = directiveResults,
                 onFocusChanged = { focused ->
                     isFocused = focused
                     onFocusChanged(focused)

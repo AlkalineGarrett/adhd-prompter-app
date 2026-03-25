@@ -668,30 +668,29 @@ private fun EditorContent(
 
                         // Render edit rows for expanded directives on this line
                         val lineContent = lineState.content
-                        val lineId = lineState.effectiveId
                         val lineDirectives = DirectiveFinder.findDirectives(lineContent)
                         for (found in lineDirectives) {
-                            val directiveKey = DirectiveFinder.directiveKey(lineId, found.startOffset)
-                            val result = directiveResults[directiveKey]
+                            val hashKey = DirectiveResult.hashDirective(found.sourceText)
+                            val result = directiveResults[hashKey]
                             val isViewDirective = result?.toValue() is org.alkaline.taskbrain.dsl.runtime.values.ViewVal
                             if (result != null && !result.collapsed && !isViewDirective) {
-                                key(directiveKey) {
+                                key(hashKey) {
                                     DirectiveEditRow(
                                         initialText = found.sourceText,
                                         textStyle = textStyle,
                                         errorMessage = result.error,
                                         warningMessage = result.warning?.displayMessage,
                                         onRefresh = { newText ->
-                                            directiveCallbacks.onViewDirectiveRefresh?.invoke(index, directiveKey, found.sourceText, newText)
+                                            directiveCallbacks.onViewDirectiveRefresh?.invoke(index, hashKey, found.sourceText, newText)
                                         },
                                         onConfirm = { newText ->
-                                            directiveCallbacks.onViewDirectiveConfirm?.invoke(index, directiveKey, found.sourceText, newText)
+                                            directiveCallbacks.onViewDirectiveConfirm?.invoke(index, hashKey, found.sourceText, newText)
                                         },
                                         onCancel = {
-                                            directiveCallbacks.onViewDirectiveCancel?.invoke(index, directiveKey, found.sourceText)
+                                            directiveCallbacks.onViewDirectiveCancel?.invoke(index, hashKey, found.sourceText)
                                         },
                                         onHeightMeasured = { height ->
-                                            onDirectiveEditHeightMeasured?.invoke(directiveKey, height)
+                                            onDirectiveEditHeightMeasured?.invoke(hashKey, height)
                                         }
                                     )
                                 }
