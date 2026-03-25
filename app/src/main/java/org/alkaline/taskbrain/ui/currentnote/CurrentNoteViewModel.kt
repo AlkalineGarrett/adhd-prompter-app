@@ -91,7 +91,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     private val recurringAlarmRepository = RecurringAlarmRepository()
     private val templateManager = RecurrenceTemplateManager(recurringAlarmRepository, alarmRepository, alarmStateManager)
 
-    // Directive caching infrastructure (Phase 10 integration)
+    // Directive caching infrastructure
     private val directiveCacheManager = DirectiveCacheManager()
     private val editSessionManager = EditSessionManager(directiveCacheManager)
     private val cachedDirectiveExecutor = CachedDirectiveExecutor(
@@ -109,7 +109,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
     )
 
-    // Note operations for DSL mutations (Milestone 7)
+    // Note operations for DSL mutations
     // Use injected provider for testing, or create from Firebase for production
     private val noteOperations: NoteRepositoryOperations?
         get() {
@@ -199,7 +199,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     // Cached notes for find() operations in directives
     private var cachedNotes: List<Note>? = null
 
-    // Cached current note for [.] reference in directives (Milestone 6)
+    // Cached current note for [.] reference in directives
     private var cachedCurrentNote: Note? = null
 
     /**
@@ -209,7 +209,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     fun invalidateNotesCache() {
         cachedNotes = null
         cachedCurrentNote = null
-        // Phase 3: Invalidate metadata hash cache when notes change
+        // Invalidate metadata hash cache when notes change
         MetadataHasher.invalidateCache()
         // Also clear the directive cache to force re-execution with fresh data
         directiveCacheManager.clearAll()
@@ -545,7 +545,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 // This must happen BEFORE executeAndStoreDirectives to ensure
                 // ensureNotesLoaded() fetches fresh notes when switching tabs
                 cachedNotes = null
-                // Phase 3: Invalidate metadata hash cache when notes change
+                // Invalidate metadata hash cache when notes change
                 MetadataHasher.invalidateCache()
 
                 // Execute directives and store results
@@ -938,7 +938,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     /**
      * Loads notes for use in find() operations within directives.
      * Notes are cached and reused until explicitly refreshed.
-     * Also caches the current note for [.] reference (Milestone 6).
+     * Also caches the current note for [.] reference.
      * Call this before executing directives that may use find().
      */
     private suspend fun ensureNotesLoaded(): List<Note> {
@@ -979,7 +979,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
     /**
      * Refreshes the cached notes for find() operations.
-     * Also updates the cached current note for [.] reference (Milestone 6).
+     * Also updates the cached current note for [.] reference.
      * Call this when notes may have changed (e.g., after save).
      */
     private suspend fun refreshNotesCache(): List<Note> {
@@ -1556,7 +1556,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             // Use saveNoteWithFullContent to properly handle multi-line notes
             // This preserves child note IDs and handles line additions/deletions
             //
-            // Phase 2 (Caching Audit): AWAIT save completion before clearing caches.
+            // AWAIT save completion before clearing caches.
             // This ensures that when we refresh, Firestore has the new data.
             val saveResult = repository.saveNoteWithFullContent(noteId, newContent)
 

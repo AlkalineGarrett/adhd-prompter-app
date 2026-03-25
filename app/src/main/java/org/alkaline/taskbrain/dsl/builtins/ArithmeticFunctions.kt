@@ -9,8 +9,8 @@ import org.alkaline.taskbrain.dsl.runtime.NumberVal
 /**
  * Arithmetic builtin functions.
  *
- * Milestone 3: add, sub, mul, div, mod
- * Milestone 9: neg
+ * add, sub, mul, div, mod
+ * neg
  */
 object ArithmeticFunctions {
 
@@ -90,8 +90,6 @@ object ArithmeticFunctions {
      * neg(a) - Returns the negation of a number.
      * Example: [neg(5)] -> -5
      * Example: [neg(-3)] -> 3
-     *
-     * Milestone 9.
      */
     private val negFunction = BuiltinFunction(name = "neg") { args, _ ->
         args.requireExactCount(1, "neg")

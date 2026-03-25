@@ -5,8 +5,6 @@ package org.alkaline.taskbrain.dsl.runtime
  *
  * The cache stores results by a key derived from the expression text/hash.
  * Results persist until the directive text changes (which changes the key).
- *
- * Phase 0c.
  */
 interface OnceCache {
     /**
@@ -29,8 +27,6 @@ interface OnceCache {
 /**
  * In-memory implementation of OnceCache.
  * Values persist for the lifetime of the cache instance.
- *
- * Phase 0c.
  */
 class InMemoryOnceCache : OnceCache {
     private val cache = mutableMapOf<String, DslValue>()

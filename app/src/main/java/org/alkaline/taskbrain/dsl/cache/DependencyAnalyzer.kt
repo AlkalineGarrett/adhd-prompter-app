@@ -19,7 +19,7 @@ import org.alkaline.taskbrain.dsl.language.VariableRef
 /**
  * Analyzes directive AST to detect dependencies for cache invalidation.
  *
- * Phase 2: AST analysis for dependency detection.
+ * AST analysis for dependency detection.
  *
  * This analyzer walks the AST and identifies:
  * - Self-access (`.`) - determines if cache can be shared globally

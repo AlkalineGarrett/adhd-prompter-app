@@ -29,13 +29,13 @@ typealias NoteVal = org.alkaline.taskbrain.dsl.runtime.values.NoteVal
 // Re-export list value
 typealias ListVal = org.alkaline.taskbrain.dsl.runtime.values.ListVal
 
-// Re-export lambda value (Milestone 8)
+// Re-export lambda value
 typealias LambdaVal = org.alkaline.taskbrain.dsl.runtime.values.LambdaVal
 
-// Re-export view value (Milestone 10)
+// Re-export view value
 typealias ViewVal = org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 
-// Re-export action values (Phase 0f)
+// Re-export action values
 typealias ButtonVal = org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 typealias ScheduleVal = org.alkaline.taskbrain.dsl.runtime.values.ScheduleVal
 typealias ScheduleFrequency = org.alkaline.taskbrain.dsl.runtime.values.ScheduleFrequency

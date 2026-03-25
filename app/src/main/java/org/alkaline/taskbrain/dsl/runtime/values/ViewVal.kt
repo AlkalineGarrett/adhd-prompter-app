@@ -7,7 +7,7 @@ import org.alkaline.taskbrain.data.Note
  * A view value representing inline note content.
  * Created by the view() function to display notes inline with the directive.
  *
- * Milestone 10: View functionality for rendering notes inline.
+ * View functionality for rendering notes inline.
  *
  * Display: Notes' content is inlined as raw text, separated by dividers.
  * No path headers are shown because the first line of each note serves as its title.

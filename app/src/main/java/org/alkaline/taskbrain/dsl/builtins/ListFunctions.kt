@@ -20,7 +20,7 @@ import org.alkaline.taskbrain.dsl.runtime.UndefinedVal
 /**
  * List-related builtin functions.
  *
- * Milestone 9: list(), sort(), first()
+ * list(), sort(), first()
  */
 object ListFunctions {
 
@@ -43,8 +43,6 @@ object ListFunctions {
      *   [list(1, 2, 3)]       - List of numbers
      *   [list("a", "b")]      - List of strings
      *   [list(1, "mixed", date)]  - Mixed types allowed
-     *
-     * Milestone 9.
      */
     private val listFunction = BuiltinFunction(
         name = "list",
@@ -76,8 +74,6 @@ object ListFunctions {
      *   [sort(find(), key: lambda[i.path])]                 - Sort by path
      *   [sort(find(), key: lambda[i.path], order: descending)]  - Sort by path descending
      *   [sort(list(3, 1, 4), order: descending)]            - Sort numbers descending
-     *
-     * Milestone 9.
      */
     private val sortFunction = BuiltinFunction(
         name = "sort",
@@ -239,8 +235,6 @@ object ListFunctions {
      * Examples:
      *   [first(find(path: "inbox"))]  - Get the inbox note if it exists
      *   [first(sort(find(), order: desc))]  - Get the most recent note
-     *
-     * Milestone 9.
      */
     private val firstFunction = BuiltinFunction(
         name = "first",

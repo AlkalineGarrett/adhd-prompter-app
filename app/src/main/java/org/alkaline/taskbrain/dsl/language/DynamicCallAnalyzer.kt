@@ -15,12 +15,12 @@ object DynamicCallAnalyzer {
     /**
      * Check if an expression contains any dynamic function calls.
      *
-     * Milestone 4: Added PatternExpr support.
-     * Milestone 6: Added CurrentNoteRef and PropertyAccess support.
-     * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall support.
-     * Milestone 8: Added LambdaExpr support.
-     * Phase 0b: Added LambdaInvocation support.
-     * Phase 0c: Added OnceExpr support.
+     * Added PatternExpr support.
+     * Added CurrentNoteRef and PropertyAccess support.
+     * Added Assignment, StatementList, VariableRef, MethodCall support.
+     * Added LambdaExpr support.
+     * Added LambdaInvocation support.
+     * Added OnceExpr support.
      *
      * @param expr The expression to analyze
      * @return true if the expression contains any dynamic calls

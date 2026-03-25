@@ -89,11 +89,10 @@ object DirectiveSegmenter {
      * Split a line into segments.
      *
      * @param content The line content
-     * @param lineId The line's effective ID (noteId or temp UUID)
-     * @param results Map of directive key to result
+     * @param results Map of directive hash to result
      * @return List of segments in order
      */
-    fun segmentLine(content: String, lineId: String, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
+    fun segmentLine(content: String, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
         val directives = DirectiveFinder.findDirectives(content)
 
         if (directives.isEmpty()) {
@@ -155,7 +154,7 @@ object DirectiveSegmenter {
     /**
      * Check if a line has any computed directives (results available).
      */
-    fun hasComputedDirectives(content: String, lineId: String, results: Map<String, DirectiveResult>): Boolean {
+    fun hasComputedDirectives(content: String, results: Map<String, DirectiveResult>): Boolean {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
             val key = DirectiveResult.hashDirective(directive.sourceText)
@@ -168,16 +167,14 @@ object DirectiveSegmenter {
      * Also returns offset mapping from display to source positions.
      *
      * @param content The source line content
-     * @param lineId The line's effective ID (noteId or temp UUID)
-     * @param results Map of directive key to result
+     * @param results Map of directive hash to result
      * @return Pair of (displayText, sourceToDisplayMapping)
      */
     fun buildDisplayText(
         content: String,
-        lineId: String,
         results: Map<String, DirectiveResult>
     ): DisplayTextResult {
-        val segments = segmentLine(content, lineId, results)
+        val segments = segmentLine(content, results)
 
         if (segments.isEmpty()) {
             return DisplayTextResult(
@@ -281,8 +278,8 @@ fun mapSourceToDisplayOffset(
 /**
  * Tracks where a directive appears in both source and display text.
  *
- * Milestone 8: Added hasWarning for no-effect warnings.
- * Milestone 10: Added isView for view directive special rendering.
+ * Added hasWarning for no-effect warnings.
+ * Added isView for view directive special rendering.
  * Button UI: Added isButton for button directive special rendering.
  * Alarm identity: Added isAlarm/alarmId for alarm directive rendering (no dashed box).
  */

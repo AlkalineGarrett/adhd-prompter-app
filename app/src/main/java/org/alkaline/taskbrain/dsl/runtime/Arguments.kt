@@ -108,8 +108,6 @@ data class Arguments(
 
     /**
      * Get a named argument as LambdaVal, or null if not present.
-     *
-     * Milestone 8.
      */
     fun getLambda(name: String): LambdaVal? = named[name] as? LambdaVal
 
@@ -121,7 +119,7 @@ data class Arguments(
      * @return The BooleanVal
      * @throws ExecutionException if argument is missing or not a boolean
      *
-     * Phase 0a: Added for comparison/logical functions.
+     * Added for comparison/logical functions.
      */
     fun requireBoolean(index: Int, funcName: String, paramName: String = "argument ${index + 1}"): BooleanVal {
         val arg = positional.getOrNull(index)
@@ -138,7 +136,7 @@ data class Arguments(
      * @return The LambdaVal
      * @throws ExecutionException if argument is missing or not a lambda
      *
-     * Phase 0f: Added for button/schedule functions.
+     * Added for button/schedule functions.
      */
     fun requireLambda(index: Int, funcName: String, paramName: String = "argument ${index + 1}"): LambdaVal {
         val arg = positional.getOrNull(index)

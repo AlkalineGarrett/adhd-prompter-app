@@ -26,7 +26,7 @@ import java.time.format.DateTimeParseException
 /**
  * Analyzes refresh expressions to detect time-based triggers.
  *
- * Phase 3: Time-based refresh analysis.
+ * Time-based refresh analysis.
  *
  * The algorithm:
  * 1. Walk AST to find time comparisons (.gt, .lt, etc. with string literals)

@@ -15,10 +15,8 @@ import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 /**
  * Integrates directive caching with execution.
  *
- * Phase 10: Integration of caching system.
- *
  * This executor:
- * 1. Checks L1 (in-memory) and L2 (Firestore) caches before executing
+ * 1. Checks in-memory cache before executing
  * 2. Validates cache staleness using dependency tracking
  * 3. Executes and caches new results with proper dependencies
  * 4. Handles edit session suppression for inline editing
@@ -60,7 +58,7 @@ class CachedDirectiveExecutor(
      *
      * Flow:
      * 1. Analyze AST to get cache key and dependencies
-     * 2. Check L1/L2 cache for valid result
+     * 2. Check cache for valid result
      * 3. If cache miss or stale, execute directive
      * 4. Cache successful results
      * 5. Return result with cache metadata
@@ -88,7 +86,6 @@ class CachedDirectiveExecutor(
 
         val (cacheKey, analysis) = analysisResult
         val noteId = currentNote?.id ?: GLOBAL_CACHE_PLACEHOLDER
-        val usesSelfAccess = analysis.usesSelfAccess
         val isMutating = analysis.isMutating
         val dependencies = analysis.toPartialDependencies()
 
@@ -96,45 +93,38 @@ class CachedDirectiveExecutor(
         val shouldSuppressStaleness = currentNote?.id != null &&
             editSessionManager?.shouldSuppressInvalidation(currentNote.id) == true
 
-        // Step 3: For mutating directives, NEVER re-execute due to staleness
         // Mutating directives (e.g., [.root.name: "x"]) should only run once,
         // not be re-triggered when cache becomes stale. Otherwise, edits to the
         // mutated note would be overwritten by the original mutation value.
         if (isMutating) {
-            // Check for ANY cached result (even stale)
-            val cachedResult = cacheManager.get(cacheKey, noteId, usesSelfAccess)
+            val cachedResult = cacheManager.get(cacheKey, noteId)
             if (cachedResult != null) {
-                val directiveResult = cachedResultToDirectiveResult(cachedResult)
                 return CachedExecutionResult(
-                    result = directiveResult,
+                    result = cachedResultToDirectiveResult(cachedResult),
                     cacheHit = true,
                     dependencies = cachedResult.dependencies,
                     mutations = emptyList()
                 )
             }
-            // No cached result - this is the first execution, allow it to proceed
         }
 
-        // Step 4: Check cache (with staleness for non-mutating directives)
+        // Step 3: Check cache (with staleness for non-mutating directives)
         val cachedResult = if (shouldSuppressStaleness) {
-            // During editing, return cached result without staleness check
-            cacheManager.get(cacheKey, noteId, usesSelfAccess)
+            cacheManager.get(cacheKey, noteId)
         } else {
-            // Normal flow: check with staleness validation
-            cacheManager.getIfValid(cacheKey, noteId, usesSelfAccess, notes, currentNote)
+            cacheManager.getIfValid(cacheKey, noteId, notes, currentNote)
         }
 
         if (cachedResult != null) {
-            val directiveResult = cachedResultToDirectiveResult(cachedResult)
             return CachedExecutionResult(
-                result = directiveResult,
+                result = cachedResultToDirectiveResult(cachedResult),
                 cacheHit = true,
                 dependencies = cachedResult.dependencies,
                 mutations = emptyList()
             )
         }
 
-        // Step 5: Cache miss - execute fresh
+        // Step 4: Cache miss - execute fresh
         return executeFreshWithCaching(
             sourceText = sourceText,
             notes = notes,
@@ -142,8 +132,7 @@ class CachedDirectiveExecutor(
             noteOperations = noteOperations,
             viewStack = viewStack,
             cacheKey = cacheKey,
-            baseDependencies = dependencies,
-            usesSelfAccess = usesSelfAccess
+            baseDependencies = dependencies
         )
     }
 
@@ -151,7 +140,7 @@ class CachedDirectiveExecutor(
      * Execute a directive with caching support - interface implementation.
      * Used by view() to execute nested directives with proper dependency tracking.
      *
-     * Phase 1 (Caching Audit): Added to implement CachedExecutorInterface.
+     * Added to implement CachedExecutorInterface.
      */
     override fun executeCached(
         sourceText: String,
@@ -185,7 +174,7 @@ class CachedDirectiveExecutor(
     /**
      * Execute directive without caching (for parse errors or when analysis fails).
      *
-     * Phase 1 (Caching Audit): Passes this executor for nested view() execution.
+     * Passes this executor for nested view() execution.
      */
     private fun executeFresh(
         sourceText: String,
@@ -200,7 +189,7 @@ class CachedDirectiveExecutor(
             currentNote = currentNote,
             noteOperations = noteOperations,
             viewStack = viewStack,
-            cachedExecutor = this  // Phase 1: Pass executor for nested directives
+            cachedExecutor = this  // Pass executor for nested directives
         )
         return CachedExecutionResult(
             result = execResult.result,
@@ -220,15 +209,11 @@ class CachedDirectiveExecutor(
         noteOperations: NoteOperations?,
         viewStack: List<String>,
         cacheKey: String,
-        baseDependencies: DirectiveDependencies,
-        usesSelfAccess: Boolean
+        baseDependencies: DirectiveDependencies
     ): CachedExecutionResult {
-        // Start dependency collection
         dependencyCollector.startDirective(cacheKey, baseDependencies)
 
         try {
-            // Execute the directive
-            // Phase 1 (Caching Audit): Pass this executor for nested view() directives
             val execResult = DirectiveFinder.executeDirective(
                 sourceText = sourceText,
                 notes = notes,
@@ -238,18 +223,11 @@ class CachedDirectiveExecutor(
                 cachedExecutor = this
             )
 
-            // Finish collecting dependencies
             var finalDependencies = dependencyCollector.finishDirective()
-
-            // Phase 1.3: Extract viewed note IDs from ViewVal results
-            // When view() renders notes, we need to track those note IDs as dependencies
-            // so that changes to viewed notes trigger staleness detection.
+            // Track viewed note IDs as dependencies so changes trigger staleness detection
             finalDependencies = enrichWithViewDependencies(execResult.result, finalDependencies)
-
-            // Register dependencies for transitive lookups
             dependencyRegistry.register(cacheKey, finalDependencies)
 
-            // Cache the result if successful or deterministic error
             val noteId = currentNote?.id ?: GLOBAL_CACHE_PLACEHOLDER
             if (execResult.result.isComputed || shouldCacheError(execResult.result)) {
                 val cachedResult = buildCachedResult(
@@ -257,7 +235,7 @@ class CachedDirectiveExecutor(
                     finalDependencies,
                     notes
                 )
-                cacheManager.put(cacheKey, noteId, usesSelfAccess, cachedResult)
+                cacheManager.put(cacheKey, noteId, cachedResult)
             }
 
             return CachedExecutionResult(
@@ -294,7 +272,7 @@ class CachedDirectiveExecutor(
     /**
      * Enrich dependencies with viewed note IDs from ViewVal results.
      *
-     * Phase 1.3 (Caching Audit): When view() renders notes, we track those note IDs
+     * When view() renders notes, we track those note IDs
      * in BOTH firstLineNotes and nonFirstLineNotes so that ANY changes to viewed
      * note content trigger staleness detection.
      *
@@ -393,7 +371,7 @@ class CachedDirectiveExecutor(
                 DirectiveErrorFactory.fromExecutionException(result.error ?: "Unknown error")
             )
         }
-        cacheManager.put(cacheKey, noteId, false, cached)
+        cacheManager.put(cacheKey, noteId, cached)
     }
 
     /**
@@ -460,25 +438,13 @@ object CachedDirectiveExecutorFactory {
         )
     }
 
-    /**
-     * Create an executor with L2 (Firestore) persistence.
-     * Note: Requires Firebase setup.
-     */
-    fun createWithL2Cache(l2Cache: L2DirectiveCache): CachedDirectiveExecutor {
-        val cacheManager = DirectiveCacheManager(l2Cache = l2Cache)
-        val editSessionManager = EditSessionManager(cacheManager)
-        return CachedDirectiveExecutor(
-            cacheManager = cacheManager,
-            editSessionManager = editSessionManager
-        )
-    }
 }
 
 /**
  * Adapter to expose CachedExecutionResult through the interface.
  * This breaks the circular dependency between runtime and cache packages.
  *
- * Phase 1 (Caching Audit): Added for view() transitive dependency tracking.
+ * Added for view() transitive dependency tracking.
  */
 internal class CachedExecutionResultAdapter(
     private val result: CachedDirectiveExecutor.CachedExecutionResult

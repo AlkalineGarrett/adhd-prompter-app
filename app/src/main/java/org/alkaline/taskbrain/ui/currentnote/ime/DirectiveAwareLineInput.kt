@@ -195,9 +195,8 @@ internal fun DirectiveAwareLineInput(
     }
 
     // Build display text with directive results
-    val lineId = controller.state.lines.getOrNull(lineIndex)?.effectiveId ?: "unknown"
-    val displayResult = remember(content, lineId, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
+    val displayResult = remember(content, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, directiveResults)
     }
 
     // Map source cursor to display cursor
@@ -718,7 +717,7 @@ private fun mapDisplayToSourceCursor(displayCursor: Int, displayResult: DisplayT
  * Renders multi-line content by replacing directive source text with computed results.
  *
  * @param content The raw content (may contain directive source like [add(1,1)])
- * @param directiveResults Map of directive key ("lineId:startOffset") to result
+ * @param directiveResults Map of directive hash key to result
  * @return The rendered content with directives replaced by their display values
  */
 internal fun renderContentWithDirectives(
@@ -731,7 +730,7 @@ internal fun renderContentWithDirectives(
 
     return content.lines().mapIndexed { lineIndex, lineContent ->
         // In inline editor context, use lineIndex as a synthetic ID since real noteIds aren't available
-        val displayResult = DirectiveSegmenter.buildDisplayText(lineContent, "inline:$lineIndex", directiveResults)
+        val displayResult = DirectiveSegmenter.buildDisplayText(lineContent, directiveResults)
         displayResult.displayText
     }.joinToString("\n")
 }
@@ -1326,10 +1325,8 @@ private fun InlineEditorLine(
         org.alkaline.taskbrain.ui.currentnote.util.LinePrefixes.hasCheckbox(prefix)
     }
 
-    val lineId = lineState.effectiveId
-
-    val displayResult = remember(content, lineId, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
+    val displayResult = remember(content, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, directiveResults)
     }
 
     // Map source cursor to display cursor

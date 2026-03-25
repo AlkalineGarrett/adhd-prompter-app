@@ -5,7 +5,7 @@ import android.util.Log
 /**
  * Tracks the context of an active inline edit session.
  *
- * Phase 8: Inline editing support.
+ * Inline editing support.
  *
  * When a user edits content within a view (e.g., editing Note B while viewing Note A),
  * this context tracks the edit to suppress cache invalidation for the originating note,
@@ -88,7 +88,7 @@ data class PendingInvalidation(
 /**
  * Manages inline edit sessions and deferred cache invalidations.
  *
- * Phase 8: Inline editing support.
+ * Inline editing support.
  *
  * Key responsibilities:
  * 1. Track active edit context (which note is being edited from where)
@@ -134,7 +134,7 @@ class EditSessionManager(
      * @param originatingNoteId The note where the edit was initiated
      */
     fun startEditSession(editedNoteId: String, originatingNoteId: String) {
-        // End any existing session first (Phase 4: with logging for observability)
+        // End any existing session first
         val existingContext = activeEditContext
         if (existingContext != null) {
             val pendingCount = pendingInvalidations.size
@@ -340,7 +340,6 @@ class EditAwareCacheManager(
      *
      * @param directiveKey Cache key for the directive
      * @param noteId Note containing the directive
-     * @param usesSelfAccess Whether the directive uses self-access
      * @param currentNotes All current notes
      * @param currentNote The note containing this directive
      * @return Cached result if valid or suppressed, null otherwise
@@ -348,21 +347,13 @@ class EditAwareCacheManager(
     fun getIfValidOrSuppressed(
         directiveKey: String,
         noteId: String,
-        usesSelfAccess: Boolean,
         currentNotes: List<org.alkaline.taskbrain.data.Note>,
         currentNote: org.alkaline.taskbrain.data.Note?
     ): CachedDirectiveResult? {
-        // If we're the origin of an edit, suppress staleness check
         if (editSessionManager.shouldSuppressInvalidation(noteId)) {
-            // Return cached result without staleness check
-            return cacheManager.get(directiveKey, noteId, usesSelfAccess)
+            return cacheManager.get(directiveKey, noteId)
         }
-
-        // Normal validity check
-        return cacheManager.getIfValid(
-            directiveKey, noteId, usesSelfAccess,
-            currentNotes, currentNote
-        )
+        return cacheManager.getIfValid(directiveKey, noteId, currentNotes, currentNote)
     }
 
     /**

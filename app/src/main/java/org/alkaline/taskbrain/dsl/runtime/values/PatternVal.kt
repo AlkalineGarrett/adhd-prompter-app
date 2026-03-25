@@ -11,7 +11,6 @@ import org.alkaline.taskbrain.dsl.language.Quantifier
  * A pattern value for matching strings.
  * Created by the pattern(...) function.
  *
- * Milestone 4.
  *
  * @property elements The parsed pattern elements (for display and debugging)
  * @property compiledRegex The compiled regex for matching

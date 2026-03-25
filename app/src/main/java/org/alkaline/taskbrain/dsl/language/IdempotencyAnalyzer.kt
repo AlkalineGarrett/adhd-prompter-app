@@ -45,8 +45,6 @@ object IdempotencyAnalyzer {
      * Functions that wrap non-idempotent actions and make them safe.
      * These are idempotent themselves (creating a button/schedule value is idempotent)
      * and they don't recurse into their action argument for idempotency analysis.
-     *
-     * Phase 0f.
      */
     private val ACTION_WRAPPER_FUNCTIONS = setOf("button", "schedule")
 
@@ -59,9 +57,9 @@ object IdempotencyAnalyzer {
     /**
      * Analyze an expression for idempotency.
      *
-     * Milestone 8: Added LambdaExpr support.
-     * Phase 0b: Added LambdaInvocation support.
-     * Phase 0c: Added OnceExpr support.
+     * Added LambdaExpr support.
+     * Added LambdaInvocation support.
+     * Added OnceExpr support.
      *
      * @param expr The expression to analyze
      * @return AnalysisResult indicating whether the expression is idempotent
@@ -148,7 +146,7 @@ object IdempotencyAnalyzer {
         // button() and schedule() are wrapper functions that make non-idempotent
         // actions safe. They are idempotent themselves (creating the UI element)
         // and we don't analyze their action argument (the second positional arg).
-        // Phase 0f.
+        //.
         if (expr.name in ACTION_WRAPPER_FUNCTIONS) {
             // Only analyze the first argument (label for button, frequency for schedule)
             // Skip the second argument (the action lambda) since it's deferred

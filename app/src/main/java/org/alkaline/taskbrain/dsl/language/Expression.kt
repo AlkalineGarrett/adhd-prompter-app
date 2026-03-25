@@ -4,8 +4,8 @@ package org.alkaline.taskbrain.dsl.language
  * Base class for all AST expression nodes.
  * Each subclass represents a different syntactic construct.
  *
- * Milestone 3: Adds support for parenthesized calls with named arguments.
- * Milestone 7: Adds Assignment and StatementList for note mutation.
+ * Adds support for parenthesized calls with named arguments.
+ * Adds Assignment and StatementList for note mutation.
  */
 sealed class Expression {
     /** The position in source where this expression starts */
@@ -71,22 +71,18 @@ data class Directive(
 )
 
 // ============================================================================
-// Note Property AST Nodes (Milestone 6)
+// Note Property AST Nodes
 // ============================================================================
 
 /**
  * Reference to the current note.
  * Example: [.] refers to the note containing the directive
- *
- * Milestone 6.
  */
 data class CurrentNoteRef(override val position: Int) : Expression()
 
 /**
  * Property access on an expression result.
  * Example: [.path] (property on current note), [find(...).path] (property on result)
- *
- * Milestone 6.
  */
 data class PropertyAccess(
     val target: Expression,
@@ -95,15 +91,13 @@ data class PropertyAccess(
 ) : Expression()
 
 // ============================================================================
-// Note Mutation AST Nodes (Milestone 7)
+// Note Mutation AST Nodes
 // ============================================================================
 
 /**
  * An assignment expression.
  * Used for variable definitions and property assignments.
  * Example: [x: 5], [.path: "foo"], [note.path: "bar"]
- *
- * Milestone 7.
  */
 data class Assignment(
     val target: Expression,
@@ -115,8 +109,6 @@ data class Assignment(
  * A list of statements separated by semicolons.
  * Returns the value of the last statement.
  * Example: [x: 5; y: 10; add(x, y)]
- *
- * Milestone 7.
  */
 data class StatementList(
     val statements: List<Expression>,
@@ -126,8 +118,6 @@ data class StatementList(
 /**
  * A variable reference.
  * Example: [x] where x was previously defined as [x: 5]
- *
- * Milestone 7.
  */
 data class VariableRef(
     val name: String,
@@ -137,8 +127,6 @@ data class VariableRef(
 /**
  * A method call on an expression.
  * Example: [.append("text")], [note.append("text")]
- *
- * Milestone 7.
  */
 data class MethodCall(
     val target: Expression,
@@ -149,7 +137,7 @@ data class MethodCall(
 ) : Expression()
 
 // ============================================================================
-// Pattern AST Nodes (Milestone 4)
+// Pattern AST Nodes
 // ============================================================================
 
 /**
@@ -223,16 +211,15 @@ data class PatternExpr(
 ) : Expression()
 
 // ============================================================================
-// Lambda AST Node (Milestone 8)
+// Lambda AST Node
 // ============================================================================
 
 /**
  * A lambda expression with implicit parameter binding.
  * Example: [lambda[i.path]] creates a lambda with param "i" and body "i.path"
- * Example: [[add(i, 1)]] creates a lambda with param "i" (Phase 0b implicit syntax)
+ * Example: [[add(i, 1)]] creates a lambda with param "i"
  *
- * Milestone 8.
- * Phase 0b: Extended for implicit lambda syntax.
+ * Extended for implicit lambda syntax.
  */
 data class LambdaExpr(
     val params: List<String>,  // Parameter names (e.g., ["i"] for implicit form)
@@ -244,8 +231,6 @@ data class LambdaExpr(
  * Immediate invocation of a lambda expression.
  * Example: [[i.path](.)] invokes the lambda with the current note
  * Example: [[add(i, 1)](5)] invokes the lambda with argument 5
- *
- * Phase 0b.
  */
 data class LambdaInvocation(
     val lambda: LambdaExpr,
@@ -255,15 +240,13 @@ data class LambdaInvocation(
 ) : Expression()
 
 // ============================================================================
-// Execution Block AST Nodes (Phase 0c)
+// Execution Block AST Nodes
 // ============================================================================
 
 /**
  * A once execution block that evaluates its body once and caches the result.
  * The cached result persists until the directive text changes.
  * Example: [once[datetime]] - captures the datetime at first evaluation
- *
- * Phase 0c.
  */
 data class OnceExpr(
     val body: Expression,
@@ -274,8 +257,6 @@ data class OnceExpr(
  * A refresh execution block that re-evaluates at analyzed trigger times.
  * The trigger times are determined by analyzing time comparisons in the body.
  * Example: [refresh[if(time.gt("12:00"), X, Y)]] - re-evaluates at 12:00
- *
- * Phase 0d.
  */
 data class RefreshExpr(
     val body: Expression,

@@ -3,8 +3,6 @@ package org.alkaline.taskbrain.dsl.runtime.values
 /**
  * A list value containing other DslValues.
  * Created by the find() function, list() function, etc.
- *
- * Milestone 5.
  */
 data class ListVal(val items: List<DslValue>) : DslValue() {
     override val typeName: String = "list"

@@ -21,11 +21,11 @@ import org.alkaline.taskbrain.dsl.language.VariableRef
 /**
  * Evaluates Mindl expressions and produces runtime values.
  *
- * Milestone 3: Supports parenthesized calls with named arguments.
- * Milestone 4: Supports pattern expressions.
- * Milestone 6: Supports current note reference and property access.
- * Milestone 7: Supports assignment, statement lists, variables, and method calls.
- * Milestone 8: Supports lambda expressions and invocation.
+ * Supports parenthesized calls with named arguments.
+ * Supports pattern expressions.
+ * Supports current note reference and property access.
+ * Supports assignment, statement lists, variables, and method calls.
+ * Supports lambda expressions and invocation.
  */
 class Executor {
 
@@ -33,15 +33,15 @@ class Executor {
      * Execute a directive and return its result.
      * Injects this executor into the environment for lambda invocation.
      *
-     * Milestone 8: Added executor injection.
-     * Phase 0c: Added bare temporal value validation.
+     * Added executor injection.
+     * Added bare temporal value validation.
      */
     fun execute(directive: Directive, env: Environment = Environment()): DslValue {
         // Create an environment with this executor available for lambda invocation
         val execEnv = createExecutionEnvironment(env)
         val result = evaluate(directive.expression, execEnv)
 
-        // Phase 0c: Validate that temporal values are wrapped in once[...] or refresh[...]
+        // Validate that temporal values are wrapped in once[...] or refresh[...]
         validateTemporalResult(result, directive.expression, directive.startPosition)
 
         return result
@@ -54,8 +54,6 @@ class Executor {
      *
      * Only applies to expressions that contain dynamic calls - computed temporal values
      * from static inputs (like parse_date("2026-01-15").plus(days: 1)) are allowed.
-     *
-     * Phase 0c.
      */
     private fun validateTemporalResult(result: DslValue, expr: Expression, position: Int) {
         // Only validate if the expression contains dynamic calls
@@ -65,7 +63,7 @@ class Executor {
 
         // If the result is a temporal value from a dynamic expression, it needs wrapping
         if (result is DateVal || result is TimeVal || result is DateTimeVal) {
-            // Check if the expression is wrapped in once[...] (or refresh[...] in Phase 0d)
+            // Check if the expression is wrapped in once[...]
             if (!isTemporalExpressionWrapped(expr)) {
                 throw ExecutionException(
                     "Bare ${result.typeName} value is not allowed. " +
@@ -80,8 +78,7 @@ class Executor {
     /**
      * Check if an expression is wrapped in a temporal execution block (once, refresh).
      *
-     * Phase 0c.
-     * Phase 0d: Added RefreshExpr.
+     * Added RefreshExpr.
      */
     private fun isTemporalExpressionWrapped(expr: Expression): Boolean {
         return expr is OnceExpr || expr is RefreshExpr
@@ -104,11 +101,11 @@ class Executor {
     /**
      * Evaluate an expression to produce a value.
      *
-     * Milestone 7: Added Assignment, StatementList, VariableRef, MethodCall.
-     * Milestone 8: Added LambdaExpr.
-     * Phase 0b: Added LambdaInvocation.
-     * Phase 0c: Added OnceExpr.
-     * Phase 0d: Added RefreshExpr.
+     * Added Assignment, StatementList, VariableRef, MethodCall.
+     * Added LambdaExpr.
+     * Added LambdaInvocation.
+     * Added OnceExpr.
+     * Added RefreshExpr.
      */
     fun evaluate(expr: Expression, env: Environment): DslValue {
         return when (expr) {
@@ -132,8 +129,6 @@ class Executor {
     /**
      * Evaluate a lambda expression to produce a LambdaVal.
      * Captures the current environment for closure semantics.
-     *
-     * Milestone 8.
      */
     private fun evaluateLambda(expr: LambdaExpr, env: Environment): LambdaVal {
         return LambdaVal(expr.params, expr.body, env.capture())
@@ -142,8 +137,6 @@ class Executor {
     /**
      * Evaluate a lambda invocation (immediate call of a lambda).
      * Example: [[add(i, 1)](5)] evaluates to 6
-     *
-     * Phase 0b.
      */
     private fun evaluateLambdaInvocation(expr: LambdaInvocation, env: Environment): DslValue {
         // Evaluate the lambda
@@ -176,8 +169,6 @@ class Executor {
      * Evaluate a once expression with caching.
      * The body is evaluated once and the result is cached permanently.
      * Example: [once[datetime]] captures the datetime at first evaluation
-     *
-     * Phase 0c.
      */
     private fun evaluateOnce(expr: OnceExpr, env: Environment): DslValue {
         // Compute cache key from the expression body
@@ -203,8 +194,6 @@ class Executor {
     /**
      * Compute a cache key for a once[...] expression.
      * Uses a simple hash of the expression's string representation.
-     *
-     * Phase 0c.
      */
     private fun computeOnceCacheKey(expr: Expression): String {
         // Use the expression's toString() as a basis for the key
@@ -214,24 +203,18 @@ class Executor {
 
     /**
      * Evaluate a refresh expression.
-     * For now, simply evaluates the body. Time trigger analysis will be added in Phase 3.
+     * For now, simply evaluates the body. Time trigger analysis will be added in.
      *
      * The refresh block indicates that the expression may be re-evaluated at specific
      * trigger times based on time comparisons in the body.
-     *
-     * Phase 0d.
      */
     private fun evaluateRefresh(expr: RefreshExpr, env: Environment): DslValue {
-        // For Phase 0d, simply evaluate the body
-        // Phase 3 will add trigger time analysis and scheduling
         return evaluate(expr.body, env)
     }
 
     /**
      * Invoke a lambda with the given arguments.
      * Creates a child environment with parameters bound to arguments.
-     *
-     * Milestone 8.
      */
     fun invokeLambda(lambda: LambdaVal, args: List<DslValue>): DslValue {
         val localEnv = lambda.capturedEnv.child()
@@ -244,8 +227,6 @@ class Executor {
     /**
      * Evaluate a current note reference.
      * Returns the current note from the environment.
-     *
-     * Milestone 6.
      */
     private fun evaluateCurrentNoteRef(expr: CurrentNoteRef, env: Environment): NoteVal {
         return env.getCurrentNote()
@@ -258,8 +239,6 @@ class Executor {
     /**
      * Evaluate property access on an expression.
      * Example: note.path, note.created
-     *
-     * Milestone 6.
      */
     private fun evaluatePropertyAccess(expr: PropertyAccess, env: Environment): DslValue {
         val target = evaluate(expr.target, env)
@@ -275,8 +254,6 @@ class Executor {
     /**
      * Evaluate an assignment expression.
      * Example: [x: 5], [.path: "foo"]
-     *
-     * Milestone 7.
      */
     private fun evaluateAssignment(expr: Assignment, env: Environment): DslValue {
         val value = evaluate(expr.value, env)
@@ -318,8 +295,6 @@ class Executor {
     /**
      * Evaluate a statement list, returning the value of the last statement.
      * Example: [x: 5; y: 10; add(x, y)]
-     *
-     * Milestone 7.
      */
     private fun evaluateStatementList(expr: StatementList, env: Environment): DslValue {
         var result: DslValue = StringVal("")  // Default if empty
@@ -332,8 +307,6 @@ class Executor {
     /**
      * Evaluate a variable reference.
      * Example: [x] where x was previously defined
-     *
-     * Milestone 7.
      */
     private fun evaluateVariableRef(expr: VariableRef, env: Environment): DslValue {
         return env.get(expr.name)
@@ -347,8 +320,8 @@ class Executor {
      * Evaluate a method call on an expression.
      * Example: [.append("text")], [note.append("text")], [date.plus(days: 7)]
      *
-     * Milestone 7: Note method calls.
-     * Phase 0a: Extended to support methods on all value types via MethodHandler.
+     * Note method calls.
+     * Extended to support methods on all value types via MethodHandler.
      */
     private fun evaluateMethodCall(expr: MethodCall, env: Environment): DslValue {
         val target = evaluate(expr.target, env)
@@ -376,8 +349,8 @@ class Executor {
     /**
      * Evaluate a function call expression.
      *
-     * Milestone 7: For zero-arg calls, first check if it's a variable reference.
-     * Milestone 8: Support direct lambda invocation with f(arg) syntax.
+     * For zero-arg calls, first check if it's a variable reference.
+     * Support direct lambda invocation with f(arg) syntax.
      *
      * Semantics: Bare identifier invokes (like builtins). Use `later f` to get reference.
      * - [f] where f is lambda → tries to call with 0 args → error (lambda requires 1 arg)

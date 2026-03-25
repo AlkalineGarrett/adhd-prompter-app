@@ -465,7 +465,7 @@ class EditorState {
 
         val matchedNoteIds = arrayOfNulls<List<String>>(newLines.size)
 
-        // Phase 1: Exact content match
+        // Exact content match
         newLines.forEachIndexed { index, lineText ->
             val indices = contentToIndices[lineText]
             if (!indices.isNullOrEmpty()) {
@@ -475,7 +475,7 @@ class EditorState {
             }
         }
 
-        // Phase 2: Similarity-based matching for modifications and splits
+        // Similarity-based matching for modifications and splits
         org.alkaline.taskbrain.data.performSimilarityMatching(
             unmatchedNewIndices = newLines.indices.filter { matchedNoteIds[it] == null }.toSet(),
             unconsumedOldIndices = oldContents.indices.filter { !oldConsumed[it] },

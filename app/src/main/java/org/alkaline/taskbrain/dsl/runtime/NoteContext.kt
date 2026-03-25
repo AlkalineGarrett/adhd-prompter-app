@@ -7,7 +7,7 @@ import java.time.LocalDateTime
  * Interface for cached directive execution.
  * Used to break the circular dependency between dsl.runtime and dsl.cache packages.
  *
- * Phase 1 (Caching Audit): Added to enable view() to execute nested directives through cache.
+ * Added to enable view() to execute nested directives through cache.
  */
 interface CachedExecutorInterface {
     /**
@@ -33,7 +33,7 @@ interface CachedExecutorInterface {
  * Interface for cached execution result.
  * Abstracts the result to avoid circular dependency on cache package types.
  *
- * Phase 1 (Caching Audit): Added for view() transitive dependency tracking.
+ * Added for view() transitive dependency tracking.
  */
 interface CachedExecutionResultInterface {
     /** The display value of the result, or null on error */
@@ -56,17 +56,17 @@ interface CachedExecutionResultInterface {
  * - executor: The executor instance for lambda invocation
  * - viewStack: Stack of note IDs being viewed (for circular dependency detection)
  * - onceCache: Cache for once[...] expression results
- * - mockedTime: Override for current time (used for trigger verification in Phase 3)
+ * - mockedTime: Override for current time (used for trigger verification)
  * - cachedExecutor: Cached directive executor for nested view rendering
  *
  * All fields are optional since different execution contexts may have
  * different subsets available.
  *
- * Milestone 8: Added executor for lambda invocation.
- * Milestone 10: Added viewStack for circular dependency detection in view().
- * Phase 0c: Added onceCache for once[...] expression caching.
- * Phase 3: Added mockedTime for trigger verification.
- * Phase 1 (Caching Audit): Added cachedExecutor for transitive dependency tracking.
+ * Added executor for lambda invocation.
+ * Added viewStack for circular dependency detection in view().
+ * Added onceCache for once[...] expression caching.
+ * Added mockedTime for trigger verification.
+ * Added cachedExecutor for transitive dependency tracking.
  */
 data class NoteContext(
     val notes: List<Note>? = null,

@@ -5,8 +5,8 @@ import org.alkaline.taskbrain.data.Note
 /**
  * Checks if a cached directive result is stale and needs re-execution.
  *
- * Phase 1: Data structures and hashing infrastructure.
- * Phase 4: Added error-based cache decisions.
+ * Data structures and hashing infrastructure.
+ * Added error-based cache decisions.
  *
  * Staleness is determined by comparing cached hashes with current data.
  * The algorithm short-circuits at the first stale dependency for efficiency.

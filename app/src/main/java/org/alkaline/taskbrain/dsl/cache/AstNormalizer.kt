@@ -26,7 +26,7 @@ import java.security.MessageDigest
 /**
  * Normalizes AST for cache key generation.
  *
- * Phase 2: AST normalization for cache keys.
+ * AST normalization for cache keys.
  *
  * This normalizer produces a canonical string representation of the AST
  * that is consistent regardless of syntactic variations:

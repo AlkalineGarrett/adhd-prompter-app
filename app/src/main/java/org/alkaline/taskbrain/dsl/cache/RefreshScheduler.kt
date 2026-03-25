@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Schedules cache invalidations based on refresh triggers.
  *
- * Phase 10: Time trigger scheduler.
+ * Time trigger scheduler.
  *
  * This scheduler:
  * 1. Tracks refresh directives and their computed triggers

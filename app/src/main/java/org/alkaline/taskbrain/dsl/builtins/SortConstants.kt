@@ -11,8 +11,6 @@ import org.alkaline.taskbrain.dsl.runtime.StringVal
  * Full words like "ascending" and "descending" are preferred over abbreviations
  * because mobile keyboards with autocorrect make full words easier to type than
  * abbreviations or quoted strings.
- *
- * Milestone 9.
  */
 object SortConstants {
 

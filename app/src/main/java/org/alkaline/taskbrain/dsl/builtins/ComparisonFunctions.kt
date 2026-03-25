@@ -20,7 +20,7 @@ import java.time.LocalTime
  * Supports comparing numbers, strings, dates, times, and datetimes.
  * Also provides logical operators for boolean operations.
  *
- * Phase 0a: Part of view caching plan - method-style syntax support.
+ * Part of view caching plan - method-style syntax support.
  */
 object ComparisonFunctions {
 
@@ -43,7 +43,7 @@ object ComparisonFunctions {
      * Note: This is an eager `if` - both branches are evaluated before selecting one.
      * This is suitable for pure expressions but not for side-effectful code.
      *
-     * Phase 3: Added for time-based refresh analysis.
+     * Added for time-based refresh analysis.
      */
     private val ifFunction = BuiltinFunction(name = "if") { args, _ ->
         args.requireExactCount(3, "if")

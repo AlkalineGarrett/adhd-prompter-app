@@ -119,7 +119,7 @@ class EditSessionManagerTest {
             result = NumberVal(42.0),
             dependencies = DirectiveDependencies.EMPTY
         )
-        cacheManager.put("hash1", "A", usesSelfAccess = true, result)
+        cacheManager.put("hash1", "A", result)
 
         // Start first session and queue an invalidation
         editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
@@ -127,14 +127,14 @@ class EditSessionManagerTest {
         assertEquals(1, editManager.pendingInvalidationCount())
 
         // Cache should still exist (invalidation is queued, not applied)
-        assertNotNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+        assertNotNull(cacheManager.get("hash1", "A"))
 
         // Start new session - should flush old session's pending invalidations
         editManager.startEditSession(editedNoteId = "F", originatingNoteId = "E")
 
         // Old session's pending invalidations should have been applied
         assertEquals(0, editManager.pendingInvalidationCount())
-        assertNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+        assertNull(cacheManager.get("hash1", "A"))
 
         // New session should be active
         assertEquals("E", editManager.getEditContext()?.originatingNoteId)
@@ -255,18 +255,18 @@ class EditSessionManagerTest {
             result = NumberVal(42.0),
             dependencies = DirectiveDependencies.EMPTY
         )
-        cacheManager.put("hash1", "A", usesSelfAccess = true, result)
+        cacheManager.put("hash1", "A", result)
 
         editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
         editManager.requestInvalidation("A", InvalidationReason.CONTENT_CHANGED)
 
         // Before end - cache should still be present
-        assertNotNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+        assertNotNull(cacheManager.get("hash1", "A"))
 
         editManager.endEditSession()
 
         // After end - cache should be cleared
-        assertNull(cacheManager.get("hash1", "A", usesSelfAccess = true))
+        assertNull(cacheManager.get("hash1", "A"))
         assertEquals(0, editManager.pendingInvalidationCount())
     }
 
@@ -380,14 +380,14 @@ class EditSessionManagerTest {
             dependencies = DirectiveDependencies.EMPTY.copy(dependsOnNoteExistence = true),
             metadataHashes = MetadataHashes(existenceHash = "old-hash")  // Stale hash
         )
-        cacheManager.put("hash1", "A", usesSelfAccess = true, result)
+        cacheManager.put("hash1", "A", result)
 
         // Start edit session
         editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
 
         // Should return cached result even though it's stale (suppressed)
         val retrieved = editAwareManager.getIfValidOrSuppressed(
-            "hash1", "A", usesSelfAccess = true,
+            "hash1", "A",
             testNotes, testNotes[0]
         )
 
@@ -408,11 +408,11 @@ class EditSessionManagerTest {
             dependencies = DirectiveDependencies.EMPTY.copy(dependsOnNoteExistence = true),
             metadataHashes = MetadataHashes(existenceHash = "old-hash")
         )
-        cacheManager.put("hash1", "A", usesSelfAccess = true, result)
+        cacheManager.put("hash1", "A", result)
 
         // No edit session - should do normal staleness check
         val retrieved = editAwareManager.getIfValidOrSuppressed(
-            "hash1", "A", usesSelfAccess = true,
+            "hash1", "A",
             testNotes, testNotes[0]
         )
 
@@ -450,7 +450,7 @@ class EditSessionManagerTest {
             ),
             noteContentHashes = mapOf("B" to ContentHashes(firstLineHash = "old-hash"))
         )
-        cacheManager.put("view-hash", "A", usesSelfAccess = true, viewResult)
+        cacheManager.put("view-hash", "A", viewResult)
 
         // User starts editing Note B from Note A's view
         editManager.startEditSession(editedNoteId = "B", originatingNoteId = "A")
@@ -459,13 +459,13 @@ class EditSessionManagerTest {
         editAwareManager.invalidateForChangedNotes(setOf("A"))
 
         // Note A's cache should NOT be invalidated yet (suppressed)
-        assertNotNull(cacheManager.get("view-hash", "A", usesSelfAccess = true))
+        assertNotNull(cacheManager.get("view-hash", "A"))
 
         // Edit session ends
         editManager.endEditSession()
 
         // Now Note A's cache should be cleared
-        assertNull(cacheManager.get("view-hash", "A", usesSelfAccess = true))
+        assertNull(cacheManager.get("view-hash", "A"))
     }
 
     @Test

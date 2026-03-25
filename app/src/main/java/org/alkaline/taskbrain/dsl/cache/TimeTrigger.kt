@@ -7,7 +7,7 @@ import java.time.LocalTime
 /**
  * Represents a time at which a refresh directive should be re-evaluated.
  *
- * Phase 3: Time-based refresh analysis.
+ * Time-based refresh analysis.
  */
 sealed class TimeTrigger {
     /**

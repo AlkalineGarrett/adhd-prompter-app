@@ -19,7 +19,7 @@ object DirectiveColors {
     val ErrorBorder = Color(0xFFF44336)         // Medium red (box borders)
     val ErrorText = Color(0xFFD32F2F)           // Dark red (inline error text)
 
-    // Warning state - orange palette (Milestone 8)
+    // Warning state - orange palette
     val WarningBackground = Color(0xFFFFF3E0)   // Light orange (chip background)
     val WarningContent = Color(0xFFE65100)      // Dark orange (chip text)
     val WarningBorder = Color(0xFFFF9800)       // Medium orange (box borders)
@@ -41,7 +41,7 @@ object DirectiveColors {
     val ButtonSuccessBackground = Color(0xFF4CAF50) // Green (success flash)
     val ButtonErrorBackground = Color(0xFFF44336)   // Red (error state)
 
-    // View directive - subtle indicator (Milestone 10)
+    // View directive - subtle indicator
     val ViewIndicator = Color(0xFFB0BEC5)       // Blue-gray (left border for views)
     val ViewDivider = Color(0xFFCFD8DC)         // Light blue-gray (divider between viewed notes)
 }

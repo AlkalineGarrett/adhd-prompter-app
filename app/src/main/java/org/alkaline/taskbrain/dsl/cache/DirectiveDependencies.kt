@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.dsl.cache
 /**
  * Tracks what data a directive depends on for cache invalidation.
  *
- * Phase 1: Data structures and hashing infrastructure.
+ * Data structures and hashing infrastructure.
  *
  * Dependencies are categorized into:
  * 1. Per-note content dependencies (first line, non-first line)

@@ -32,9 +32,9 @@ data class DirectiveExecutionResult(
  * Utility for finding directives in note content.
  *
  * A directive is text enclosed in square brackets: [...]
- * Milestone 1: Simple non-nested matching with \[.*?\]
- * Milestone 6: Adds current note context for [.] reference.
- * Milestone 7: Adds note operations for mutations.
+ * Simple non-nested matching with \[.*?\]
+ * Adds current note context for [.] reference.
+ * Adds note operations for mutations.
  */
 object DirectiveFinder {
 
@@ -76,7 +76,7 @@ object DirectiveFinder {
      * Find all directives in the given content.
      * Handles nested brackets for lambda syntax: [lambda[...]]
      *
-     * Milestone 8: Updated to support nested brackets.
+     * Updated to support nested brackets.
      *
      * @param content The note content to search
      * @return List of found directives in order of appearance
@@ -130,10 +130,10 @@ object DirectiveFinder {
      *
      * @param sourceText The directive source text (including brackets)
      * @param notes Optional list of notes for find() operations
-     * @param currentNote Optional current note for [.] reference (Milestone 6)
-     * @param noteOperations Optional note operations for mutations (Milestone 7)
-     * @param viewStack Optional view stack for circular dependency detection (Milestone 10)
-     * @param cachedExecutor Optional cached executor for nested directive execution (Phase 1)
+     * @param currentNote Optional current note for [.] reference
+     * @param noteOperations Optional note operations for mutations
+     * @param viewStack Optional view stack for circular dependency detection
+     * @param cachedExecutor Optional cached executor for nested directive execution
      * @return DirectiveExecutionResult containing the result and any mutations that occurred
      */
     fun executeDirective(
@@ -204,7 +204,7 @@ object DirectiveFinder {
     /**
      * Create an environment with the appropriate context.
      *
-     * Phase 1 (Caching Audit): Added cachedExecutor parameter for transitive dependency tracking.
+     * Added cachedExecutor parameter for transitive dependency tracking.
      */
     private fun createEnvironment(
         notes: List<Note>?,
@@ -227,8 +227,6 @@ object DirectiveFinder {
     /**
      * Check if a value is a no-effect value that produces a warning.
      * These are values that can't be meaningfully displayed or stored.
-     *
-     * Milestone 8.
      */
     private fun checkNoEffectValue(value: org.alkaline.taskbrain.dsl.runtime.DslValue): DirectiveWarningType? {
         return when (value) {
@@ -244,7 +242,7 @@ object DirectiveFinder {
      * @param content The note content (single line)
      * @param lineId The line's effective ID (noteId or temp UUID)
      * @param notes Optional list of notes for find() operations
-     * @param currentNote Optional current note for [.] reference (Milestone 6)
+     * @param currentNote Optional current note for [.] reference
      * @return Map of directive position key to execution result
      */
     fun executeAllDirectives(

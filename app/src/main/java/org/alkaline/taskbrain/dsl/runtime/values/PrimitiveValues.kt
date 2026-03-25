@@ -4,8 +4,6 @@ package org.alkaline.taskbrain.dsl.runtime.values
  * Represents an undefined value.
  * Returned when accessing non-existent data (e.g., out of bounds, missing property, hierarchy beyond depth).
  * Following the design principle: graceful undefined access instead of errors.
- *
- * Milestone 7.
  */
 object UndefinedVal : DslValue() {
     override val typeName: String = "undefined"
@@ -46,7 +44,7 @@ data class StringVal(val value: String) : DslValue() {
 
 /**
  * A boolean value.
- * Milestone 4: Added for matches() function result.
+ * Added for matches() function result.
  */
 data class BooleanVal(val value: Boolean) : DslValue() {
     override val typeName: String = "boolean"

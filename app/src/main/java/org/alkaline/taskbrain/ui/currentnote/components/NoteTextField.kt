@@ -117,8 +117,7 @@ fun NoteTextField(
                         { lineIndex: Int, charOffsetInLine: Int ->
                             val lineState = editorState.lines.getOrNull(lineIndex)
                             val content = lineState?.content ?: ""
-                            val lineId = lineState?.effectiveId ?: "unknown"
-                            val displayResult = DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
+                            val displayResult = DirectiveSegmenter.buildDisplayText(content, directiveResults)
                             val alarmRange = displayResult.directiveDisplayRanges.find {
                                 it.isAlarm && charOffsetInLine in it.sourceRange
                             }

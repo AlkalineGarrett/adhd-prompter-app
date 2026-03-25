@@ -5,7 +5,6 @@ import org.alkaline.taskbrain.dsl.runtime.Environment
 
 /**
  * Schedule frequency for scheduled actions.
- * Phase 0f.
  */
 enum class ScheduleFrequency(val identifier: String) {
     DAILY("daily"),
@@ -22,7 +21,6 @@ enum class ScheduleFrequency(val identifier: String) {
  * A button value representing a clickable action.
  * Created by the button() function to display a button that executes an action when clicked.
  *
- * Phase 0f.
  *
  * @param label The button label displayed to the user
  * @param action The lambda to execute when clicked
@@ -63,7 +61,6 @@ data class ButtonVal(
  * A scheduled action value representing a time-triggered action.
  * Created by the schedule() function to execute an action on a schedule.
  *
- * Phase 0f.
  *
  * @param frequency The schedule frequency (daily, hourly, weekly)
  * @param action The lambda to execute on schedule

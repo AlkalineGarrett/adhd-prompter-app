@@ -5,7 +5,7 @@ import org.alkaline.taskbrain.dsl.language.*
 /**
  * Validates that directives follow mutation and temporal rules.
  *
- * Phase 9: Mutation handling for caching.
+ * Mutation handling for caching.
  *
  * Rules:
  * 1. **Bare mutations** - `new`, `maybe_new`, `.append` at top level require

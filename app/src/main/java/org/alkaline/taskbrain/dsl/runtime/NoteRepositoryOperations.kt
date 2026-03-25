@@ -12,8 +12,6 @@ import org.alkaline.taskbrain.data.Note
  * This class provides the note mutation capabilities needed by Mindl
  * (new, maybe_new, append, property setting) by directly interacting
  * with Firestore.
- *
- * Milestone 7.
  */
 class NoteRepositoryOperations(
     private val db: FirebaseFirestore,

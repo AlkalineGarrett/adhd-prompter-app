@@ -5,8 +5,8 @@ import org.alkaline.taskbrain.dsl.runtime.DslValue
 /**
  * A cached directive execution result with its dependencies and hashes.
  *
- * Phase 1: Data structures and hashing infrastructure.
- * Phase 4: Added error support for error caching.
+ * Data structures and hashing infrastructure.
+ * Added error support for error caching.
  *
  * This is stored in cache and used to check if the cached result is still valid.
  * A cached result may be either a success (result != null) or an error (error != null),

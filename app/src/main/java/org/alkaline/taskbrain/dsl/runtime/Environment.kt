@@ -7,11 +7,11 @@ import java.time.LocalDateTime
  * Execution environment for Mindl evaluation.
  * Holds variable bindings, context data, and resources for directive execution.
  *
- * Milestone 1: Minimal implementation with variables and scopes.
- * Milestone 5: Adds note list for find() operations.
- * Milestone 6: Adds current note for [.] reference and property access.
- * Milestone 7: Adds note operations for mutations and hierarchy navigation.
- * Milestone 10: Adds view stack for circular dependency detection.
+ * Minimal implementation with variables and scopes.
+ * Adds note list for find() operations.
+ * Adds current note for [.] reference and property access.
+ * Adds note operations for mutations and hierarchy navigation.
+ * Adds view stack for circular dependency detection.
  */
 class Environment private constructor(
     private val parent: Environment?,
@@ -59,11 +59,11 @@ class Environment private constructor(
      * Create a child environment for nested scopes.
      * Inherits the note context from the parent.
      *
-     * Milestone 8: Propagates executor for lambda invocation.
-     * Milestone 10: Propagates view stack for circular dependency detection.
-     * Phase 0c: Propagates onceCache for once[...] expression caching.
-     * Phase 3: Propagates mockedTime for trigger verification.
-     * Phase 1 (Caching Audit): Propagates cachedExecutor for transitive dependency tracking.
+     * Propagates executor for lambda invocation.
+     * Propagates view stack for circular dependency detection.
+     * Propagates onceCache for once[...] expression caching.
+     * Propagates mockedTime for trigger verification.
+     * Propagates cachedExecutor for transitive dependency tracking.
      */
     fun child(): Environment = Environment(
         parent = this,
@@ -111,16 +111,12 @@ class Environment private constructor(
     /**
      * Get the executor for lambda invocation.
      * Searches up the parent chain if not set locally.
-     *
-     * Milestone 8.
      */
     fun getExecutor(): Executor? = context.executor ?: parent?.getExecutor()
 
     /**
      * Create a child environment with an executor set.
      * Used by Executor to inject itself for lambda invocation.
-     *
-     * Milestone 8.
      */
     fun withExecutor(executor: Executor): Environment = Environment(
         parent = this,
@@ -136,13 +132,11 @@ class Environment private constructor(
         )
     )
 
-    // region Cached Executor (Phase 1 - Caching Audit)
+    // region Cached Executor
 
     /**
      * Get the cached executor for nested directive execution.
      * Used by view() to execute nested directives with proper dependency tracking.
-     *
-     * Phase 1 (Caching Audit).
      */
     fun getCachedExecutor(): CachedExecutorInterface? =
         context.cachedExecutor ?: parent?.getCachedExecutor()
@@ -150,8 +144,6 @@ class Environment private constructor(
     /**
      * Create a child environment with a cached executor set.
      * Used by CachedDirectiveExecutor to inject itself for nested execution.
-     *
-     * Phase 1 (Caching Audit).
      */
     fun withCachedExecutor(cachedExecutor: CachedExecutorInterface): Environment = Environment(
         parent = this,
@@ -169,57 +161,45 @@ class Environment private constructor(
 
     // endregion
 
-    // region OnceCache (Phase 0c)
+    // region OnceCache
 
     /**
      * Get the once cache for caching once[...] expression results.
      * Searches up the parent chain if not set locally.
-     *
-     * Phase 0c.
      */
     fun getOnceCache(): OnceCache? = context.onceCache ?: parent?.getOnceCache()
 
     /**
      * Get the once cache, creating a default in-memory cache if none exists.
      * This ensures once[...] expressions always have a cache available.
-     *
-     * Phase 0c.
      */
     fun getOrCreateOnceCache(): OnceCache = getOnceCache() ?: InMemoryOnceCache()
 
     // endregion
 
-    // region View Stack (Milestone 10)
+    // region View Stack
 
     /**
      * Get the current view stack.
      * Used for circular dependency detection in view().
-     *
-     * Milestone 10.
      */
     fun getViewStack(): List<String> = context.viewStack.ifEmpty { parent?.getViewStack() ?: emptyList() }
 
     /**
      * Check if a note ID is already in the view stack.
      * Used for circular dependency detection.
-     *
-     * Milestone 10.
      */
     fun isInViewStack(noteId: String): Boolean = getViewStack().contains(noteId)
 
     /**
      * Get a formatted string of the view stack path for error messages.
      * Example: "note1 → note2 → note3"
-     *
-     * Milestone 10.
      */
     fun getViewStackPath(): String = getViewStack().joinToString(" → ")
 
     /**
      * Create a child environment with a note ID added to the view stack.
      * Used when entering a view to track the dependency chain.
-     *
-     * Milestone 10.
      */
     fun pushViewStack(noteId: String): Environment = Environment(
         parent = this,
@@ -237,21 +217,17 @@ class Environment private constructor(
 
     // endregion
 
-    // region Mocked Time (Phase 3)
+    // region Mocked Time
 
     /**
      * Get the mocked time for trigger verification.
      * Returns null if not mocking time (use real time).
-     *
-     * Phase 3.
      */
     fun getMockedTime(): LocalDateTime? = context.mockedTime ?: parent?.getMockedTime()
 
     /**
      * Create a child environment with mocked time for trigger verification.
      * When mocked time is set, date/time/datetime functions return values based on it.
-     *
-     * Phase 3.
      */
     fun withMockedTime(time: LocalDateTime): Environment = Environment(
         parent = this,
@@ -272,8 +248,6 @@ class Environment private constructor(
     /**
      * Find a note by ID from the available notes.
      * Used for hierarchy navigation (.up, .root).
-     *
-     * Milestone 7.
      */
     fun getNoteById(noteId: String): Note? {
         return getNotes()?.find { it.id == noteId }
@@ -283,8 +257,6 @@ class Environment private constructor(
      * Get the parent note of a given note.
      * Returns null if the note has no parent or parent is not found.
      * Used for hierarchy navigation (.up).
-     *
-     * Milestone 7.
      */
     fun getParentNote(note: Note): Note? {
         val parentId = note.parentNoteId ?: return null

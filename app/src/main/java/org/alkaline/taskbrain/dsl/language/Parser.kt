@@ -4,16 +4,16 @@ package org.alkaline.taskbrain.dsl.language
  * Recursive descent parser for Mindl (the TaskBrain DSL).
  * Produces an AST from a sequence of tokens.
  *
- * Milestone 3: Adds parenthesized calls with named arguments.
+ * Adds parenthesized calls with named arguments.
  * Supports two calling styles:
  * 1. Space-separated: [a b c] -> a(b(c)) (right-to-left nesting)
  * 2. Parenthesized: [add(1, 2)] or [foo(bar: "baz")]
  *
  * Space-separated nesting still works inside parens: [a(b c, d)] -> a(b(c), d)
  *
- * Milestone 4: Adds pattern(...) special parsing for mobile-friendly pattern matching.
- * Milestone 6: Adds dot operator for current note reference and property access.
- * Milestone 7: Adds assignment syntax and statement separation.
+ * Adds pattern(...) special parsing for mobile-friendly pattern matching.
+ * Adds dot operator for current note reference and property access.
+ * Adds assignment syntax and statement separation.
  */
 class Parser(private val tokens: List<Token>, private val source: String) {
 
@@ -50,7 +50,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Parse an expression.
      * Handles statement lists (semicolon-separated), assignments, and call chains.
      *
-     * Milestone 7: Adds statement list and assignment support.
+     * Adds statement list and assignment support.
      */
     private fun parseExpression(): Expression {
         return parseStatementList()
@@ -59,8 +59,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     /**
      * Parse a list of statements separated by semicolons.
      * Returns a StatementList if multiple statements, otherwise the single statement.
-     *
-     * Milestone 7.
      */
     private fun parseStatementList(): Expression {
         val position = peek().position
@@ -83,8 +81,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Parse a single statement (assignment or expression).
      * Assignment has the form: target : value
      * where target is an identifier (variable) or property access.
-     *
-     * Milestone 7.
      */
     private fun parseStatement(): Expression {
         val position = peek().position
@@ -160,9 +156,9 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Example: expr.append("x") -> MethodCall(expr, "append", ["x"], [])
      * Example: [[i.path](.)] -> LambdaExpr invoked with current note
      *
-     * Milestone 6: Property access chains.
-     * Milestone 7: Method calls on expressions.
-     * Phase 0b: Immediate lambda invocation with (args).
+     * Property access chains.
+     * Method calls on expressions.
+     * Immediate lambda invocation with (args).
      */
     private fun parsePostfix(expr: Expression): Expression {
         var result = expr
@@ -183,7 +179,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                         result = PropertyAccess(result, propName, dotPosition)
                     }
                 }
-                // Phase 0b: Immediate invocation - expr(args) where expr is a lambda
+                // Immediate invocation - expr(args) where expr is a lambda
                 result is LambdaExpr && match(TokenType.LPAREN) -> {
                     val (positionalArgs, namedArgs) = parseMethodArguments()
                     result = LambdaInvocation(result, positionalArgs, namedArgs, result.position)
@@ -198,8 +194,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     /**
      * Parse method arguments inside parentheses.
      * Called after LPAREN has been consumed.
-     *
-     * Milestone 7.
      */
     private fun parseMethodArguments(): Pair<List<Expression>, List<NamedArg>> {
         val positionalArgs = mutableListOf<Expression>()
@@ -235,7 +229,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Check if we're at the start of another expression.
      * Not at: ], ), ,, :, ;, or EOF
      *
-     * Milestone 7: Added SEMICOLON as a boundary.
+     * Added SEMICOLON as a boundary.
      */
     private fun isAtExpressionStart(): Boolean {
         return !check(TokenType.RBRACKET) &&
@@ -249,7 +243,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     /**
      * Parse a primary expression (literal, identifier, current note ref, deferred block, or parenthesized call).
      *
-     * Phase 0b: Added support for:
+     * Added support for:
      * - `[...]` as implicit lambda with parameter `i`
      * - `func[x]` as equivalent to `func([x])`
      * - `(a, b)[expr]` for multi-arg lambdas
@@ -287,11 +281,11 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 }
             }
             match(TokenType.LBRACKET) -> {
-                // Phase 0b: `[...]` in expression position is an implicit lambda with parameter `i`
+                // `[...]` in expression position is an implicit lambda with parameter `i`
                 parseDeferredBlock(previous().position)
             }
             check(TokenType.LPAREN) && isMultiArgLambdaStart() -> {
-                // Phase 0b: `(a, b)[expr]` multi-arg lambda syntax
+                // `(a, b)[expr]` multi-arg lambda syntax
                 parseMultiArgLambda()
             }
             match(TokenType.IDENTIFIER) -> {
@@ -304,16 +298,16 @@ class Parser(private val tokens: List<Token>, private val source: String) {
                 if (name == "lambda" && check(TokenType.LBRACKET)) {
                     parseLambdaExpression(position)
                 } else if (name == "once" && check(TokenType.LBRACKET)) {
-                    // Phase 0c: once[...] creates a cached execution block
+                    // once[...] creates a cached execution block
                     parseOnceExpression(position)
                 } else if (name == "refresh" && check(TokenType.LBRACKET)) {
-                    // Phase 0d: refresh[...] creates a time-triggered refresh block
+                    // refresh[...] creates a time-triggered refresh block
                     parseRefreshExpression(position)
                 } else if (name == "later") {
-                    // Phase 0e: later creates a deferred reference
+                    // later creates a deferred reference
                     parseLaterExpression(position)
                 } else if (check(TokenType.LBRACKET)) {
-                    // Phase 0b: func[x] → func([x])
+                    // func[x] → func([x])
                     advance() // consume LBRACKET
                     val lambdaBody = parseDeferredBlock(previous().position)
                     CallExpr(name, listOf(lambdaBody), position)
@@ -339,8 +333,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     /**
      * Check if we're at the start of a multi-arg lambda: (a, b)[expr]
      * Looks ahead to see if there's a pattern of identifiers, commas, RPAREN, LBRACKET.
-     *
-     * Phase 0b.
      */
     private fun isMultiArgLambdaStart(): Boolean {
         if (!check(TokenType.LPAREN)) return false
@@ -379,8 +371,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     /**
      * Parse a multi-arg lambda: (a, b)[expr]
      * Called when LPAREN is current and we've verified it's a multi-arg lambda.
-     *
-     * Phase 0b.
      */
     private fun parseMultiArgLambda(): LambdaExpr {
         val position = peek().position
@@ -409,8 +399,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      * Parse a deferred block: [expr] where expr can be multi-statement.
      * Returns a LambdaExpr with implicit parameter `i`.
      * Called after LBRACKET has been consumed.
-     *
-     * Phase 0b.
      */
     private fun parseDeferredBlock(position: Int): LambdaExpr {
         val body = parseExpression()
@@ -520,7 +508,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     // ========================================================================
-    // Pattern Parsing (Milestone 4)
+    // Pattern Parsing
     // ========================================================================
 
     /**
@@ -674,7 +662,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     // ========================================================================
-    // Lambda Parsing (Milestone 8)
+    // Lambda Parsing
     // ========================================================================
 
     /**
@@ -683,8 +671,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      *
      * The lambda implicitly binds the parameter 'i'.
      * Example: lambda[i.path] creates LambdaExpr(["i"], PropertyAccess(...))
-     *
-     * Milestone 8.
      */
     private fun parseLambdaExpression(position: Int): LambdaExpr {
         consume(TokenType.LBRACKET, "Expected '[' after 'lambda'")
@@ -694,7 +680,7 @@ class Parser(private val tokens: List<Token>, private val source: String) {
     }
 
     // ========================================================================
-    // Execution Block Parsing (Phase 0c)
+    // Execution Block Parsing
     // ========================================================================
 
     /**
@@ -703,8 +689,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      *
      * The body is evaluated once and the result is cached permanently.
      * Example: once[datetime] creates OnceExpr(CallExpr("datetime", []))
-     *
-     * Phase 0c.
      */
     private fun parseOnceExpression(position: Int): OnceExpr {
         consume(TokenType.LBRACKET, "Expected '[' after 'once'")
@@ -719,8 +703,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      *
      * The body is re-evaluated at analyzed trigger times based on time comparisons.
      * Example: refresh[if(time.gt("12:00"), X, Y)] creates RefreshExpr
-     *
-     * Phase 0d.
      */
     private fun parseRefreshExpression(position: Int): RefreshExpr {
         consume(TokenType.LBRACKET, "Expected '[' after 'refresh'")
@@ -735,8 +717,6 @@ class Parser(private val tokens: List<Token>, private val source: String) {
      *
      * `later expr` creates a deferred reference (lambda with parameter i).
      * `later[...]` is redundant - just parses the bracket block (later is ignored).
-     *
-     * Phase 0e.
      */
     private fun parseLaterExpression(position: Int): LambdaExpr {
         // Check if followed by bracket - if so, later is redundant

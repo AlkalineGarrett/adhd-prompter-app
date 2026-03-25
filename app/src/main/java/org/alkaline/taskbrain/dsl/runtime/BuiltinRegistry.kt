@@ -28,9 +28,9 @@ data class BuiltinFunction(
 /**
  * Registry of all builtin functions available in Mindl.
  *
- * Milestone 3: Adds arithmetic functions.
- * Milestone 5: Adds note functions (find).
- * Milestone 9: Adds list functions (sort, first).
+ * Adds arithmetic functions.
+ * Adds note functions (find).
+ * Adds list functions (sort, first).
  */
 object BuiltinRegistry {
     private val functions = mutableMapOf<String, BuiltinFunction>()
@@ -45,7 +45,7 @@ object BuiltinRegistry {
         NoteFunctions.register(this)
         ListFunctions.register(this)
         SortConstants.register(this)
-        ActionFunctions.register(this)  // Phase 0f
+        ActionFunctions.register(this)
     }
 
     /**

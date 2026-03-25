@@ -11,7 +11,7 @@ import org.alkaline.taskbrain.dsl.runtime.StringVal
  * Since Mindl has no escape sequences in strings (to make typing on mobile
  * easier), special characters are inserted using these constant functions.
  *
- * Milestone 2: qt, nl, tab, ret
+ * qt, nl, tab, ret
  */
 object CharacterConstants {
 

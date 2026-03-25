@@ -654,7 +654,7 @@ class NoteRepository(
         val newIds = arrayOfNulls<String>(newLinesContent.size)
         val oldConsumed = BooleanArray(existingLines.size)
 
-        // Phase 1: Exact matches
+        // Exact matches
         newLinesContent.forEachIndexed { index, content ->
             val indices = contentToOldIndices[content]
             if (!indices.isNullOrEmpty()) {
@@ -664,7 +664,7 @@ class NoteRepository(
             }
         }
 
-        // Phase 2: Positional matches for modifications
+        // Positional matches for modifications
         newLinesContent.forEachIndexed { index, _ ->
             if (newIds[index] == null) {
                 if (index < existingLines.size && !oldConsumed[index]) {

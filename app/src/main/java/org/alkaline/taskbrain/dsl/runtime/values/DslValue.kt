@@ -8,9 +8,9 @@ import java.time.LocalTime
  * Runtime values in Mindl.
  * Each subclass represents a different type of value that can result from evaluation.
  *
- * Milestone 2: Adds DateVal, TimeVal, DateTimeVal.
- * Milestone 4: Adds PatternVal for pattern matching, BooleanVal for matches().
- * Milestone 5: Adds NoteVal and ListVal for find() function.
+ * Adds DateVal, TimeVal, DateTimeVal.
+ * Adds PatternVal for pattern matching, BooleanVal for matches().
+ * Adds NoteVal and ListVal for find() function.
  */
 sealed class DslValue {
     /**

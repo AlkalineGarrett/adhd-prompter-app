@@ -16,7 +16,7 @@ import org.alkaline.taskbrain.dsl.runtime.StringVal
 /**
  * Action-related builtin functions: button, schedule, and alarm.
  *
- * Phase 0f: Part of view caching plan - button and schedule support.
+ * Part of view caching plan - button and schedule support.
  * Alarm identity: alarm() function for stable alarm references.
  */
 object ActionFunctions {

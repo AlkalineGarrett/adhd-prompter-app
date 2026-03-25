@@ -106,11 +106,9 @@ internal fun ControlledLineView(
         textMeasurer.measure(" ", textStyle).size.width.toFloat()
     }
 
-    val lineId = lineState.effectiveId
-
     // Build display text info to map between source and display coordinates
-    val displayResult = remember(content, lineId, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, lineId, directiveResults)
+    val displayResult = remember(content, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(content, directiveResults)
     }
 
     // Convert line selection to content selection range (in source coordinates)

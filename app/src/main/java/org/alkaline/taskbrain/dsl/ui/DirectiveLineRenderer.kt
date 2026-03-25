@@ -61,7 +61,6 @@ enum class ButtonExecutionState {
  * Editing happens via DirectiveEditRow when a directive is tapped.
  *
  * @param sourceContent The original line content with directive source text
- * @param lineIndex The line number (0-indexed) - used for position-based directive keys
  * @param directiveResults Map of directive key to execution result (keys are position-based)
  * @param textStyle The text style for rendering
  * @param onDirectiveTap Called when a directive is tapped, with position-based key and source text
@@ -77,7 +76,6 @@ enum class ButtonExecutionState {
 @Composable
 fun DirectiveLineContent(
     sourceContent: String,
-    lineId: String,
     directiveResults: Map<String, DirectiveResult>,
     textStyle: TextStyle,
     onDirectiveTap: (directiveKey: String, sourceText: String) -> Unit,
@@ -88,8 +86,8 @@ fun DirectiveLineContent(
     modifier: Modifier = Modifier
 ) {
     // Build display text with directive results replacing source
-    val displayResult = remember(sourceContent, lineId, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(sourceContent, lineId, directiveResults)
+    val displayResult = remember(sourceContent, directiveResults) {
+        DirectiveSegmenter.buildDisplayText(sourceContent, directiveResults)
     }
 
     if (displayResult.directiveDisplayRanges.isEmpty()) {
@@ -291,8 +289,8 @@ private val ViewEditIconSize = 16.dp
  * - Each note section is independently tappable for inline editing
  * - Notes are separated by "---" dividers (non-editable)
  *
- * Milestone 10: Initial view functionality
- * Phase 1: Added edit button and note tap callbacks
+ * Initial view functionality
+ * Added edit button and note tap callbacks
  */
 @Composable
 private fun ViewDirectiveContent(
@@ -594,8 +592,6 @@ private fun Modifier.dashedBorder(color: Color): Modifier = this.drawBehind {
 /**
  * Modifier for view directive content - draws a left border indicator.
  * This provides a subtle visual distinction for viewed content.
- *
- * Milestone 10.
  */
 private fun Modifier.viewIndicator(color: Color): Modifier = this.drawBehind {
     val strokeWidth = 2.dp.toPx()

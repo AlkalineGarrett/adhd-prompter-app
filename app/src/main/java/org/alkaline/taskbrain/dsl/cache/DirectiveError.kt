@@ -6,7 +6,7 @@ package org.alkaline.taskbrain.dsl.cache
  * Errors are categorized by whether they are deterministic (will always occur
  * given the same input) or non-deterministic (might succeed on retry).
  *
- * Phase 4: Error classification for caching.
+ * Error classification for caching.
  *
  * Deterministic errors are cached because re-execution will produce the same error.
  * Non-deterministic errors are NOT cached - retry on next staleness check.

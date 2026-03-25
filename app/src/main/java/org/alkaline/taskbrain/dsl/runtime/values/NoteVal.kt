@@ -11,9 +11,9 @@ import org.alkaline.taskbrain.dsl.runtime.NotePropertyHandler
  * A note value, wrapping a Note object from the data layer.
  * Created by the find() function or note references.
  *
- * Milestone 5: Basic NoteVal with serialization.
- * Milestone 6: Adds property access for [.path], [.created], etc.
- * Milestone 7: Adds property setting and method calls (.append).
+ * Basic NoteVal with serialization.
+ * Adds property access for [.path], [.created], etc.
+ * Adds property setting and method calls (.append).
  *
  * Property access and method calls are delegated to [NotePropertyHandler] and [NoteMethodHandler].
  */

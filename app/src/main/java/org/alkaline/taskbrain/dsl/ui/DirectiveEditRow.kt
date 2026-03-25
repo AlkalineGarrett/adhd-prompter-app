@@ -64,7 +64,7 @@ private const val FontSizeScale = 0.9f
  * @param onCancel Called when user cancels the edit (X button)
  * @param onHeightMeasured Called with the measured height in pixels after layout
  *
- * Milestone 8: Added warningMessage parameter.
+ * Added warningMessage parameter.
  */
 @Composable
 fun DirectiveEditRow(
@@ -190,7 +190,7 @@ fun DirectiveEditRow(
         }
 
         // Warning message row (if present) - below the edit row, aligned with text field
-        // Milestone 8: Added for no-effect warnings.
+        // Added for no-effect warnings.
         if (warningMessage != null) {
             Row(
                 modifier = Modifier

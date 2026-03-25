@@ -34,7 +34,7 @@ class NoteLineTracker(
         val newIds = arrayOfNulls<String>(newLinesContent.size)
         val oldConsumed = BooleanArray(oldLines.size)
 
-        // Phase 1: Exact matches
+        // Exact matches
         newLinesContent.forEachIndexed { index, content ->
             val indices = contentToOldIndices[content]
             if (!indices.isNullOrEmpty()) {
@@ -44,7 +44,7 @@ class NoteLineTracker(
             }
         }
 
-        // Phase 2: Similarity-based matching for modifications and splits.
+        // Similarity-based matching for modifications and splits.
         performSimilarityMatching(
             unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
             unconsumedOldIndices = oldLines.indices.filter { !oldConsumed[it] },

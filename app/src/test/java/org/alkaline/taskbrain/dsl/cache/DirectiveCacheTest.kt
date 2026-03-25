@@ -2,8 +2,6 @@ package org.alkaline.taskbrain.dsl.cache
 
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.dsl.runtime.NumberVal
-import org.alkaline.taskbrain.dsl.runtime.StringVal
-import org.alkaline.taskbrain.util.CacheStats
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -33,62 +31,6 @@ class DirectiveCacheTest {
             dependencies = deps,
             metadataHashes = metadataHashes
         )
-    }
-
-    // endregion
-
-    // region GlobalDirectiveCache Tests
-
-    @Test
-    fun `GlobalDirectiveCache stores and retrieves results`() {
-        val cache = GlobalDirectiveCache()
-
-        val result = createSuccessResult(42)
-        cache.put("hash1", result)
-
-        assertEquals(result, cache.get("hash1"))
-    }
-
-    @Test
-    fun `GlobalDirectiveCache returns null for missing key`() {
-        val cache = GlobalDirectiveCache()
-
-        assertNull(cache.get("missing"))
-    }
-
-    @Test
-    fun `GlobalDirectiveCache respects max size`() {
-        val cache = GlobalDirectiveCache(maxSize = 3)
-
-        cache.put("hash1", createSuccessResult(1))
-        cache.put("hash2", createSuccessResult(2))
-        cache.put("hash3", createSuccessResult(3))
-        cache.put("hash4", createSuccessResult(4))
-
-        assertEquals(3, cache.stats().size)
-        assertNull(cache.get("hash1"))  // Evicted
-        assertEquals(4, (cache.get("hash4")?.result as? NumberVal)?.value?.toInt())
-    }
-
-    @Test
-    fun `GlobalDirectiveCache remove works`() {
-        val cache = GlobalDirectiveCache()
-
-        cache.put("hash1", createSuccessResult(1))
-        cache.remove("hash1")
-
-        assertNull(cache.get("hash1"))
-    }
-
-    @Test
-    fun `GlobalDirectiveCache clear removes all entries`() {
-        val cache = GlobalDirectiveCache()
-
-        cache.put("hash1", createSuccessResult(1))
-        cache.put("hash2", createSuccessResult(2))
-        cache.clear()
-
-        assertEquals(0, cache.stats().size)
     }
 
     // endregion
@@ -216,43 +158,43 @@ class DirectiveCacheTest {
     }
 
     @Test
-    fun `manager routes self-less directives to global cache`() {
+    fun `manager stores and retrieves results`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = false, result)
-        val retrieved = manager.get("hash1", "note1", usesSelfAccess = false)
+        manager.put("hash1", "note1", result)
+        val retrieved = manager.get("hash1", "note1")
 
         assertEquals(result, retrieved)
     }
 
     @Test
-    fun `manager routes self-referencing directives to per-note cache`() {
+    fun `manager stores per-note results`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = true, result)
-        val retrieved = manager.get("hash1", "note1", usesSelfAccess = true)
+        manager.put("hash1", "note1", result)
+        val retrieved = manager.get("hash1", "note1")
 
         assertEquals(result, retrieved)
     }
 
     @Test
-    fun `manager cache is per-note even for non-self-access`() {
+    fun `manager cache is per-note`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = false, result)
-        val retrievedFromNote2 = manager.get("hash1", "note2", usesSelfAccess = false)
+        manager.put("hash1", "note1", result)
+        val retrievedFromNote2 = manager.get("hash1", "note2")
 
         assertNull(retrievedFromNote2)
         // Same note finds it
-        assertEquals(result, manager.get("hash1", "note1", usesSelfAccess = false))
+        assertEquals(result, manager.get("hash1", "note1"))
     }
 
     @Test
     fun `manager per-note cache is not shared across notes`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = true, result)
-        val retrievedFromNote2 = manager.get("hash1", "note2", usesSelfAccess = true)
+        manager.put("hash1", "note1", result)
+        val retrievedFromNote2 = manager.get("hash1", "note2")
 
         assertNull(retrievedFromNote2)
     }
@@ -265,12 +207,11 @@ class DirectiveCacheTest {
             MetadataHashes(existenceHash = "old-hash")
         )
 
-        manager.put("hash1", "note1", usesSelfAccess = false, result)
+        manager.put("hash1", "note1", result)
 
         // Current notes have different existence hash
         val retrieved = manager.getIfValid(
             "hash1", "note1",
-            usesSelfAccess = false,
             currentNotes = testNotes,
             currentNote = testNotes[0]
         )
@@ -287,11 +228,10 @@ class DirectiveCacheTest {
             MetadataHashes(existenceHash = existenceHash)
         )
 
-        manager.put("hash1", "note1", usesSelfAccess = false, result)
+        manager.put("hash1", "note1", result)
 
         val retrieved = manager.getIfValid(
             "hash1", "note1",
-            usesSelfAccess = false,
             currentNotes = testNotes,
             currentNote = testNotes[0]
         )
@@ -303,11 +243,10 @@ class DirectiveCacheTest {
     fun `manager getIfValid returns null for non-deterministic errors`() {
         val errorResult = CachedDirectiveResult.error(NetworkError("Connection failed"))
 
-        manager.put("hash1", "note1", usesSelfAccess = false, errorResult)
+        manager.put("hash1", "note1", errorResult)
 
         val retrieved = manager.getIfValid(
             "hash1", "note1",
-            usesSelfAccess = false,
             currentNotes = testNotes,
             currentNote = testNotes[0]
         )
@@ -319,11 +258,10 @@ class DirectiveCacheTest {
     fun `manager getIfValid returns deterministic errors`() {
         val errorResult = CachedDirectiveResult.error(SyntaxError("Parse error"))
 
-        manager.put("hash1", "note1", usesSelfAccess = false, errorResult)
+        manager.put("hash1", "note1", errorResult)
 
         val retrieved = manager.getIfValid(
             "hash1", "note1",
-            usesSelfAccess = false,
             currentNotes = testNotes,
             currentNote = testNotes[0]
         )
@@ -335,75 +273,48 @@ class DirectiveCacheTest {
     fun `manager invalidateForNotes clears per-note caches`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = true, result)
-        manager.put("hash1", "note2", usesSelfAccess = true, result)
+        manager.put("hash1", "note1", result)
+        manager.put("hash1", "note2", result)
         manager.invalidateForNotes(setOf("note1"))
 
-        assertNull(manager.get("hash1", "note1", usesSelfAccess = true))
-        assertEquals(result, manager.get("hash1", "note2", usesSelfAccess = true))
+        assertNull(manager.get("hash1", "note1"))
+        assertEquals(result, manager.get("hash1", "note2"))
     }
 
     @Test
     fun `manager clearNote clears only specified note`() {
         val result = createSuccessResult(42)
 
-        manager.put("hash1", "note1", usesSelfAccess = true, result)
-        manager.put("hash1", "note2", usesSelfAccess = true, result)
+        manager.put("hash1", "note1", result)
+        manager.put("hash1", "note2", result)
         manager.clearNote("note1")
 
-        assertNull(manager.get("hash1", "note1", usesSelfAccess = true))
-        assertEquals(result, manager.get("hash1", "note2", usesSelfAccess = true))
+        assertNull(manager.get("hash1", "note1"))
+        assertEquals(result, manager.get("hash1", "note2"))
     }
 
     @Test
-    fun `manager clearAll clears both caches`() {
+    fun `manager clearAll clears all caches`() {
         val result = createSuccessResult(42)
 
-        manager.put("global", "note1", usesSelfAccess = false, result)
-        manager.put("perNote", "note1", usesSelfAccess = true, result)
+        manager.put("global", "note1", result)
+        manager.put("perNote", "note1", result)
         manager.clearAll()
 
-        assertNull(manager.get("global", "note1", usesSelfAccess = false))
-        assertNull(manager.get("perNote", "note1", usesSelfAccess = true))
+        assertNull(manager.get("global", "note1"))
+        assertNull(manager.get("perNote", "note1"))
     }
 
     @Test
-    fun `manager stats returns combined statistics`() {
-        manager.put("hash1", "note1", usesSelfAccess = false, createSuccessResult(1))
-        manager.put("hash2", "note1", usesSelfAccess = true, createSuccessResult(2))
-        manager.put("hash3", "note2", usesSelfAccess = true, createSuccessResult(3))
+    fun `manager stats returns per-note statistics`() {
+        manager.put("hash1", "note1", createSuccessResult(1))
+        manager.put("hash2", "note1", createSuccessResult(2))
+        manager.put("hash3", "note2", createSuccessResult(3))
 
         val stats = manager.stats()
 
-        // All entries go to per-note cache (global cache not used)
-        assertEquals(0, stats.global.size)
-        assertEquals(2, stats.perNote.noteCount)
-        assertEquals(3, stats.perNote.totalEntries)
-    }
-
-    // endregion
-
-    // region CombinedCacheStats Tests
-
-    @Test
-    fun `CombinedCacheStats toLogString formats correctly`() {
-        val stats = CombinedCacheStats(
-            global = CacheStats(size = 50, maxSize = 1000, utilizationPercent = 5),
-            perNote = PerNoteCacheStats(
-                noteCount = 10,
-                maxNotes = 500,
-                totalEntries = 75,
-                maxEntriesPerNote = 100,
-                utilizationPercent = 7
-            )
-        )
-
-        val log = stats.toLogString()
-
-        assertTrue(log.contains("5%"))
-        assertTrue(log.contains("50/1000"))
-        assertTrue(log.contains("75 entries"))
-        assertTrue(log.contains("10 notes"))
+        assertEquals(2, stats.noteCount)
+        assertEquals(3, stats.totalEntries)
     }
 
     // endregion

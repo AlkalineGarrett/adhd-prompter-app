@@ -5,7 +5,7 @@ import org.alkaline.taskbrain.data.Note
 /**
  * Collects and merges transitive dependencies during directive execution.
  *
- * Phase 7: Transitive dependency merging.
+ * Transitive dependency merging.
  *
  * When directive A calls directive B, A should inherit B's dependencies.
  * This collector tracks:

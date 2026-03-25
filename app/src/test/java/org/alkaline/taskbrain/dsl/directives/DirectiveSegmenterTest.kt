@@ -14,13 +14,13 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `segmentLine returns empty list for empty content`() {
-        val segments = DirectiveSegmenter.segmentLine("", TEST_LINE_ID, emptyMap())
+        val segments = DirectiveSegmenter.segmentLine("", emptyMap())
         assertTrue(segments.isEmpty())
     }
 
     @Test
     fun `segmentLine returns single text segment for content without directives`() {
-        val segments = DirectiveSegmenter.segmentLine("Hello world", TEST_LINE_ID, emptyMap())
+        val segments = DirectiveSegmenter.segmentLine("Hello world", emptyMap())
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Text
@@ -32,7 +32,7 @@ class DirectiveSegmenterTest {
     fun `segmentLine returns directive segment for single directive`() {
         val content = "[42]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val segments = DirectiveSegmenter.segmentLine(content, TEST_LINE_ID, results)
+        val segments = DirectiveSegmenter.segmentLine(content, results)
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Directive
@@ -45,7 +45,7 @@ class DirectiveSegmenterTest {
     fun `segmentLine handles text before and after directive`() {
         val content = "Hello [42] world"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val segments = DirectiveSegmenter.segmentLine(content, TEST_LINE_ID, results)
+        val segments = DirectiveSegmenter.segmentLine(content, results)
 
         assertEquals(3, segments.size)
 
@@ -64,7 +64,7 @@ class DirectiveSegmenterTest {
     fun `segmentLine handles multiple directives`() {
         val content = "[1] and [2] and [3]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val segments = DirectiveSegmenter.segmentLine(content, TEST_LINE_ID, results)
+        val segments = DirectiveSegmenter.segmentLine(content, results)
 
         assertEquals(5, segments.size)
 
@@ -88,7 +88,7 @@ class DirectiveSegmenterTest {
     fun `segmentLine shows source text when no result available`() {
         val content = "[42]"
         // No results provided
-        val segments = DirectiveSegmenter.segmentLine(content, TEST_LINE_ID, emptyMap())
+        val segments = DirectiveSegmenter.segmentLine(content, emptyMap())
 
         assertEquals(1, segments.size)
         val segment = segments[0] as DirectiveSegment.Directive
@@ -121,19 +121,19 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `hasComputedDirectives returns false for content without directives`() {
-        assertFalse(DirectiveSegmenter.hasComputedDirectives("Hello world", TEST_LINE_ID, emptyMap()))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives("Hello world", emptyMap()))
     }
 
     @Test
     fun `hasComputedDirectives returns false when no results available`() {
-        assertFalse(DirectiveSegmenter.hasComputedDirectives("[42]", TEST_LINE_ID, emptyMap()))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives("[42]", emptyMap()))
     }
 
     @Test
     fun `hasComputedDirectives returns true when result is available`() {
         val content = "[42]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        assertTrue(DirectiveSegmenter.hasComputedDirectives(content, TEST_LINE_ID, results))
+        assertTrue(DirectiveSegmenter.hasComputedDirectives(content, results))
     }
 
     @Test
@@ -141,7 +141,7 @@ class DirectiveSegmenterTest {
         val content = "[42]"
         val key = DirectiveResult.hashDirective("[42]")
         val errorResult = mapOf(key to DirectiveResult.failure("Error"))
-        assertFalse(DirectiveSegmenter.hasComputedDirectives(content, TEST_LINE_ID, errorResult))
+        assertFalse(DirectiveSegmenter.hasComputedDirectives(content, errorResult))
     }
 
     // endregion
@@ -150,7 +150,7 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `buildDisplayText returns empty for empty content`() {
-        val result = DirectiveSegmenter.buildDisplayText("", TEST_LINE_ID, emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText("", emptyMap())
         assertEquals("", result.displayText)
         assertTrue(result.segments.isEmpty())
         assertTrue(result.directiveDisplayRanges.isEmpty())
@@ -158,7 +158,7 @@ class DirectiveSegmenterTest {
 
     @Test
     fun `buildDisplayText returns original text for content without directives`() {
-        val result = DirectiveSegmenter.buildDisplayText("Hello world", TEST_LINE_ID, emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText("Hello world", emptyMap())
         assertEquals("Hello world", result.displayText)
         assertTrue(result.directiveDisplayRanges.isEmpty())
     }
@@ -167,7 +167,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText replaces directive with result`() {
         val content = "[42]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("42", result.displayText)
         assertEquals(1, result.directiveDisplayRanges.size)
@@ -185,7 +185,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText handles mixed content`() {
         val content = "Hello [42] world"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         // "[42]" (4 chars) replaced with "42" (2 chars)
         assertEquals("Hello 42 world", result.displayText)
@@ -199,7 +199,7 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText handles uncomputed directive`() {
         val content = "[42]"
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, emptyMap())
+        val result = DirectiveSegmenter.buildDisplayText(content, emptyMap())
 
         // Should show source text when not computed
         assertEquals("[42]", result.displayText)
@@ -211,7 +211,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText handles string directive`() {
         val content = "[\"hello\"]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("hello", result.displayText)
     }
@@ -220,7 +220,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText handles multiple directives with different lengths`() {
         val content = "[100] [200]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("100 200", result.displayText)
         assertEquals(2, result.directiveDisplayRanges.size)
@@ -246,7 +246,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText sets isAlarm true for alarm directive`() {
         val content = "[alarm(\"abc123\")]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals(1, result.directiveDisplayRanges.size)
         val range = result.directiveDisplayRanges[0]
@@ -260,7 +260,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText alarm directive displays as clock emoji`() {
         val content = "[alarm(\"test\")]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("⏰", result.displayText)
         assertEquals("⏰", result.directiveDisplayRanges[0].displayText)
@@ -270,7 +270,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText alarm with surrounding text`() {
         val content = "Buy milk [alarm(\"x\")] today"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("Buy milk ⏰ today", result.displayText)
         val range = result.directiveDisplayRanges[0]
@@ -282,7 +282,7 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText non-alarm directive has isAlarm false`() {
         val content = "[42]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals(1, result.directiveDisplayRanges.size)
         assertFalse(result.directiveDisplayRanges[0].isAlarm)
@@ -295,7 +295,7 @@ class DirectiveSegmenterTest {
         // so sourceRange must span the full [alarm("id")] text
         val content = "Buy milk [alarm(\"abc\")] today"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         val range = result.directiveDisplayRanges[0]
         val directiveText = content.substring(range.sourceRange.first, range.sourceRange.last + 1)
@@ -315,7 +315,7 @@ class DirectiveSegmenterTest {
         // Tap handlers extend by +1 for cursor-position semantics.
         val content = "Task [alarm(\"x\")]"
         val results = DirectiveFinder.executeAllDirectives(content, TEST_LINE_ID)
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         val range = result.directiveDisplayRanges[0]
         assertEquals("⏰", range.displayText)
@@ -330,7 +330,7 @@ class DirectiveSegmenterTest {
         val key = DirectiveResult.hashDirective("[alarm(\"z\")]")
         val results = mapOf(key to DirectiveFinder.executeDirective("[alarm(\"z\")]").result)
 
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
 
         assertEquals("⏰", result.displayText)
         val range = result.directiveDisplayRanges[0]
@@ -355,7 +355,7 @@ class DirectiveSegmenterTest {
         val key = DirectiveResult.hashDirective("[alarm(\"x\")]")
         val results = mapOf(key to DirectiveFinder.executeDirective("[alarm(\"x\")]").result)
 
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
         assertEquals("⏰", result.displayText)
         assertTrue(result.directiveDisplayRanges[0].isAlarm)
     }
@@ -363,11 +363,10 @@ class DirectiveSegmenterTest {
     @Test
     fun `buildDisplayText finds result when keys adjusted for bullet prefix`() {
         val content = "Buy milk [alarm(\"y\")]"
-        val lineId = "line-5"
         val key = DirectiveResult.hashDirective("[alarm(\"y\")]")
         val results = mapOf(key to DirectiveFinder.executeDirective("[alarm(\"y\")]").result)
 
-        val result = DirectiveSegmenter.buildDisplayText(content, lineId, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
         assertEquals("Buy milk ⏰", result.displayText)
     }
 
@@ -377,7 +376,7 @@ class DirectiveSegmenterTest {
         val key = DirectiveResult.hashDirective("[42]")
         val results = mapOf(key to DirectiveFinder.executeDirective("[42]").result)
 
-        val result = DirectiveSegmenter.buildDisplayText(content, TEST_LINE_ID, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
         assertEquals("42", result.displayText)
     }
 
@@ -385,11 +384,10 @@ class DirectiveSegmenterTest {
     fun `buildDisplayText finds result when keys adjusted for tab plus checkbox prefix`() {
         // "\t☐ [alarm("z")]" — prefix is "\t☐ " = 3 chars
         val content = "[alarm(\"z\")]"
-        val noteId = "testNote"
         val key = DirectiveResult.hashDirective("[alarm(\"z\")]")
         val results = mapOf(key to DirectiveFinder.executeDirective("[alarm(\"z\")]").result)
 
-        val result = DirectiveSegmenter.buildDisplayText(content, noteId, results)
+        val result = DirectiveSegmenter.buildDisplayText(content, results)
         assertEquals("⏰", result.displayText)
         assertTrue(result.directiveDisplayRanges[0].isAlarm)
         assertEquals("z", result.directiveDisplayRanges[0].alarmId)

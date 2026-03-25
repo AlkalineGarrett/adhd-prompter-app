@@ -7,8 +7,6 @@ import org.alkaline.taskbrain.dsl.runtime.DslValue
 /**
  * Types of warnings that can occur during directive execution.
  * Warnings indicate the directive executed but produced no meaningful result.
- *
- * Milestone 8.
  */
 enum class DirectiveWarningType(val displayMessage: String) {
     /** Lambda created but never called - has no effect */
@@ -104,8 +102,6 @@ data class DirectiveResult(
         /**
          * Create a DirectiveResult with a warning.
          * The directive executed but produced no meaningful effect.
-         *
-         * Milestone 8.
          */
         fun warning(warningType: DirectiveWarningType, collapsed: Boolean = true): DirectiveResult {
             return DirectiveResult(

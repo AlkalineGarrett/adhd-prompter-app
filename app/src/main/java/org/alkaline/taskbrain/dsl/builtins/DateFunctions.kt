@@ -15,7 +15,7 @@ import java.time.format.DateTimeParseException
 /**
  * Date and time builtin functions.
  *
- * Milestone 2: date, datetime, time
+ * date, datetime, time
  */
 object DateFunctions {
 
@@ -31,7 +31,7 @@ object DateFunctions {
      * Dynamic: returns a different value each day.
      * Example: [date] -> 2026-01-25
      *
-     * Phase 3: Uses mocked time if available for trigger verification.
+     * Uses mocked time if available for trigger verification.
      */
     private val dateFunction = BuiltinFunction(
         name = "date",
@@ -47,7 +47,7 @@ object DateFunctions {
      * Dynamic: returns a different value each call.
      * Example: [datetime] -> 2026-01-25, 14:30:00
      *
-     * Phase 3: Uses mocked time if available for trigger verification.
+     * Uses mocked time if available for trigger verification.
      */
     private val datetimeFunction = BuiltinFunction(
         name = "datetime",
@@ -63,7 +63,7 @@ object DateFunctions {
      * Dynamic: returns a different value each call.
      * Example: [time] -> 14:30:00
      *
-     * Phase 3: Uses mocked time if available for trigger verification.
+     * Uses mocked time if available for trigger verification.
      */
     private val timeFunction = BuiltinFunction(
         name = "time",
@@ -78,8 +78,6 @@ object DateFunctions {
      * parse_date - Parses a string into a date value.
      * Not dynamic: pure function, same input always produces same output.
      * Example: [parse_date "2026-01-15"] -> DateVal(2026-01-15)
-     *
-     * Milestone 8.
      */
     private val parseDateFunction = BuiltinFunction(
         name = "parse_date",

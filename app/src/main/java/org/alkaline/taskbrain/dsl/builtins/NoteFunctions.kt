@@ -20,9 +20,9 @@ import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 /**
  * Note-related builtin functions.
  *
- * Milestone 5: find(path: pattern, name: pattern)
- * Milestone 7: new(path:, content:), maybe_new(path:, maybe_content:)
- * Milestone 10: view(list) for inline note content display
+ * find(path: pattern, name: pattern)
+ * new(path:, content:), maybe_new(path:, maybe_content:)
+ * view(list) for inline note content display
  */
 object NoteFunctions {
 
@@ -56,7 +56,7 @@ object NoteFunctions {
      * Note: The notes must be pre-loaded and passed to the Environment before execution.
      * If no notes are available in the environment, returns an empty list.
      *
-     * Milestone 8: Added where: lambda support.
+     * Added where: lambda support.
      */
     private val findFunction = BuiltinFunction(
         name = "find",
@@ -73,7 +73,7 @@ object NoteFunctions {
             return@BuiltinFunction ListVal(emptyList())
         }
 
-        // Get current note ID to exclude from results (Phase 10)
+        // Get current note ID to exclude from results
         val currentNoteId = env.getCurrentNoteRaw()?.id
 
         // Filter notes based on path, name, and where arguments (AND logic)
@@ -97,8 +97,6 @@ object NoteFunctions {
     /**
      * Evaluate a where lambda against a note.
      * Returns true if no lambda provided, or the boolean result of the lambda.
-     *
-     * Milestone 8.
      */
     private fun evaluateWhereLambda(
         lambda: LambdaVal?,
@@ -149,8 +147,6 @@ object NoteFunctions {
      *
      * Example:
      *   [new(path: "journal/2026-01-25", content: "# Today's Journal")]
-     *
-     * Milestone 7.
      */
     private val newFunction = BuiltinFunction(
         name = "new",
@@ -201,8 +197,6 @@ object NoteFunctions {
      *
      * Example:
      *   [maybe_new(path: date, maybe_content: string("# " date))]
-     *
-     * Milestone 7.
      */
     private val maybeNewFunction = BuiltinFunction(
         name = "maybe_new",
@@ -256,8 +250,6 @@ object NoteFunctions {
      * Examples:
      *   [view find(path: "inbox")]
      *   [view sort(find(path: pattern(digit*4 "-" digit*2 "-" digit*2)), key: lambda[parse_date(i.path)], order: descending)]
-     *
-     * Milestone 10.
      */
     private val viewFunction = BuiltinFunction(
         name = "view",
@@ -317,7 +309,7 @@ object NoteFunctions {
      * Sets the viewed note as the current note so [.] references work correctly.
      * Pushes the note onto the view stack to detect circular dependencies.
      *
-     * Phase 1 (Caching Audit): Uses CachedDirectiveExecutor when available
+     * Uses CachedDirectiveExecutor when available
      * to enable transitive dependency tracking for nested directives.
      */
     private fun renderNoteContent(viewedNote: org.alkaline.taskbrain.data.Note, env: Environment): String {
@@ -332,7 +324,7 @@ object NoteFunctions {
         // Push this note onto the view stack for circular dependency detection
         val viewStack = env.getViewStack() + viewedNote.id
 
-        // Get the cached executor if available (Phase 1)
+        // Get the cached executor if available
         val cachedExecutor = env.getCachedExecutor()
         val allNotes = env.getNotes() ?: emptyList()
 
@@ -349,7 +341,7 @@ object NoteFunctions {
             // Execute the directive with the viewed note as the current note
             // This ensures [.] references the viewed note, not the parent note
             val displayValue = if (cachedExecutor != null) {
-                // Phase 1: Use cached executor for transitive dependency tracking
+                // Use cached executor for transitive dependency tracking
                 val cachedResult = cachedExecutor.executeCached(
                     sourceText = directive.sourceText,
                     notes = allNotes,

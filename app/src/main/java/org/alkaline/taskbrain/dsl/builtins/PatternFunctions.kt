@@ -7,7 +7,7 @@ import org.alkaline.taskbrain.dsl.runtime.BuiltinRegistry
 /**
  * Pattern matching builtin functions.
  *
- * Milestone 4: matches(string, pattern)
+ * matches(string, pattern)
  */
 object PatternFunctions {
 

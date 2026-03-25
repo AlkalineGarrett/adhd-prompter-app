@@ -14,7 +14,7 @@ import java.time.LocalTime
  * - String methods (.startsWith, .endsWith, .contains) on StringVal
  * - Temporal .plus() methods on DateVal, TimeVal, DateTimeVal
  *
- * Phase 0a: Part of view caching plan - method-style syntax support.
+ * Part of view caching plan - method-style syntax support.
  */
 object MethodHandler {
 

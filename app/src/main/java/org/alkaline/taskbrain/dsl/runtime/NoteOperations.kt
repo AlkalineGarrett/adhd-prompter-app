@@ -6,8 +6,6 @@ import org.alkaline.taskbrain.data.Note
  * Interface for note mutation operations in Mindl.
  * This abstraction allows Mindl to perform note modifications without
  * direct dependency on the repository, enabling easier testing.
- *
- * Milestone 7.
  */
 interface NoteOperations {
     /**

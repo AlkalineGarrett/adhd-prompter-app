@@ -10,8 +10,6 @@ import org.alkaline.taskbrain.data.Note
  * @property sourceNoteId The ID of the note this content came from
  * @property sourceStartLine The starting line in the source note (0-indexed)
  * @property originalContent The original content from the source note (for detecting edits)
- *
- * Milestone 10.
  */
 data class ViewRange(
     val startOffset: Int,
@@ -47,8 +45,6 @@ data class ViewRange(
  * 2. Use [mapOffsetToSource] to find which note a cursor position belongs to
  * 3. After user edits, call [updateRangesAfterEdit] to adjust offsets
  * 4. On save, use [getModifiedRanges] to find which source notes need updating
- *
- * Milestone 10.
  */
 class ViewContentTracker {
     private val ranges = mutableListOf<ViewRange>()
