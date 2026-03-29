@@ -3,8 +3,11 @@ import type { Note } from '@/data/Note'
 import type { ViewVal } from '@/dsl/runtime/DslValue'
 import { directiveResultToValue } from '@/dsl/directives/DirectiveResult'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
+import { InlineEditSession } from '@/editor/InlineEditSession'
+import { useActiveEditor } from '@/editor/ActiveEditorContext'
+import { useEditorInteractions } from '@/editor/useEditorInteractions'
+import { EditorLine } from './EditorLine'
 import { EMPTY_VIEW, SAVE, SAVING, SAVE_ERROR_BANNER, SAVE_ERROR_DISMISS } from '@/strings'
-import { isViewNoteDirty } from './viewNoteDirty'
 import styles from './ViewDirectiveRenderer.module.css'
 
 interface ViewDirectiveRendererProps {
@@ -16,8 +19,9 @@ interface ViewDirectiveRendererProps {
 }
 
 /**
- * Renders viewed notes inline with separators, supporting nested directive rendering.
- * Clicking a note section makes it editable in place.
+ * Renders viewed notes inline with separators.
+ * Each note section uses a per-line editor (EditorLine) with its own
+ * InlineEditSession for full editing parity with the main editor.
  */
 export function ViewDirectiveRenderer({
   viewVal,
@@ -29,7 +33,6 @@ export function ViewDirectiveRenderer({
   const [saving, setSaving] = useState(false)
   const saveRef = useRef<(() => Promise<void>) | null>(null)
 
-  // Track per-note dirty callbacks so only one save button shows at a time
   const dirtyCallbacks = useRef(new Map<string, (dirty: boolean) => void>())
   const getDirtyCallback = useCallback((noteId: string) => {
     let cb = dirtyCallbacks.current.get(noteId)
@@ -57,7 +60,7 @@ export function ViewDirectiveRenderer({
   }
 
   return (
-    <div className={styles.viewContainer}>
+    <div className={styles.viewWrapper}>
       {dirtyNoteId && (
         <button
           className={styles.inlineSaveButton}
@@ -78,6 +81,7 @@ export function ViewDirectiveRenderer({
           ⚙
         </button>
       )}
+      <div className={styles.viewContainer}>
       {notes.map((note, noteIndex) => (
         <div key={note.id}>
           {noteIndex > 0 && <hr className={styles.separator} />}
@@ -91,6 +95,7 @@ export function ViewDirectiveRenderer({
           />
         </div>
       ))}
+      </div>
     </div>
   )
 }
@@ -110,19 +115,36 @@ function ViewNoteSection({
   onDirtyChange,
   saveRef,
 }: ViewNoteSectionProps) {
-  const [editContent, setEditContent] = useState(note.content)
+  const { activateSession, deactivateSession, activeSession, notifyActiveChange } = useActiveEditor()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [, setRenderVersion] = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
   const lastSavedContentRef = useRef<string | null>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  // Refs for unmount save — must always point to latest values
-  const editContentRef = useRef(editContent)
-  editContentRef.current = editContent
-  const noteContentRef = useRef(note.content)
-  noteContentRef.current = note.content
   const onSaveRef = useRef(onSave)
   onSaveRef.current = onSave
+
+  // Create or retrieve the session for this note.
+  // The session is recreated when note.content changes (e.g., after save reloads data),
+  // but only if we're not currently editing this note.
+  const sessionRef = useRef<InlineEditSession | null>(null)
+  const isActiveHere = activeSession?.noteId === note.id
+
+  const getOrCreateSession = useCallback(() => {
+    if (!sessionRef.current || sessionRef.current.noteId !== note.id) {
+      sessionRef.current = new InlineEditSession(note.id, note.content)
+    }
+    return sessionRef.current
+  }, [note.id, note.content])
+
+  // Sync with external content changes when not actively editing
+  useEffect(() => {
+    if (!isActiveHere) {
+      sessionRef.current = null // Force recreate on next focus
+      lastSavedContentRef.current = null
+      setRenderVersion(v => v + 1)
+    }
+  }, [note.content, isActiveHere])
 
   // Check for save errors persisted from a previous unmount
   useEffect(() => {
@@ -138,34 +160,60 @@ function ViewNoteSection({
     } catch { /* sessionStorage may be unavailable */ }
   }, [note.id])
 
-  // Sync with external content changes (e.g., after save reloads data)
+  // Wire up editor state callbacks when active.
+  // notifyActiveChange bumps NoteEditorScreen's version so CommandBar re-renders.
   useEffect(() => {
-    setEditContent(note.content)
-    lastSavedContentRef.current = null
-  }, [note.content])
-
-  // Auto-size textarea to fit content
-  useEffect(() => {
-    if (textareaRef.current) {
-      resizeTextarea(textareaRef.current)
+    if (!isActiveHere || !sessionRef.current) return
+    const state = sessionRef.current.editorState
+    state.onTextChange = () => {
+      sessionRef.current?.updateHiddenIndices()
+      setRenderVersion(v => v + 1)
     }
-  }, [editContent])
+    state.onSelectionChange = () => { setRenderVersion(v => v + 1); notifyActiveChange() }
+    return () => {
+      state.onTextChange = null
+      state.onSelectionChange = null
+    }
+  }, [isActiveHere, notifyActiveChange])
 
   // Report dirty state to parent
-  const isDirty = isViewNoteDirty(editContent, note.content, lastSavedContentRef.current)
+  const session = sessionRef.current
+  const isDirty = session ? session.isDirty : false
   useEffect(() => {
     onDirtyChange?.(isDirty)
   }, [isDirty, onDirtyChange])
 
-  // Fire-and-forget save on unmount (e.g., navigation away)
+  const handleSave = useCallback(async () => {
+    const s = sessionRef.current
+    if (!onSave || !s || !s.isDirty) return
+    const content = s.getText()
+    lastSavedContentRef.current = content
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(content)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : SAVE_ERROR_BANNER
+      setSaveError(msg)
+      lastSavedContentRef.current = null
+    } finally {
+      setSaving(false)
+    }
+  }, [onSave])
+
+  useEffect(() => {
+    if (saveRef) saveRef.current = handleSave
+    return () => { if (saveRef) saveRef.current = null }
+  }, [saveRef, handleSave])
+
+  // Fire-and-forget save on unmount
   useEffect(() => {
     const noteId = note.id
     return () => {
-      const content = editContentRef.current
-      const original = noteContentRef.current
+      const s = sessionRef.current
       const save = onSaveRef.current
-      if (save && isViewNoteDirty(content, original, lastSavedContentRef.current)) {
-        void save(content).catch((err) => {
+      if (save && s?.isDirty) {
+        void save(s.getText()).catch((err) => {
           const msg = err instanceof Error ? err.message : SAVE_ERROR_BANNER
           try { sessionStorage.setItem(PENDING_VIEW_SAVE_ERROR_KEY, JSON.stringify({ noteId, message: msg })) } catch { /* ignore */ }
         })
@@ -173,70 +221,84 @@ function ViewNoteSection({
     }
   }, [note.id])
 
-  const handleSave = useCallback(async () => {
-    if (!onSave) return
-    if (editContent === note.content) return
-    // Mark as saved eagerly so unmount cleanup won't duplicate the save
-    lastSavedContentRef.current = editContent
-    setSaving(true)
-    setSaveError(null)
-    try {
-      await onSave(editContent)
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : SAVE_ERROR_BANNER
-      setSaveError(msg)
-      lastSavedContentRef.current = null // Reset on failure so retry is possible
-    } finally {
-      setSaving(false)
-    }
-  }, [editContent, note.content, onSave])
+  // --- Shared editor interactions (gutter selection, drag, move) ---
+  const dropCursorRef = useRef<HTMLDivElement>(null)
+  const getState = useCallback(() => sessionRef.current?.editorState ?? null, [])
+  const getController = useCallback(() => sessionRef.current?.controller ?? null, [])
 
-  useEffect(() => {
-    if (saveRef) saveRef.current = handleSave
-    return () => { if (saveRef) saveRef.current = null }
-  }, [saveRef, handleSave])
-
-  const handleBlur = useCallback(() => void handleSave(), [handleSave])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-        e.preventDefault()
-        void handleSave()
-      }
-    },
-    [handleSave],
+  const {
+    handleDragStart, handleMoveStart,
+    handleGutterDragStart, handleGutterDragUpdate,
+  } = useEditorInteractions(
+    containerRef, dropCursorRef, getState, getController, 'data-view-line-index',
   )
 
+  // Focus management: activate session on focus, save+deactivate on blur
+  const handleContainerFocus = useCallback(() => {
+    const s = getOrCreateSession()
+    activateSession(s)
+  }, [getOrCreateSession, activateSession])
+
+  const handleContainerBlur = useCallback((e: React.FocusEvent) => {
+    // relatedTarget is null/undefined when focus is lost transiently (e.g., during
+    // React re-render or when no element receives focus). Don't deactivate in that
+    // case — only deactivate when focus explicitly moved to an element outside.
+    if (!e.relatedTarget) return
+    if (containerRef.current?.contains(e.relatedTarget as Node)) return
+    const prev = deactivateSession()
+    if (prev?.isDirty && onSave) {
+      void onSave(prev.getText()).catch(() => { /* handled by unmount fallback */ })
+    }
+  }, [deactivateSession, onSave])
+
+  const activeOrFallback = (isActiveHere ? session : null) ?? getOrCreateSession()
+  const displayLines = activeOrFallback.editorState.lines
+  const displayController = activeOrFallback.controller
+  const displayState = activeOrFallback.editorState
+
   return (
-    <div className={styles.noteSection}>
+    <div
+      ref={containerRef}
+      className={styles.noteSection}
+      onFocus={handleContainerFocus}
+      onBlur={handleContainerBlur}
+    >
+      <div ref={dropCursorRef} className={styles.dropCursor} style={{ display: 'none' }} />
       {saveError && (
         <div className={styles.inlineSaveError}>
           <span>{SAVE_ERROR_BANNER}</span>
           <button className={styles.inlineSaveErrorDismiss} onClick={() => setSaveError(null)}>{SAVE_ERROR_DISMISS}</button>
         </div>
       )}
-      <textarea
-        ref={textareaRef}
-        className={styles.inlineTextarea}
-        value={editContent}
-        onChange={(e) => {
-          setEditContent(e.target.value)
-          resizeTextarea(e.target)
-        }}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        disabled={saving}
-        readOnly={!onSave}
-        spellCheck={false}
-      />
+      {(() => {
+        const selRange = displayState.hasSelection ? displayState.getSelectedLineRange() : null
+        return displayLines.map((line, i) => {
+        const isLineSelected = selRange ? (i >= selRange[0] && i <= selRange[1]) : false
+        return (
+          <div key={i} data-view-line-index={i} data-view-note-id={note.id} className={styles.viewLineRow}>
+            <div
+              className={`${styles.viewGutterCell}${isLineSelected ? ` ${styles.viewGutterSelected}` : ''}`}
+              onMouseDown={(e) => { e.preventDefault(); handleContainerFocus(); handleGutterDragStart(i) }}
+              onMouseEnter={(e) => { if (e.buttons === 1) handleGutterDragUpdate(i) }}
+            />
+            <div className={styles.viewLineContent}>
+              <EditorLine
+                lineIndex={i}
+                controller={displayController}
+                editorState={displayState}
+                onDragStart={handleDragStart}
+                onGutterDragStart={handleGutterDragStart}
+                onGutterDragUpdate={handleGutterDragUpdate}
+                onMoveStart={handleMoveStart}
+                hideGutter
+              />
+            </div>
+          </div>
+        )
+      })
+      })()}
     </div>
   )
-}
-
-function resizeTextarea(textarea: HTMLTextAreaElement) {
-  textarea.style.height = '0'
-  textarea.style.height = `${textarea.scrollHeight}px`
 }
 
 /**

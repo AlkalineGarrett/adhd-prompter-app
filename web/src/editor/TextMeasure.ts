@@ -277,6 +277,114 @@ export function mapDisplayOffsetToSource(
  * Inverse of mapDisplayOffsetToSource. For offsets inside a directive's source range,
  * maps to the start of the chip's display range.
  */
+export interface LineHitResult {
+  globalOffset: number
+  lineIndex: number
+  charIndex: number
+  inputEl: Element | null
+  lineEl: Element | null
+}
+
+/**
+ * Hit-test a container of editor lines to find the line and character at the
+ * given client coordinates. Used by both the main editor and view editors.
+ *
+ * @param containerEl  The container element holding line rows
+ * @param lines       The EditorState lines array
+ * @param getLineStartOffset  Function to get the global character offset of a line
+ * @param lineAttr    The data attribute on each line row element (e.g. 'data-line-index')
+ */
+export function hitTestLineFromPoint(
+  containerEl: Element,
+  lines: { text: string; prefix: string; content: string }[],
+  getLineStartOffset: (i: number) => number,
+  clientX: number,
+  clientY: number,
+  lineAttr = 'data-line-index',
+): LineHitResult | null {
+  const lineElements = containerEl.querySelectorAll(`[${lineAttr}]`)
+  let targetLineIndex = -1
+  let matchedLineEl: Element | null = null
+
+  // Direct hit
+  for (let i = 0; i < lineElements.length; i++) {
+    const rect = lineElements[i]!.getBoundingClientRect()
+    if (clientY >= rect.top && clientY < rect.bottom) {
+      targetLineIndex = parseInt(lineElements[i]!.getAttribute(lineAttr)!)
+      matchedLineEl = lineElements[i]!
+      break
+    }
+  }
+
+  // Nearest-line fallback (mouse between lines or outside)
+  if (targetLineIndex < 0) {
+    let bestDist = Infinity
+    for (let i = 0; i < lineElements.length; i++) {
+      const rect = lineElements[i]!.getBoundingClientRect()
+      const dist = clientY < rect.top ? rect.top - clientY : clientY - rect.bottom
+      if (dist < bestDist) {
+        bestDist = dist
+        targetLineIndex = parseInt(lineElements[i]!.getAttribute(lineAttr)!)
+        matchedLineEl = lineElements[i]!
+      }
+    }
+    if (targetLineIndex < 0) return null
+  }
+
+  const line = lines[targetLineIndex]
+  if (!line) return null
+
+  const lineEl = matchedLineEl
+  const overlayEl = lineEl?.querySelector('[data-text-overlay]') as HTMLElement | null
+  const directiveEl = lineEl?.querySelector('[data-directive-content]') as HTMLElement | null
+  const contentEl = overlayEl ?? directiveEl
+
+  if (!contentEl) {
+    const lineStart = getLineStartOffset(targetLineIndex)
+    const offset = clientX < (lineEl?.getBoundingClientRect().left ?? 100)
+      ? lineStart
+      : lineStart + line.text.length
+    return { globalOffset: offset, lineIndex: targetLineIndex, charIndex: 0, inputEl: null, lineEl }
+  }
+
+  const textareaEl = lineEl?.querySelector('textarea') as HTMLElement | null
+  const charIdx = textareaEl
+    ? getCharOffsetHidingTextarea(contentEl, textareaEl, clientX, clientY) ?? line.content.length
+    : getCharOffsetFromPoint(contentEl, clientX, clientY) ?? line.content.length
+  const globalOffset = getLineStartOffset(targetLineIndex) + line.prefix.length + charIdx
+  return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl: contentEl, lineEl }
+}
+
+/**
+ * Position a drop-cursor element at the character resolved from client coordinates.
+ * Shows a thin vertical caret at the exact character position within the line.
+ */
+export function positionDropCursorFromPoint(
+  cursor: HTMLElement,
+  containerEl: Element,
+  lines: { text: string; prefix: string; content: string }[],
+  getLineStartOffset: (i: number) => number,
+  clientX: number,
+  clientY: number,
+  lineAttr = 'data-line-index',
+): void {
+  const hit = hitTestLineFromPoint(containerEl, lines, getLineStartOffset, clientX, clientY, lineAttr)
+  if (!hit?.inputEl) {
+    cursor.style.display = 'none'
+    return
+  }
+  const charRect = getCharRectInElement(hit.inputEl as HTMLElement, hit.charIndex)
+  if (!charRect) {
+    cursor.style.display = 'none'
+    return
+  }
+  const containerRect = containerEl.getBoundingClientRect()
+  cursor.style.display = 'block'
+  cursor.style.left = `${charRect.left - containerRect.left}px`
+  cursor.style.top = `${charRect.top - containerRect.top}px`
+  cursor.style.height = `${charRect.height}px`
+}
+
 export function mapSourceOffsetToDisplay(
   sourceOffset: number,
   segments: DirectiveSegment[],

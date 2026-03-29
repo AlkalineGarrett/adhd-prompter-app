@@ -1,10 +1,14 @@
+.viewWrapper {
+  position: relative;
+  flex: 1 1 100%;
+  min-width: 0;
+  margin: 4px 0;
+}
+
 .viewContainer {
   display: block;
-  flex: 1 1 100%;
   border-left: 3px solid var(--color-view-border);
-  padding-left: 12px;
-  margin: 4px 0;
-  position: relative;
+  padding-left: 4px;
 }
 
 .editButton {
@@ -43,27 +47,49 @@
 
 .noteSection {
   padding: 4px 0;
+  position: relative;
 }
 
-.inlineTextarea {
-  width: 100%;
-  border: none;
-  outline: none;
-  resize: none;
+.viewLineRow {
+  display: flex;
+  align-items: stretch;
+}
+
+/* Gutter cell pulled left to align with the main gutter column.
+   --view-gutter-offset is set by the parent EditorLine's content wrapper. */
+.viewGutterCell {
+  flex-shrink: 0;
+  width: 1.25rem;
+  margin-left: calc(-1.25rem - var(--view-gutter-offset, 7px));
+  background: var(--color-gutter-bg);
+  border-bottom: 1px solid var(--color-gutter-border);
+  border-right: 1px solid var(--color-border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.viewGutterSelected {
+  background: var(--color-gutter-selected);
+}
+
+.viewLineContent {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-  font-family: inherit;
-  font-size: var(--font-size-editor);
-  line-height: 1.5rem;
-  padding: 0;
-  background: transparent;
-  border-radius: 4px;
-  box-sizing: border-box;
-  cursor: text;
+  /* Offset content right of the view border line.
+     The gutter's negative margin pulls the row left past the border,
+     so we need padding to push content back to the right of it. */
+  padding-left: calc(var(--view-gutter-offset, 7px));
 }
 
-.inlineTextarea:focus {
-  background: var(--color-surface-focus);
+.dropCursor {
+  position: absolute;
+  width: 2px;
+  background: var(--color-text);
+  pointer-events: none;
+  z-index: 10;
 }
+
 
 .inlineSaveButton {
   position: absolute;

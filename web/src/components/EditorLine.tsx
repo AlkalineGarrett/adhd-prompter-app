@@ -29,9 +29,11 @@ interface EditorLineProps {
   onButtonClick?: (key: string) => void
   onViewNoteSave?: (noteId: string, newContent: string) => Promise<void>
   onDragStart?: (anchorGlobalOffset: number) => void
-  onGutterDragStart?: (lineIndex: number) => void
-  onGutterDragUpdate?: (lineIndex: number) => void
+  onGutterDragStart?: (lineIndex: number, clientY?: number) => void
+  onGutterDragUpdate?: (lineIndex: number, clientY?: number) => void
   onMoveStart?: () => void
+  /** Hide noteIdCell and selectionGutter (used for lines inside view directives). */
+  hideGutter?: boolean
 }
 
 export function EditorLine({
@@ -47,6 +49,7 @@ export function EditorLine({
   onGutterDragStart,
   onGutterDragUpdate,
   onMoveStart,
+  hideGutter,
 }: EditorLineProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const overlayRef = useRef<HTMLDivElement>(null)
@@ -546,16 +549,15 @@ export function EditorLine({
   const handleGutterMouseDown = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
       e.preventDefault()
-      onGutterDragStart?.(lineIndex)
+      onGutterDragStart?.(lineIndex, e.clientY)
     },
     [lineIndex, onGutterDragStart],
   )
 
   const handleGutterMouseEnter = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
-      // Only extend if primary button is held (drag in progress)
       if (e.buttons === 1) {
-        onGutterDragUpdate?.(lineIndex)
+        onGutterDragUpdate?.(lineIndex, e.clientY)
       }
     },
     [lineIndex, onGutterDragUpdate],
@@ -576,13 +578,13 @@ export function EditorLine({
     <div
       className={`${styles.line} ${isFocused ? styles.focused : ''}`}
     >
-      <div className={styles.noteIdCell}>{noteIdText || '\u00A0'}</div>
-      <div
-        className={`${styles.selectionGutter}${isLineSelected ? ` ${styles.selected}` : ''}`}
+      {!hideGutter && <div className={styles.noteIdCell}>{noteIdText || '\u00A0'}</div>}
+      {!hideGutter && <div
+        className={`${styles.selectionGutter}${isLineSelected ? ` ${styles.selected}` : ''}${hasViewDirective ? ` ${styles.selectionGutterHidden}` : ''}`}
         onMouseDown={handleGutterMouseDown}
         onMouseEnter={handleGutterMouseEnter}
-      />
-      <div style={{ paddingLeft: `${0.25 + indentLevel * 0.6}rem`, display: 'flex', flex: 1, minWidth: 0 }}>
+      />}
+      <div style={{ paddingLeft: `${0.25 + indentLevel * 0.6}rem`, display: 'flex', flex: 1, minWidth: 0, ['--view-gutter-offset' as string]: `calc(${0.25 + indentLevel * 0.6}rem + 7px)` }}>
       {displayPrefix ? (
         <div className={styles.gutter} onClick={handleGutterClick}>
           <span className={styles.prefix}>{displayPrefix}</span>

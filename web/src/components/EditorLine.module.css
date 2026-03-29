@@ -36,6 +36,12 @@
   background: var(--color-gutter-selected);
 }
 
+/* Hide the single gutter block for lines with view directives —
+   per-line gutter cells are rendered by the view instead. */
+.selectionGutterHidden {
+  visibility: hidden;
+}
+
 .gutter {
   display: flex;
   align-items: flex-start;

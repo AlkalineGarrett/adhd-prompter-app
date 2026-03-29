@@ -17,20 +17,14 @@ import { extractDisplayText } from '@/data/TabState'
 import { LOADING_NOTE, DELETE_NOTE, DELETE_NOTE_CONFIRM_TITLE, DELETE_NOTE_CONFIRM_MESSAGE, SAVE_ERROR_BANNER, SAVE_ERROR_DISMISS, SYNC_ERROR_BANNER } from '@/strings'
 import { db, auth } from '@/firebase/config'
 import { LineState } from '@/editor/LineState'
+import { ActiveEditorContext, type ActiveEditorContextValue } from '@/editor/ActiveEditorContext'
+import type { InlineEditSession } from '@/editor/InlineEditSession'
 import { computeHiddenIndices, computeDisplayItemsFromHidden, computeEffectiveHidden, computeFadedIndices, nearestVisibleLine } from '@/editor/CompletedLineUtils'
 import { findDirectives } from '@/dsl/directives/DirectiveFinder'
-import { getCharOffsetFromPoint, getCharOffsetHidingTextarea, getCharRectInElement } from '@/editor/TextMeasure'
+import { useEditorInteractions } from '@/editor/useEditorInteractions'
 import styles from './NoteEditorScreen.module.css'
 
 const noteRepo = new NoteRepository(db, auth)
-
-interface HitResult {
-  globalOffset: number
-  lineIndex: number
-  charIndex: number
-  inputEl: Element | null
-  lineEl: Element | null
-}
 
 export function NoteEditorScreen() {
   const { noteId: urlNoteId } = useParams<{ noteId: string }>()
@@ -177,16 +171,18 @@ export function NoteEditorScreen() {
     }
   }, [editorState, controller, invalidateAndRecompute])
 
-  // Undo/redo with directive re-execution
+  // Undo/redo routed through active controller (view or parent)
   const handleUndo = useCallback(() => {
-    controller.undo()
+    const ctrl = activeSessionRef.current?.controller ?? controller
+    ctrl.undo()
     invalidateAndRecompute()
-  }, [controller, editorState, invalidateAndRecompute])
+  }, [controller, invalidateAndRecompute])
 
   const handleRedo = useCallback(() => {
-    controller.redo()
+    const ctrl = activeSessionRef.current?.controller ?? controller
+    ctrl.redo()
     invalidateAndRecompute()
-  }, [controller, editorState, invalidateAndRecompute])
+  }, [controller, invalidateAndRecompute])
 
   const handleDeleteNote = useCallback(async () => {
     if (!noteId) return
@@ -217,7 +213,13 @@ export function NoteEditorScreen() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        void saveWithDirectives()
+        // If a view session is active and dirty, save it; otherwise save the parent
+        const session = activeSessionRef.current
+        if (session?.isDirty) {
+          void handleViewNoteSave(session.noteId, session.getText())
+        } else {
+          void saveWithDirectives()
+        }
         return
       }
 
@@ -226,222 +228,173 @@ export function NoteEditorScreen() {
       const active = document.activeElement
       if (active && active.tagName === 'TEXTAREA') return
 
+      // Route through active controller/state (view or parent)
+      const ctrl = activeSessionRef.current?.controller ?? controller
+      const state = activeSessionRef.current?.editorState ?? editorState
+
       if (e.metaKey || e.ctrlKey) {
         if (e.key === 'z') {
           e.preventDefault()
-          if (e.shiftKey) handleRedo()
-          else handleUndo()
+          if (e.shiftKey) { ctrl.redo(); invalidateAndRecompute() }
+          else { ctrl.undo(); invalidateAndRecompute() }
           return
         }
         if (e.key === 'y') {
           e.preventDefault()
-          handleRedo()
+          ctrl.redo()
+          invalidateAndRecompute()
           return
         }
         if (e.key === 'a') {
           e.preventDefault()
-          editorState.selectAll()
+          state.selectAll()
           return
         }
-        if (e.key === 'x' && editorState.hasSelection) {
+        if (e.key === 'x' && state.hasSelection) {
           e.preventDefault()
-          controller.cutSelection()
+          ctrl.cutSelection()
           return
         }
-        if (e.key === 'c' && editorState.hasSelection) {
+        if (e.key === 'c' && state.hasSelection) {
           e.preventDefault()
-          controller.copySelection()
+          ctrl.copySelection()
           return
         }
         return
       }
 
       // Non-modifier keys with selection
-      if (editorState.hasSelection && (e.key === 'Backspace' || e.key === 'Delete')) {
+      if (state.hasSelection && (e.key === 'Backspace' || e.key === 'Delete')) {
         e.preventDefault()
-        controller.deleteSelectionWithUndo()
+        ctrl.deleteSelectionWithUndo()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [saveWithDirectives, editorState, controller, handleUndo, handleRedo])
+  }, [saveWithDirectives, handleViewNoteSave, editorState, controller, invalidateAndRecompute])
 
 
-  // --- Gutter selection (select whole lines by click/drag) ---
-  // Anchor is a range [start, end] so placeholder blocks lock in their full extent
-  const gutterAnchorRef = useRef<[number, number]>([-1, -1])
+  // --- Active editor context (routes commands to parent or view controller) ---
+  const [activeSession, setActiveSession] = useState<InlineEditSession | null>(null)
+  const activeSessionRef = useRef<InlineEditSession | null>(null)
+  // Force NoteEditorScreen re-render when the active session's state changes
+  // (e.g., selection changes within the view). Without this, React skips the
+  // re-render when setActiveSession is called with the same session object,
+  // leaving CommandBar's disabled states stale.
+  const [, setActiveSessionVersion] = useState(0)
 
-  const selectLineRange = useCallback((fromLine: number, toLine: number) => {
-    const first = Math.max(0, Math.min(fromLine, toLine))
-    const last = Math.min(editorState.lines.length - 1, Math.max(fromLine, toLine))
-    const start = editorState.getLineStartOffset(first)
-    const lastLine = editorState.lines[last]
-    let end = editorState.getLineStartOffset(last) + (lastLine?.text.length ?? 0)
-    // Extend past empty trailing lines so the selection crosses through them
-    // (otherwise start === end and getLineSelection returns null)
-    if ((lastLine?.text.length ?? 0) === 0 && last < editorState.lines.length - 1) {
-      end += 1
-    }
-    controller.setSelection(start, end)
-  }, [editorState, controller])
+  const activateSession = useCallback((session: InlineEditSession) => {
+    activeSessionRef.current = session
+    setActiveSession(session)
+    // Bump version so CommandBar re-evaluates disabled states immediately
+    setActiveSessionVersion(v => v + 1)
+  }, [])
 
-  const handleGutterDragStart = useCallback((lineIndex: number) => {
-    gutterAnchorRef.current = [lineIndex, lineIndex]
-    selectLineRange(lineIndex, lineIndex)
-  }, [selectLineRange])
+  const deactivateSession = useCallback((): InlineEditSession | null => {
+    const prev = activeSessionRef.current
+    activeSessionRef.current = null
+    setActiveSession(null)
+    return prev
+  }, [])
 
-  const handleGutterDragUpdate = useCallback((lineIndex: number) => {
-    const [anchorStart, anchorEnd] = gutterAnchorRef.current
-    if (anchorStart < 0) return
-    selectLineRange(Math.min(anchorStart, lineIndex), Math.max(anchorEnd, lineIndex))
-  }, [selectLineRange])
+  const activeController = activeSession?.controller ?? controller
+  const activeState = activeSession?.editorState ?? editorState
 
-  // Reset gutter drag anchor on mouseup anywhere
+  const notifyActiveChange = useCallback(() => {
+    setActiveSessionVersion(v => v + 1)
+  }, [])
+
+  const activeEditorCtx = useMemo<ActiveEditorContextValue>(() => ({
+    activeController,
+    activeState,
+    activeSession,
+    activateSession,
+    deactivateSession,
+    notifyActiveChange,
+  }), [activeController, activeState, activeSession, activateSession, deactivateSession, notifyActiveChange])
+
+  // --- Shared editor interactions (gutter, drag, move) ---
+  const editorRef = useRef<HTMLDivElement>(null)
+  const dropCursorRef = useRef<HTMLDivElement>(null)
+  const getParentState = useCallback(() => editorState, [editorState])
+  const getParentController = useCallback(() => controller, [controller])
+
+  const {
+    handleDragStart,
+    handleMoveStart: baseHandleMoveStart,
+    handleGutterDragStart: baseGutterDragStart,
+    handleGutterDragUpdate: baseGutterDragUpdate,
+    selectLineRange,
+    gutterAnchorRef,
+  } = useEditorInteractions(editorRef, dropCursorRef, getParentState, getParentController)
+
+  // Wrap moveStart to add the CSS class for the parent editor
+  const handleMoveStart = useCallback(() => {
+    baseHandleMoveStart()
+    editorRef.current?.classList.add(styles.moveDragging!)
+  }, [baseHandleMoveStart])
+
+  // Remove moveDragging CSS class on mouseup (the hook handles the drop cursor but not CSS)
   useEffect(() => {
-    const handleMouseUp = () => { gutterAnchorRef.current = [-1, -1] }
+    const handleMouseUp = () => editorRef.current?.classList.remove(styles.moveDragging!)
     document.addEventListener('mouseup', handleMouseUp)
     return () => document.removeEventListener('mouseup', handleMouseUp)
   }, [])
 
-  // --- Drag selection across lines ---
-  const editorRef = useRef<HTMLDivElement>(null)
-  const dropCursorRef = useRef<HTMLDivElement>(null)
-  const isDraggingRef = useRef(false)
-  const isMoveDraggingRef = useRef(false)
-
-  const handleDragStart = useCallback((anchorGlobalOffset: number) => {
-    isDraggingRef.current = true
-    editorState.selectionAnchor = anchorGlobalOffset
-  }, [editorState])
-
-  const handleMoveStart = useCallback(() => {
-    isMoveDraggingRef.current = true
-    editorRef.current?.classList.add(styles.moveDragging!)
+  // Wrap gutter handlers to route clicks on view lines to the view's session
+  const resolveViewLineAtY = useCallback((clientY: number): { viewLineIndex: number; session: InlineEditSession } | null => {
+    const viewLineEl = document.elementsFromPoint(window.innerWidth / 2, clientY)
+      .find(el => el.hasAttribute('data-view-line-index'))
+    if (!viewLineEl) return null
+    const viewLineIndex = parseInt(viewLineEl.getAttribute('data-view-line-index')!)
+    const noteId = viewLineEl.getAttribute('data-view-note-id')
+    const existing = activeSessionRef.current
+    if (existing?.noteId === noteId) return { viewLineIndex, session: existing }
+    return null
   }, [])
 
-  const hitTestFromPoint = useCallback((clientX: number, clientY: number): HitResult | null => {
-    const editorEl = editorRef.current
-    if (!editorEl) return null
-
-    const lineElements = editorEl.querySelectorAll('[data-line-index]')
-    let targetLineIndex = -1
-    let matchedLineEl: Element | null = null
-    for (let i = 0; i < lineElements.length; i++) {
-      const rect = lineElements[i]!.getBoundingClientRect()
-      if (clientY >= rect.top && clientY < rect.bottom) {
-        targetLineIndex = parseInt(lineElements[i]!.getAttribute('data-line-index')!)
-        matchedLineEl = lineElements[i]!
-        break
-      }
-    }
-    if (targetLineIndex < 0) {
-      // Mouse is between visible line elements (e.g. over a placeholder row) or outside.
-      // Find the nearest visible line element by Y-distance instead of jumping to first/last.
-      let bestDist = Infinity
-      for (let i = 0; i < lineElements.length; i++) {
-        const rect = lineElements[i]!.getBoundingClientRect()
-        const dist = clientY < rect.top ? rect.top - clientY : clientY - rect.bottom
-        if (dist < bestDist) {
-          bestDist = dist
-          targetLineIndex = parseInt(lineElements[i]!.getAttribute('data-line-index')!)
-          matchedLineEl = lineElements[i]!
-        }
-      }
-      // Final fallback if no line elements exist at all
-      if (targetLineIndex < 0) {
-        targetLineIndex = 0
-        matchedLineEl = null
-      }
-    }
-
-    const targetLine = editorState.lines[targetLineIndex]
-    if (!targetLine) return null
-
-    const lineEl = matchedLineEl
-    const overlayEl = lineEl?.querySelector('[data-text-overlay]') as HTMLElement | null
-    const directiveEl = lineEl?.querySelector('[data-directive-content]') as HTMLElement | null
-    const contentEl = overlayEl ?? directiveEl
-
-    if (!contentEl) {
-      const lineStart = editorState.getLineStartOffset(targetLineIndex)
-      const offset = clientX < (lineEl?.getBoundingClientRect().left ?? 100)
-        ? lineStart
-        : lineStart + targetLine.text.length
-      return { globalOffset: offset, lineIndex: targetLineIndex, charIndex: 0, inputEl: null, lineEl }
-    }
-
-    const textareaEl = lineEl?.querySelector('textarea') as HTMLElement | null
-    const charIdx = textareaEl
-      ? getCharOffsetHidingTextarea(contentEl, textareaEl, clientX, clientY) ?? targetLine.content.length
-      : getCharOffsetFromPoint(contentEl, clientX, clientY) ?? targetLine.content.length
-    const globalOffset = editorState.getLineStartOffset(targetLineIndex) + targetLine.prefix.length + charIdx
-    return { globalOffset, lineIndex: targetLineIndex, charIndex: charIdx, inputEl: contentEl, lineEl }
-  }, [editorState])
-
-  const getGlobalOffsetFromPoint = useCallback((clientX: number, clientY: number): number | null => {
-    return hitTestFromPoint(clientX, clientY)?.globalOffset ?? null
-  }, [hitTestFromPoint])
-
-  const positionDropCursor = useCallback((clientX: number, clientY: number) => {
-    const cursor = dropCursorRef.current
-    const editorEl = editorRef.current
-    if (!cursor || !editorEl) return
-
-    const hit = hitTestFromPoint(clientX, clientY)
-    if (!hit?.inputEl) {
-      cursor.style.display = 'none'
-      return
-    }
-
-    // Use browser's own layout to get the character position (works with wrapped text)
-    const charRect = getCharRectInElement(hit.inputEl as HTMLElement, hit.charIndex)
-    if (!charRect) {
-      cursor.style.display = 'none'
-      return
-    }
-
-    const editorRect = editorEl.getBoundingClientRect()
-    cursor.style.display = 'block'
-    cursor.style.left = `${charRect.left - editorRect.left}px`
-    cursor.style.top = `${charRect.top - editorRect.top}px`
-    cursor.style.height = `${charRect.height}px`
-  }, [hitTestFromPoint])
-
-  useEffect(() => {
-    const handleMouseMove = (e: globalThis.MouseEvent) => {
-      if (!isDraggingRef.current && !isMoveDraggingRef.current) return
-      if (isDraggingRef.current) {
-        const globalOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
-        if (globalOffset != null) {
-          editorState.extendSelectionTo(globalOffset)
-        }
-      } else if (isMoveDraggingRef.current) {
-        positionDropCursor(e.clientX, e.clientY)
-      }
-    }
-    const hideDropCursor = () => {
-      if (dropCursorRef.current) dropCursorRef.current.style.display = 'none'
-      editorRef.current?.classList.remove(styles.moveDragging!)
-    }
-    const handleMouseUp = (e: globalThis.MouseEvent) => {
-      if (isMoveDraggingRef.current) {
-        isMoveDraggingRef.current = false
-        hideDropCursor()
-        const dropOffset = getGlobalOffsetFromPoint(e.clientX, e.clientY)
-        if (dropOffset != null) {
-          controller.moveSelectionTo(dropOffset)
-        }
+  const handleGutterDragStart = useCallback((lineIndex: number, clientY?: number) => {
+    if (clientY != null) {
+      const viewHit = resolveViewLineAtY(clientY)
+      if (viewHit) {
+        const { viewLineIndex, session } = viewHit
+        activateSession(session)
+        gutterAnchorRef.current = [viewLineIndex, viewLineIndex]
+        // Use the view session's controller/state for gutter selection
+        const state = session.editorState
+        const ctrl = session.controller
+        const start = state.getLineStartOffset(viewLineIndex)
+        const lastLine = state.lines[viewLineIndex]
+        let end = start + (lastLine?.text.length ?? 0)
+        if ((lastLine?.text.length ?? 0) === 0 && viewLineIndex < state.lines.length - 1) end += 1
+        ctrl.setSelection(start, end)
         return
       }
-      isDraggingRef.current = false
     }
-    document.addEventListener('mousemove', handleMouseMove)
-    document.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove)
-      document.removeEventListener('mouseup', handleMouseUp)
+    baseGutterDragStart(lineIndex)
+  }, [baseGutterDragStart, resolveViewLineAtY, activateSession, gutterAnchorRef])
+
+  const handleGutterDragUpdate = useCallback((lineIndex: number, clientY?: number) => {
+    if (clientY != null) {
+      const viewHit = resolveViewLineAtY(clientY)
+      if (viewHit) {
+        const { viewLineIndex, session } = viewHit
+        const [anchorStart, anchorEnd] = gutterAnchorRef.current
+        if (anchorStart < 0) return
+        const state = session.editorState
+        const ctrl = session.controller
+        const first = Math.max(0, Math.min(anchorStart, viewLineIndex))
+        const last = Math.min(state.lines.length - 1, Math.max(anchorEnd, viewLineIndex))
+        const start = state.getLineStartOffset(first)
+        const lastLine = state.lines[last]
+        let end = state.getLineStartOffset(last) + (lastLine?.text.length ?? 0)
+        if ((lastLine?.text.length ?? 0) === 0 && last < state.lines.length - 1) end += 1
+        ctrl.setSelection(start, end)
+        return
+      }
     }
-  }, [editorState, controller, getGlobalOffsetFromPoint, positionDropCursor])
+    baseGutterDragUpdate(lineIndex)
+  }, [baseGutterDragUpdate, resolveViewLineAtY, gutterAnchorRef])
 
   // Compute display items and hidden indices for show/hide completed lines
   const lineTexts = editorState.lines.map((l) => l.text)
@@ -501,7 +454,7 @@ export function NoteEditorScreen() {
       <RecentTabsBar />
 
       <CommandBar
-        controller={controller}
+        controller={activeController}
         onSave={saveWithDirectives}
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -538,6 +491,7 @@ export function NoteEditorScreen() {
         </div>
       )}
 
+      <ActiveEditorContext.Provider value={activeEditorCtx}>
       <div className={styles.editorArea}>
         <div
           ref={editorRef}
@@ -585,6 +539,7 @@ export function NoteEditorScreen() {
         )}
       </div>
       </div>
+      </ActiveEditorContext.Provider>
 
     </div>
   )

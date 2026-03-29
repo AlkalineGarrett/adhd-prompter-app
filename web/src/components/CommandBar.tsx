@@ -63,7 +63,7 @@ export function CommandBar({
   }, [menuOpen])
 
   return (
-    <div className={styles.bar}>
+    <div className={styles.bar} onMouseDown={(e) => e.preventDefault()}>
       <div className={styles.group}>
         <button
           className={styles.button}
