@@ -30,6 +30,7 @@ export function ViewDirectiveRenderer({
   onEditDirective,
 }: ViewDirectiveRendererProps) {
   const { notes } = viewVal
+  const { viewSaveRef } = useActiveEditor()
   const [dirtyNoteId, setDirtyNoteId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const saveRef = useRef<(() => Promise<void>) | null>(null)
@@ -55,6 +56,9 @@ export function ViewDirectiveRenderer({
       setSaving(false)
     }
   }, [])
+
+  // Expose the save function so Ctrl+S can route through the same path (with saving UI)
+  viewSaveRef.current = dirtyNoteId ? handleOverlaySave : null
 
   if (notes.length === 0) {
     return <div className={styles.emptyView}>{EMPTY_VIEW}</div>

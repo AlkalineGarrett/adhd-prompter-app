@@ -1,4 +1,4 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, type MutableRefObject } from 'react'
 import type { EditorController } from './EditorController'
 import type { EditorState } from './EditorState'
 import type { InlineEditSession } from './InlineEditSession'
@@ -18,6 +18,9 @@ export interface ActiveEditorContextValue {
   deactivateSession: (expectedSession?: InlineEditSession) => InlineEditSession | null
   /** Notify that the active session's state changed (triggers CommandBar re-render). */
   notifyActiveChange: () => void
+  /** Ref populated by ViewDirectiveRenderer with its save function (manages saving UI state).
+   *  Ctrl+S reads this to route through the same path as the Save button. */
+  viewSaveRef: MutableRefObject<(() => Promise<void>) | null>
 }
 
 export const ActiveEditorContext = createContext<ActiveEditorContextValue | null>(null)

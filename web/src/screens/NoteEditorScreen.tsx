@@ -211,10 +211,10 @@ export function NoteEditorScreen() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
-        // If a view session is active and dirty, save it; otherwise save the parent
-        const session = activeSessionRef.current
-        if (session?.isDirty) {
-          void handleViewNoteSave(session.noteId, session.getText())
+        // If a view session is active and dirty, save via the view's save path
+        // (manages saving UI state); otherwise save the parent
+        if (activeSessionRef.current?.isDirty && viewSaveRef.current) {
+          void viewSaveRef.current()
         } else {
           void saveWithDirectives()
         }
@@ -313,6 +313,8 @@ export function NoteEditorScreen() {
     setActiveSessionVersion(v => v + 1)
   }, [])
 
+  const viewSaveRef = useRef<(() => Promise<void>) | null>(null)
+
   const activeEditorCtx = useMemo<ActiveEditorContextValue>(() => ({
     activeController,
     activeState,
@@ -320,6 +322,7 @@ export function NoteEditorScreen() {
     activateSession,
     deactivateSession,
     notifyActiveChange,
+    viewSaveRef,
   }), [activeController, activeState, activeSession, activateSession, deactivateSession, notifyActiveChange])
 
   // --- Shared editor interactions (gutter, drag, move) ---
