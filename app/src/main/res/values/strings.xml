@@ -69,6 +69,16 @@
     <string name="no_notes_found">No notes found</string>
     <string name="empty_note">Empty Note</string>
 
+    <!-- Search Strings -->
+    <string name="action_search">Search</string>
+    <string name="search_hint">Search notes\u2026</string>
+    <string name="search_filter_name">Name</string>
+    <string name="search_filter_content">Content</string>
+    <string name="search_go">Go</string>
+    <string name="search_no_results">No matching notes</string>
+    <string name="search_history">Recent searches</string>
+    <string name="search_history_button">Search history</string>
+
     <!-- Note Editor Strings -->
     <string name="new_note">New Note</string>
     <string name="close_tab">Close tab</string>

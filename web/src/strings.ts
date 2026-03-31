@@ -200,5 +200,15 @@ export const SAVE_ERROR_DISMISS = 'Dismiss'
 // Sync error (Android: warning_sync_error)
 export const SYNC_ERROR_BANNER = 'Note sync interrupted — changes from other devices may not appear'
 
+// Search (Android: action_search, search_hint, search_filter_name, search_filter_content, search_go, search_no_results, search_history, search_history_button)
+export const SEARCH = 'Search'
+export const SEARCH_HINT = 'Search notes\u2026'
+export const SEARCH_FILTER_NAME = 'Name'
+export const SEARCH_FILTER_CONTENT = 'Content'
+export const SEARCH_GO = 'Go'
+export const SEARCH_NO_RESULTS = 'No matching notes'
+export const SEARCH_HISTORY = 'Recent searches'
+export const SEARCH_HISTORY_BUTTON = 'Search history'
+
 // Tabs
 export const EMPTY_TAB = '(empty)'

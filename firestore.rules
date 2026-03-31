@@ -77,5 +77,11 @@ service cloud.firestore {
     match /users/{userId}/openTabs/{tabId} {
       allow read, write: if isAuthenticated() && userOwnsPath(userId);
     }
+
+    // ==================== Search History Collection ====================
+
+    match /users/{userId}/searchHistory/{entryId} {
+      allow read, write: if isAuthenticated() && userOwnsPath(userId);
+    }
   }
 }

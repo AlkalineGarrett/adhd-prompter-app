@@ -1,19 +1,36 @@
 package org.alkaline.taskbrain.ui.notelist
 
+import android.app.Application
 import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import org.alkaline.taskbrain.data.Note
 import org.alkaline.taskbrain.data.NoteFilteringUtils
 import org.alkaline.taskbrain.data.NoteRepository
+import org.alkaline.taskbrain.data.NoteSearchUtils
+import org.alkaline.taskbrain.data.NoteSearchResult
 import org.alkaline.taskbrain.data.NoteStore
+import org.alkaline.taskbrain.data.SearchHistoryEntry
+import org.alkaline.taskbrain.data.SearchHistoryRepository
 
-class NoteListViewModel : ViewModel() {
+data class SearchState(
+    val query: String = "",
+    val searchByName: Boolean = true,
+    val searchByContent: Boolean = true,
+    val isSearchOpen: Boolean = false,
+)
+
+class NoteListViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = NoteRepository()
+    private val searchHistoryRepository = SearchHistoryRepository(application)
 
     private val _notes = MutableLiveData<List<Note>>()
     val notes: LiveData<List<Note>> = _notes
@@ -26,6 +43,20 @@ class NoteListViewModel : ViewModel() {
 
     private val _createNoteStatus = MutableLiveData<CreateNoteStatus>()
     val createNoteStatus: LiveData<CreateNoteStatus> = _createNoteStatus
+
+    private val _searchState = MutableStateFlow(SearchState())
+    val searchState: StateFlow<SearchState> = _searchState
+
+    private val _activeSearchResults = MutableLiveData<List<NoteSearchResult>>(emptyList())
+    val activeSearchResults: LiveData<List<NoteSearchResult>> = _activeSearchResults
+
+    private val _deletedSearchResults = MutableLiveData<List<NoteSearchResult>>(emptyList())
+    val deletedSearchResults: LiveData<List<NoteSearchResult>> = _deletedSearchResults
+
+    private val _searchHistory = MutableLiveData<List<SearchHistoryEntry>>(emptyList())
+    val searchHistory: LiveData<List<SearchHistoryEntry>> = _searchHistory
+
+    private var searchDebounceJob: Job? = null
 
     init {
         // Observe NoteStore for real-time updates to the note list
@@ -148,6 +179,97 @@ class NoteListViewModel : ViewModel() {
         if (_createNoteStatus.value is CreateNoteStatus.Error) {
             _createNoteStatus.value = null
         }
+    }
+
+    fun toggleSearch() {
+        val current = _searchState.value
+        if (current.isSearchOpen) {
+            _searchState.value = SearchState()
+            _activeSearchResults.value = emptyList()
+            _deletedSearchResults.value = emptyList()
+        } else {
+            _searchState.value = current.copy(isSearchOpen = true)
+        }
+    }
+
+    fun updateSearchQuery(query: String) {
+        _searchState.value = _searchState.value.copy(query = query)
+        if (query.length >= 3) {
+            searchDebounceJob?.cancel()
+            searchDebounceJob = viewModelScope.launch {
+                delay(300)
+                runSearch()
+            }
+        } else {
+            searchDebounceJob?.cancel()
+            _activeSearchResults.value = emptyList()
+            _deletedSearchResults.value = emptyList()
+        }
+    }
+
+    fun setSearchByName(enabled: Boolean) {
+        _searchState.value = _searchState.value.copy(searchByName = enabled)
+        if (_searchState.value.query.isNotEmpty()) {
+            runSearch()
+        }
+    }
+
+    fun setSearchByContent(enabled: Boolean) {
+        _searchState.value = _searchState.value.copy(searchByContent = enabled)
+        if (_searchState.value.query.isNotEmpty()) {
+            runSearch()
+        }
+    }
+
+    /** Explicit search triggered by Go button or Enter key. Saves to history. */
+    fun executeSearch() {
+        runSearch()
+        saveToHistory()
+    }
+
+    private fun runSearch() {
+        val state = _searchState.value
+        if (state.query.isEmpty()) return
+
+        val allNotes = NoteStore.notes.value
+        val (active, deleted) = NoteSearchUtils.searchNotes(
+            allNotes, state.query, state.searchByName, state.searchByContent,
+        )
+        _activeSearchResults.value = active
+        _deletedSearchResults.value = deleted
+    }
+
+    private fun saveToHistory() {
+        val state = _searchState.value
+        if (state.query.isEmpty()) return
+
+        val entry = SearchHistoryEntry(
+            query = state.query,
+            criteria = mapOf("name" to state.searchByName, "content" to state.searchByContent),
+            timestamp = System.currentTimeMillis(),
+        )
+        searchHistoryRepository.saveEntry(entry)
+        _searchHistory.value = searchHistoryRepository.getHistory()
+    }
+
+    fun loadSearchHistory() {
+        _searchHistory.value = searchHistoryRepository.getHistory()
+        viewModelScope.launch {
+            searchHistoryRepository.syncFromFirebase()
+            _searchHistory.value = searchHistoryRepository.getHistory()
+        }
+    }
+
+    fun replaySearch(entry: SearchHistoryEntry) {
+        _searchState.value = SearchState(
+            query = entry.query,
+            searchByName = entry.criteria["name"] ?: true,
+            searchByContent = entry.criteria["content"] ?: true,
+            isSearchOpen = true,
+        )
+        runSearch()
+        // History entry already exists — update its timestamp
+        saveToHistory()
     }
 }
 
