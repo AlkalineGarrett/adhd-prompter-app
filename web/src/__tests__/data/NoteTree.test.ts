@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import type { Note, NoteLine } from '@/data/Note'
-import { flattenTreeToLines, buildTreeFromLines, isOldFormat } from '@/data/NoteTree'
+import { flattenTreeToLines, buildTreeFromLines } from '@/data/NoteTree'
 
 function note(
   id: string,
@@ -348,22 +348,3 @@ describe('round-trip', () => {
   })
 })
 
-// --- isOldFormat ---
-
-describe('isOldFormat', () => {
-  test('empty descendants returns false', () => {
-    expect(isOldFormat([])).toBe(false)
-  })
-
-  test('descendants with rootNoteId returns false', () => {
-    expect(isOldFormat([note('a', 'A', [], 'root')])).toBe(false)
-  })
-
-  test('descendants without rootNoteId returns true', () => {
-    expect(isOldFormat([note('a', 'A'), note('b', 'B')])).toBe(true)
-  })
-
-  test('mixed descendants returns false', () => {
-    expect(isOldFormat([note('a', 'A', [], 'root'), note('b', 'B')])).toBe(false)
-  })
-})

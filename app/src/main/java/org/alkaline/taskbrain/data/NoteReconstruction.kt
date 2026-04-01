@@ -25,7 +25,7 @@ fun rebuildAllNotes(rawNotes: Map<String, Note>): List<Note> {
     }
 
     return topLevel.map { note ->
-        reconstructNoteContent(note, descendantsByRoot[note.id], rawNotes)
+        reconstructNoteContent(note, descendantsByRoot[note.id])
     }
 }
 
@@ -65,7 +65,7 @@ fun rebuildAffectedNotes(
             continue
         }
 
-        val reconstructed = reconstructNoteContent(rootNote, descendantsByRoot[rootId], rawNotes)
+        val reconstructed = reconstructNoteContent(rootNote, descendantsByRoot[rootId])
         val idx = newNotes.indexOfFirst { it.id == rootId }
         if (idx >= 0) {
             newNotes[idx] = reconstructed
@@ -81,28 +81,13 @@ fun rebuildAffectedNotes(
 
 /**
  * Reconstruct a single note's content from its descendants.
- * Handles both new tree format (flattenTreeToLines) and old format (containedNotes lookup).
  */
 fun reconstructNoteContent(
     note: Note,
     descendants: List<Note>?,
-    rawNotes: Map<String, Note>
 ): Note {
-    if (note.containedNotes.isEmpty()) return note
+    if (note.containedNotes.isEmpty() || descendants.isNullOrEmpty()) return note
 
-    if (!descendants.isNullOrEmpty()) {
-        val lines = flattenTreeToLines(note, descendants)
-        return note.copy(content = lines.joinToString("\n") { it.content })
-    }
-
-    // Old format fallback
-    val parts = mutableListOf(note.content)
-    for (childId in note.containedNotes) {
-        if (childId.isNotEmpty()) {
-            parts.add(rawNotes[childId]?.content ?: "")
-        } else {
-            parts.add("")
-        }
-    }
-    return note.copy(content = parts.joinToString("\n"))
+    val lines = flattenTreeToLines(note, descendants)
+    return note.copy(content = lines.joinToString("\n") { it.content })
 }

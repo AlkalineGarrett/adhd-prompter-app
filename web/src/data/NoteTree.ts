@@ -131,11 +131,3 @@ export function buildTreeFromLines(rootNoteId: string, trackedLines: NoteLine[])
     nodes,
   }
 }
-
-/**
- * Detects whether descendants are in old format (flat, no rootNoteId).
- */
-export function isOldFormat(descendants: Note[]): boolean {
-  if (descendants.length === 0) return false
-  return descendants.every((d) => d.rootNoteId == null)
-}

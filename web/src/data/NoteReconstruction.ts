@@ -26,7 +26,7 @@ export function rebuildAllNotes(rawNotes: Map<string, Note>): Note[] {
   }
 
   return topLevel.map(note =>
-    reconstructNoteContent(note, descendantsByRoot.get(note.id), rawNotes)
+    reconstructNoteContent(note, descendantsByRoot.get(note.id))
   )
 }
 
@@ -62,7 +62,7 @@ export function rebuildAffectedNotes(
       continue
     }
 
-    const reconstructed = reconstructNoteContent(rootNote, descendantsByRoot.get(rootId), rawNotes)
+    const reconstructed = reconstructNoteContent(rootNote, descendantsByRoot.get(rootId))
     const idx = newNotes.findIndex(n => n.id === rootId)
     if (idx >= 0) {
       newNotes[idx] = reconstructed
@@ -82,23 +82,11 @@ export function rebuildAffectedNotes(
 export function reconstructNoteContent(
   note: Note,
   descendants: Note[] | undefined,
-  rawNotes: Map<string, Note>
 ): Note {
   if (note.containedNotes.length === 0) return note
 
-  if (descendants && descendants.length > 0) {
-    const lines = flattenTreeToLines(note, descendants)
-    return { ...note, content: lines.map(l => l.content).join('\n') }
-  }
+  if (!descendants || descendants.length === 0) return note
 
-  // Old format fallback
-  const parts = [note.content]
-  for (const childId of note.containedNotes) {
-    if (childId !== '') {
-      parts.push(rawNotes.get(childId)?.content ?? '')
-    } else {
-      parts.push('')
-    }
-  }
-  return { ...note, content: parts.join('\n') }
+  const lines = flattenTreeToLines(note, descendants)
+  return { ...note, content: lines.map(l => l.content).join('\n') }
 }

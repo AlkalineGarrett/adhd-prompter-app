@@ -426,10 +426,13 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val storeNote = NoteStore.getNoteById(noteId)
         if (storeNote != null) {
             val content = storeNote.content
-            val storeLines = content.lines().mapIndexed { index, line ->
+            // Use getNoteLinesById to get proper noteId mappings from the in-memory tree,
+            // avoiding the race condition where a save could happen before a background
+            // Firestore refresh provides the real IDs.
+            val storeLines = NoteStore.getNoteLinesById(noteId) ?: content.lines().mapIndexed { index, line ->
                 NoteLine(content = line, noteId = if (index == 0) noteId else null)
             }
-            Log.d(TAG, "loadContent: using NoteStore content for $noteId (${storeLines.size} lines)")
+            Log.d(TAG, "loadContent: using NoteStore content for $noteId (${storeLines.size} lines, noteIds: ${storeLines.count { it.noteId != null }}/${storeLines.size})")
             _isNoteDeleted.value = storeNote.state == "deleted"
             lineTracker.setTrackedLines(storeLines)
             _loadStatus.value = LoadStatus.Success(noteId, content, noteLinesToNoteIds(storeLines))
@@ -441,29 +444,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 loadDirectiveResults(content, noteId)
             }
             loadAlarmStates()
-
-            // Background refresh from Firestore for proper noteId mappings.
-            // If content matches, just update noteId mappings.
-            // If content differs and the note is NOT hot (no pending local edits),
-            // NoteStore is stale — update the editor with Firestore content.
-            viewModelScope.launch {
-                repository.loadNoteWithChildren(noteId).onSuccess { freshLines ->
-                    if (noteId != currentNoteId) return@onSuccess
-                    val freshContent = freshLines.joinToString("\n") { it.content }
-                    if (freshContent == content) {
-                        // Content matches — safe to update noteId mappings
-                        lineTracker.setTrackedLines(freshLines)
-                    } else if (!NoteStore.isHot(noteId)) {
-                        // NoteStore content is stale (e.g., collection listener hasn't
-                        // delivered the latest data yet). Update with Firestore content.
-                        Log.d(TAG, "loadContent: NoteStore stale for $noteId, updating from Firestore")
-                        lineTracker.setTrackedLines(freshLines)
-                        _loadStatus.value = LoadStatus.Success(noteId, freshContent, noteLinesToNoteIds(freshLines))
-                    }
-                    // else: note is hot (pending local edit) — NoteStore has the correct
-                    // content. The collection listener will deliver it once the save completes.
-                }
-            }
             return
         }
 
@@ -544,8 +524,11 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     }
 
     fun saveContent(content: String, lineNoteIds: List<List<String>> = emptyList()) {
-        // Update tracked lines - use editor noteIds if available, else fall back to content matching
-        if (lineNoteIds.isNotEmpty()) {
+        // Use editor noteIds when available (they track undo/redo and line moves).
+        // Fall back to content-based matching when editor noteIds are empty
+        // (can happen when loaded via updateFromText instead of initFromNoteLines).
+        val hasEditorNoteIds = lineNoteIds.any { it.isNotEmpty() }
+        if (hasEditorNoteIds) {
             val contentLines = content.lines()
             val noteLines = resolveNoteIds(contentLines, lineNoteIds)
             lineTracker.setTrackedLines(noteLines)

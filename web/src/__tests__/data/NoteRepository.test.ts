@@ -50,23 +50,6 @@ const {
   collection: mockCollection,
 } = await import('firebase/firestore')
 
-function mockDocumentMultiple(docs: Map<string, Record<string, unknown> | null>) {
-  vi.mocked(mockDoc).mockImplementation((...args: any[]) => {
-    const id = args.length > 1 ? args[args.length - 1] : `auto_${Math.random()}`
-    return { id } as DocumentReference
-  })
-
-  vi.mocked(mockGetDoc).mockImplementation(async (docRef: unknown) => {
-    const r = docRef as { id: string }
-    const data = docs.get(r.id)
-    return {
-      exists: () => data !== undefined && data !== null,
-      data: () => data,
-      id: r.id,
-    } as any
-  })
-}
-
 /** Mock getDocs to return empty results (no tree-format descendants). */
 function mockEmptyTreeQuery() {
   vi.mocked(mockGetDocs).mockResolvedValue({ docs: [], empty: true } as any)
@@ -162,41 +145,6 @@ describe('NoteRepository', () => {
       expect(lines[1]!.noteId).toBeNull()
     })
 
-    it('returns parent and children in order with trailing empty line (old format)', async () => {
-      const docs = new Map<string, Record<string, unknown>>([
-        ['parent', { content: 'Parent', containedNotes: ['child_1', 'child_2'] }],
-        ['child_1', { content: 'Child 1' }],
-        ['child_2', { content: 'Child 2' }],
-      ])
-      mockDocumentMultiple(docs)
-
-      const lines = await repository.loadNoteWithChildren('parent')
-
-      expect(lines).toEqual([
-        { content: 'Parent', noteId: 'parent' },
-        { content: 'Child 1', noteId: 'child_1' },
-        { content: 'Child 2', noteId: 'child_2' },
-        { content: '', noteId: null },
-      ])
-    })
-
-    it('treats empty child IDs as spacers (old format)', async () => {
-      const docs = new Map<string, Record<string, unknown>>([
-        ['parent', { content: 'Parent', containedNotes: ['', 'child_1', ''] }],
-        ['child_1', { content: 'Child' }],
-      ])
-      mockDocumentMultiple(docs)
-
-      const lines = await repository.loadNoteWithChildren('parent')
-
-      expect(lines).toHaveLength(5) // parent + 3 children + trailing empty
-      expect(lines[1]!.content).toBe('')
-      expect(lines[1]!.noteId).toBeNull()
-      expect(lines[2]!.content).toBe('Child')
-      expect(lines[3]!.content).toBe('')
-      expect(lines[4]!.content).toBe('')
-      expect(lines[4]!.noteId).toBeNull()
-    })
   })
 
   describe('loadUserNotes', () => {
@@ -217,8 +165,8 @@ describe('NoteRepository', () => {
   })
 
   describe('loadNotesWithFullContent', () => {
-    it('reconstructs content from children (old format)', async () => {
-      // getDocs returns ALL user notes — parent and children
+    it('reconstructs content from tree descendants', async () => {
+      // getDocs returns ALL user notes — parent and children with rootNoteId
       vi.mocked(mockGetDocs).mockResolvedValue({
         docs: [
           {
@@ -233,6 +181,7 @@ describe('NoteRepository', () => {
             data: () => ({
               content: 'Second line',
               parentNoteId: 'parent_note',
+              rootNoteId: 'parent_note',
             }),
           },
           {
@@ -240,6 +189,7 @@ describe('NoteRepository', () => {
             data: () => ({
               content: 'Third line',
               parentNoteId: 'parent_note',
+              rootNoteId: 'parent_note',
             }),
           },
         ],
@@ -665,33 +615,11 @@ describe('NoteRepository', () => {
       expect(batch.update).toHaveBeenCalledTimes(3)
     })
 
-    it('deletes root and old-format children', async () => {
-      vi.mocked(mockGetDocs).mockResolvedValue({ docs: [], empty: true } as any)
-      vi.mocked(mockDoc).mockImplementation((...args: any[]) => {
-        return { id: args[args.length - 1] } as any
-      })
-      vi.mocked(mockGetDoc).mockResolvedValue({
-        exists: () => true,
-        data: () => ({ containedNotes: ['old_1', '', 'old_2'] }),
-      } as any)
-      const batch = { update: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) }
-      vi.mocked(mockWriteBatch).mockReturnValue(batch as any)
-
-      await repository.softDeleteNote('note_1')
-
-      // root + 2 non-empty children (empty string is spacer)
-      expect(batch.update).toHaveBeenCalledTimes(3)
-    })
-
     it('deletes only root when no descendants', async () => {
       vi.mocked(mockGetDocs).mockResolvedValue({ docs: [], empty: true } as any)
       vi.mocked(mockDoc).mockImplementation((...args: any[]) => {
         return { id: args[args.length - 1] } as any
       })
-      vi.mocked(mockGetDoc).mockResolvedValue({
-        exists: () => true,
-        data: () => ({ containedNotes: [] }),
-      } as any)
       const batch = { update: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) }
       vi.mocked(mockWriteBatch).mockReturnValue(batch as any)
 
@@ -721,22 +649,6 @@ describe('NoteRepository', () => {
       expect(batch.update).toHaveBeenCalledTimes(3)
     })
 
-    it('restores root and old-format children', async () => {
-      vi.mocked(mockGetDocs).mockResolvedValue({ docs: [], empty: true } as any)
-      vi.mocked(mockDoc).mockImplementation((...args: any[]) => {
-        return { id: args[args.length - 1] } as any
-      })
-      vi.mocked(mockGetDoc).mockResolvedValue({
-        exists: () => true,
-        data: () => ({ containedNotes: ['old_1', 'old_2'] }),
-      } as any)
-      const batch = { update: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) }
-      vi.mocked(mockWriteBatch).mockReturnValue(batch as any)
-
-      await repository.undeleteNote('note_1')
-
-      expect(batch.update).toHaveBeenCalledTimes(3)
-    })
   })
 
   // endregion

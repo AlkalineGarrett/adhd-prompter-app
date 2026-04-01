@@ -199,6 +199,27 @@ object NoteStore {
     fun getNoteById(noteId: String): Note? =
         _notes.value.find { it.id == noteId }
 
+    /**
+     * Returns flattened note lines with proper noteId mappings from the in-memory tree.
+     * Uses containedNotes arrays and rawNotes to reconstruct the same output as
+     * NoteRepository.loadNoteWithChildren, but without a Firestore round-trip.
+     * Returns null if the note or its descendants aren't loaded yet.
+     */
+    fun getNoteLinesById(noteId: String): List<NoteLine>? {
+        val rootNote = rawNotes[noteId] ?: return null
+        if (rootNote.containedNotes.isEmpty()) {
+            // No tree children — split content into per-line NoteLines.
+            val lines = rootNote.content.split("\n")
+            return lines.mapIndexed { index, line ->
+                NoteLine(line, if (index == 0) noteId else null)
+            }
+        }
+        val descendants = rawNotes.values.filter {
+            it.rootNoteId == noteId && it.state != "deleted"
+        }
+        return flattenTreeToLines(rootNote, descendants)
+    }
+
     /** Track an in-flight save so loaders can await it before reading from Firestore. */
     fun trackSave(noteId: String, deferred: Deferred<Unit>) {
         pendingSaves[noteId] = deferred

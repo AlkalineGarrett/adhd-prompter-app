@@ -159,75 +159,38 @@ class NoteReconstructionTest {
     @Test
     fun `reconstructContent - no containedNotes returns as-is`() {
         val n = note("a", "Simple note")
-        val result = reconstructNoteContent(n, null, emptyMap())
+        val result = reconstructNoteContent(n, null)
         assertSame(n, result)
     }
 
     @Test
-    fun `reconstructContent - new format with descendants`() {
+    fun `reconstructContent - with descendants`() {
         val root = note("r", "Root", containedNotes = listOf("c1"))
         val c1 = note("c1", "Child", rootNoteId = "r", parentNoteId = "r")
-        val result = reconstructNoteContent(root, listOf(c1), mapOf("r" to root, "c1" to c1))
+        val result = reconstructNoteContent(root, listOf(c1))
         assertTrue(result.content.contains("Root"))
         assertTrue(result.content.contains("Child"))
     }
 
     @Test
-    fun `reconstructContent - old format with containedNotes lookup`() {
-        val root = note("r", "Root", containedNotes = listOf("c1", "c2"))
-        val rawNotes = mapOf(
-            "r" to root,
-            "c1" to note("c1", "Child 1"),
-            "c2" to note("c2", "Child 2"),
-        )
-        // No descendants passed (old format) — looks up from rawNotes
-        val result = reconstructNoteContent(root, null, rawNotes)
-        assertEquals("Root\nChild 1\nChild 2", result.content)
-    }
-
-    @Test
-    fun `reconstructContent - old format with missing child`() {
-        val root = note("r", "Root", containedNotes = listOf("c1", "missing"))
-        val rawNotes = mapOf(
-            "r" to root,
-            "c1" to note("c1", "Child 1"),
-        )
-        val result = reconstructNoteContent(root, null, rawNotes)
-        assertEquals("Root\nChild 1\n", result.content)
-    }
-
-    @Test
-    fun `reconstructContent - old format with spacers`() {
-        val root = note("r", "Root", containedNotes = listOf("c1", "", "c2"))
-        val rawNotes = mapOf(
-            "r" to root,
-            "c1" to note("c1", "Child 1"),
-            "c2" to note("c2", "Child 2"),
-        )
-        val result = reconstructNoteContent(root, null, rawNotes)
-        assertEquals("Root\nChild 1\n\nChild 2", result.content)
-    }
-
-    @Test
-    fun `reconstructContent - empty descendants falls back to old format`() {
+    fun `reconstructContent - null descendants returns as-is`() {
         val root = note("r", "Root", containedNotes = listOf("c1"))
-        val rawNotes = mapOf(
-            "r" to root,
-            "c1" to note("c1", "Child"),
-        )
-        // Empty list (not null) also falls back to old format
-        val result = reconstructNoteContent(root, emptyList(), rawNotes)
-        assertEquals("Root\nChild", result.content)
+        val result = reconstructNoteContent(root, null)
+        assertSame(root, result)
+    }
+
+    @Test
+    fun `reconstructContent - empty descendants returns as-is`() {
+        val root = note("r", "Root", containedNotes = listOf("c1"))
+        val result = reconstructNoteContent(root, emptyList())
+        assertSame(root, result)
     }
 
     @Test
     fun `reconstructContent - preserves non-content fields`() {
         val root = note("r", "Root", containedNotes = listOf("c1")).copy(path = "my/path", state = "active")
-        val rawNotes = mapOf(
-            "r" to root,
-            "c1" to note("c1", "Child"),
-        )
-        val result = reconstructNoteContent(root, null, rawNotes)
+        val c1 = note("c1", "Child", rootNoteId = "r", parentNoteId = "r")
+        val result = reconstructNoteContent(root, listOf(c1))
         assertEquals("my/path", result.path)
         assertEquals("active", result.state)
     }

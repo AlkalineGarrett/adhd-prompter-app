@@ -206,26 +206,16 @@ export class NoteStore {
     const note = this.rawNotes.get(noteId)
     if (!note) return undefined
     if (note.containedNotes.length === 0) {
-      return [{ content: note.content, noteId: note.id }]
+      return note.content.split('\n').map((line, i) => ({
+        content: line,
+        noteId: i === 0 ? noteId : null,
+      }))
     }
     const descendants: Note[] = []
     for (const raw of this.rawNotes.values()) {
-      if (raw.rootNoteId === noteId) descendants.push(raw)
+      if (raw.rootNoteId === noteId && raw.state !== 'deleted') descendants.push(raw)
     }
-    if (descendants.length > 0) {
-      return flattenTreeToLines(note, descendants)
-    }
-    // Old format fallback
-    const lines: NoteLine[] = [{ content: note.content, noteId: note.id }]
-    for (const childId of note.containedNotes) {
-      if (childId !== '') {
-        const child = this.rawNotes.get(childId)
-        lines.push({ content: child?.content ?? '', noteId: childId })
-      } else {
-        lines.push({ content: '', noteId: null })
-      }
-    }
-    return lines
+    return flattenTreeToLines(note, descendants)
   }
 
   /** Track an in-flight save so loaders can await it before reading from Firestore. */

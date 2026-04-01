@@ -235,7 +235,7 @@ describe('rebuildAffectedNotes', () => {
 describe('reconstructNoteContent', () => {
   it('note with no containedNotes returns as-is', () => {
     const root = note({ id: 'r1', content: 'Plain', containedNotes: [] })
-    const result = reconstructNoteContent(root, undefined, new Map())
+    const result = reconstructNoteContent(root, undefined)
     expect(result).toBe(root)
   })
 
@@ -252,65 +252,31 @@ describe('reconstructNoteContent', () => {
       rootNoteId: 'r1',
     })
 
-    const rawNotes = toMap([root, child])
-    const result = reconstructNoteContent(root, [child], rawNotes)
+    const result = reconstructNoteContent(root, [child])
     expect(result.content).toBe('Title\nBody line')
     expect(result.id).toBe('r1')
   })
 
-  it('note with containedNotes but no descendants (old format) joins from rawNotes', () => {
-    const child1 = note({ id: 'c1', content: 'Line A' })
-    const child2 = note({ id: 'c2', content: 'Line B' })
+  it('note with containedNotes but no descendants returns as-is', () => {
     const root = note({
       id: 'r1',
       content: 'Header',
       containedNotes: ['c1', 'c2'],
     })
 
-    const rawNotes = toMap([root, child1, child2])
-    // No descendants (undefined) triggers old format fallback
-    const result = reconstructNoteContent(root, undefined, rawNotes)
-    expect(result.content).toBe('Header\nLine A\nLine B')
+    const result = reconstructNoteContent(root, undefined)
+    expect(result).toBe(root)
   })
 
-  it('old format with missing child in rawNotes uses empty string', () => {
-    const root = note({
-      id: 'r1',
-      content: 'Header',
-      containedNotes: ['missing1', 'c1'],
-    })
-    const child = note({ id: 'c1', content: 'Exists' })
-
-    const rawNotes = toMap([root, child])
-    const result = reconstructNoteContent(root, undefined, rawNotes)
-    expect(result.content).toBe('Header\n\nExists')
-  })
-
-  it('old format with empty string child IDs (spacers) inserts empty lines', () => {
-    const child = note({ id: 'c1', content: 'After spacer' })
-    const root = note({
-      id: 'r1',
-      content: 'Title',
-      containedNotes: ['', 'c1', ''],
-    })
-
-    const rawNotes = toMap([root, child])
-    const result = reconstructNoteContent(root, undefined, rawNotes)
-    expect(result.content).toBe('Title\n\nAfter spacer\n')
-  })
-
-  it('old format with empty descendants array triggers old format fallback', () => {
-    const child = note({ id: 'c1', content: 'Child' })
+  it('note with containedNotes and empty descendants returns as-is', () => {
     const root = note({
       id: 'r1',
       content: 'Root',
       containedNotes: ['c1'],
     })
 
-    const rawNotes = toMap([root, child])
-    // Empty array (not undefined) should also trigger old format
-    const result = reconstructNoteContent(root, [], rawNotes)
-    expect(result.content).toBe('Root\nChild')
+    const result = reconstructNoteContent(root, [])
+    expect(result).toBe(root)
   })
 
   it('preserves all note fields except content', () => {
@@ -329,7 +295,7 @@ describe('reconstructNoteContent', () => {
       rootNoteId: 'r1',
     })
 
-    const result = reconstructNoteContent(root, [child], toMap([root, child]))
+    const result = reconstructNoteContent(root, [child])
     expect(result.tags).toEqual(['important'])
     expect(result.state).toBe('active')
     expect(result.path).toBe('my-note')

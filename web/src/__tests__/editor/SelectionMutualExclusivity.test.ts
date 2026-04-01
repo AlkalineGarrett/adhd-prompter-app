@@ -31,7 +31,7 @@ describe('Selection mutual exclusivity', () => {
       parent.state.setSelection(0, 6) // Select "Line 1"
       expect(parent.state.hasSelection).toBe(true)
 
-      const viewSession = new InlineEditSession('view1', 'View line 1\nView line 2')
+      void new InlineEditSession('view1', 'View line 1\nView line 2')
 
       // Simulate activateSession: clear parent + previous session
       parent.state.clearSelection()
@@ -42,7 +42,7 @@ describe('Selection mutual exclusivity', () => {
     it('clears previous view selection when switching to different view', () => {
       const parent = createParentEditor()
       const viewA = new InlineEditSession('viewA', 'Content A')
-      const viewB = new InlineEditSession('viewB', 'Content B')
+      void new InlineEditSession('viewB', 'Content B')
 
       // View A has a selection
       viewA.editorState.setSelection(0, 5)
@@ -71,7 +71,7 @@ describe('Selection mutual exclusivity', () => {
     })
 
     it('does not clear when re-activating the same session', () => {
-      const parent = createParentEditor()
+      void createParentEditor()
       const view = new InlineEditSession('view1', 'Content')
 
       view.editorState.setSelection(0, 3)

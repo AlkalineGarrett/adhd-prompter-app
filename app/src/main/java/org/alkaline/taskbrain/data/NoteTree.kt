@@ -143,11 +143,3 @@ fun buildTreeFromLines(rootNoteId: String, trackedLines: List<NoteLine>): TreeSa
         nodes = nodes.toList(),
     )
 }
-
-/**
- * Detects whether descendants are in old format (flat, no rootNoteId).
- */
-fun isOldFormat(descendants: List<Note>): Boolean {
-    if (descendants.isEmpty()) return false
-    return descendants.none { it.rootNoteId != null }
-}

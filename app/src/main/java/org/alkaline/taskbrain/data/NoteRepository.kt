@@ -7,9 +7,6 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
@@ -19,8 +16,6 @@ import kotlinx.coroutines.withContext
  * Notes form a tree: parentNoteId points to immediate parent, rootNoteId enables
  * single-query loading of all descendants. Indentation is derived from tree depth
  * (no tabs stored in Firestore content).
- *
- * Old-format notes (flat children, tabs in content) are migrated lazily on save.
  */
 class NoteRepository(
     private val db: FirebaseFirestore = FirebaseFirestore.getInstance(),
@@ -54,9 +49,7 @@ class NoteRepository(
 
     /**
      * Loads a note and its descendants, returning a flat list of tab-prefixed NoteLines.
-     *
-     * New format: single query via rootNoteId, tree flattened with tabs from depth.
-     * Old format: individual child reads, content already has tabs.
+     * Queries descendants via rootNoteId and flattens the tree with tabs from depth.
      */
     suspend fun loadNoteWithChildren(noteId: String): Result<List<NoteLine>> = runCatching {
         withContext(Dispatchers.IO) {
@@ -83,10 +76,9 @@ class NoteRepository(
     }.onFailure { Log.e(TAG, "Error loading note", it) }
 
     /**
-     * Loads note lines using tree query (new format) or individual reads (old format).
+     * Loads note lines by querying descendants via rootNoteId and flattening the tree.
      */
     private suspend fun loadNoteLines(note: Note): List<NoteLine> {
-        // Try tree query first
         val userId = requireUserId()
         val descendantDocs = notesCollection
             .whereEqualTo("rootNoteId", note.id)
@@ -106,37 +98,7 @@ class NoteRepository(
             return flattenTreeToLines(note, descendants)
         }
 
-        // Old format or no children
-        if (note.containedNotes.isEmpty()) {
-            return listOf(NoteLine(note.content, note.id))
-        }
-
-        // Old format: load children individually
-        val parentLine = NoteLine(note.content, note.id)
-        val childLines = loadOldFormatChildren(note.containedNotes)
-        return listOf(parentLine) + childLines
-    }
-
-    private suspend fun loadOldFormatChildren(childIds: List<String>): List<NoteLine> =
-        coroutineScope {
-            childIds.map { childId -> async { loadOldFormatChild(childId) } }.awaitAll()
-        }
-
-    private suspend fun loadOldFormatChild(childId: String): NoteLine {
-        if (childId.isEmpty()) return NoteLine("", null)
-
-        return try {
-            val childDoc = noteRef(childId).get().await()
-            if (childDoc.exists()) {
-                val content = childDoc.toObject(Note::class.java)?.content ?: ""
-                NoteLine(content, childId)
-            } else {
-                NoteLine("", null)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error fetching child note $childId", e)
-            NoteLine("", null)
-        }
+        return listOf(NoteLine(note.content, note.id))
     }
 
     /**
@@ -157,46 +119,16 @@ class NoteRepository(
                 }
             }.filter { it.state != "deleted" }
 
-            val notesById = allNotes.associateBy { it.id }
             val topLevelNotes = allNotes.filter { it.parentNoteId == null }
             val descendantsByRoot = allNotes
                 .filter { it.rootNoteId != null }
                 .groupBy { it.rootNoteId!! }
 
             topLevelNotes.map { note ->
-                reconstructNoteContent(note, notesById, descendantsByRoot[note.id])
+                reconstructNoteContent(note, descendantsByRoot[note.id])
             }
         }
     }.onFailure { Log.e(TAG, "Error loading notes with full content", it) }
-
-    /**
-     * Reconstructs full content from tree or flat structure.
-     * No additional queries needed — uses data already loaded.
-     */
-    private fun reconstructNoteContent(
-        note: Note,
-        allNotesById: Map<String, Note>,
-        treeDescendants: List<Note>?,
-    ): Note {
-        if (note.containedNotes.isEmpty()) return note
-
-        if (treeDescendants != null) {
-            val lines = flattenTreeToLines(note, treeDescendants)
-            return note.copy(content = lines.joinToString("\n") { it.content })
-        }
-
-        // Old format: look up children from the loaded notes
-        val fullContent = buildString {
-            append(note.content)
-            for (childId in note.containedNotes) {
-                append('\n')
-                if (childId.isNotEmpty()) {
-                    append(allNotesById[childId]?.content ?: "")
-                }
-            }
-        }
-        return note.copy(content = fullContent)
-    }
 
     suspend fun loadUserNotes(): Result<List<Note>> = runCatching {
         withContext(Dispatchers.IO) {
@@ -256,7 +188,6 @@ class NoteRepository(
      *
      * Computes parentNoteId and containedNotes from indentation, sets rootNoteId
      * on all descendants, and strips tabs from stored content.
-     * Lazily migrates old-format notes to tree format.
      *
      * Returns a map of line indices to newly created note IDs.
      *
@@ -408,7 +339,6 @@ class NoteRepository(
 
     /**
      * Fetches IDs of all existing descendants for deletion tracking.
-     * Tries tree query first (new format), falls back to containedNotes (old format).
      */
     private suspend fun fetchExistingDescendantIds(noteId: String): Set<String> {
         val userId = requireUserId()
@@ -417,20 +347,10 @@ class NoteRepository(
             .whereEqualTo("userId", userId)
             .get().await()
 
-        if (descendants.documents.isNotEmpty()) {
-            return descendants.documents
-                .filter { it.getString("state") != "deleted" }
-                .map { it.id }
-                .toSet()
-        }
-
-        // Old format fallback
-        val rootDoc = noteRef(noteId).get().await()
-        if (!rootDoc.exists()) return emptySet()
-
-        @Suppress("UNCHECKED_CAST")
-        val containedNotes = rootDoc.get("containedNotes") as? List<String> ?: emptyList()
-        return containedNotes.filter { it.isNotEmpty() }.toSet()
+        return descendants.documents
+            .filter { it.getString("state") != "deleted" }
+            .map { it.id }
+            .toSet()
     }
 
     /**
@@ -557,25 +477,12 @@ class NoteRepository(
 
             val idsToDelete = mutableSetOf(noteId)
 
-            // New-format descendants
             val descendants = notesCollection
                 .whereEqualTo("rootNoteId", noteId)
                 .whereEqualTo("userId", userId)
                 .get().await()
             for (doc in descendants) {
                 idsToDelete.add(doc.id)
-            }
-
-            // Old-format fallback
-            if (descendants.isEmpty()) {
-                val rootDoc = noteRef(noteId).get().await()
-                if (rootDoc.exists()) {
-                    @Suppress("UNCHECKED_CAST")
-                    val containedNotes = rootDoc.get("containedNotes") as? List<String> ?: emptyList()
-                    for (childId in containedNotes) {
-                        if (childId.isNotEmpty()) idsToDelete.add(childId)
-                    }
-                }
             }
 
             val batch = db.batch()
@@ -599,25 +506,12 @@ class NoteRepository(
 
             val idsToRestore = mutableSetOf(noteId)
 
-            // Deleted descendants still have rootNoteId set
             val descendants = notesCollection
                 .whereEqualTo("rootNoteId", noteId)
                 .whereEqualTo("userId", userId)
                 .get().await()
             for (doc in descendants) {
                 idsToRestore.add(doc.id)
-            }
-
-            // Old-format fallback
-            if (descendants.isEmpty()) {
-                val rootDoc = noteRef(noteId).get().await()
-                if (rootDoc.exists()) {
-                    @Suppress("UNCHECKED_CAST")
-                    val containedNotes = rootDoc.get("containedNotes") as? List<String> ?: emptyList()
-                    for (childId in containedNotes) {
-                        if (childId.isNotEmpty()) idsToRestore.add(childId)
-                    }
-                }
             }
 
             val batch = db.batch()

@@ -26,7 +26,7 @@ class NoteRepositoryTest {
         every { mockAuth.currentUser } returns mockk { every { uid } returns USER_ID }
         every { mockFirestore.collection("notes") } returns mockCollection
 
-        // Default: no tree-format descendants (old format tests)
+        // Default: no descendants
         mockEmptyTreeQuery()
 
         repository = NoteRepository(mockFirestore, mockAuth)
@@ -139,41 +139,6 @@ class NoteRepositoryTest {
     }
 
     @Test
-    fun `loadNoteWithChildren returns parent and children in order - old format`() = runTest {
-        mockDocument("parent", Note(content = "Parent", containedNotes = listOf("child_1", "child_2")))
-        mockDocument("child_1", Note(content = "Child 1"))
-        mockDocument("child_2", Note(content = "Child 2"))
-
-        val lines = repository.loadNoteWithChildren("parent").getOrThrow()
-
-        assertEquals(
-            listOf(
-                NoteLine("Parent", "parent"),
-                NoteLine("Child 1", "child_1"),
-                NoteLine("Child 2", "child_2"),
-                NoteLine("", null)
-            ),
-            lines
-        )
-    }
-
-    @Test
-    fun `loadNoteWithChildren treats empty child IDs as spacers - old format`() = runTest {
-        mockDocument("parent", Note(content = "Parent", containedNotes = listOf("", "child_1", "")))
-        mockDocument("child_1", Note(content = "Child"))
-
-        val lines = repository.loadNoteWithChildren("parent").getOrThrow()
-
-        assertEquals(5, lines.size)
-        assertEquals("", lines[1].content)
-        assertNull(lines[1].noteId)
-        assertEquals("Child", lines[2].content)
-        assertEquals("", lines[3].content)
-        assertEquals("", lines[4].content)
-        assertNull(lines[4].noteId)
-    }
-
-    @Test
     fun `loadUserNotes filters out children and deleted notes`() = runTest {
         val mockQuery = mockk<Query>()
         val docs = listOf(
@@ -202,9 +167,8 @@ class NoteRepositoryTest {
     }
 
     @Test
-    fun `loadNotesWithFullContent reconstructs content from children - old format`() = runTest {
+    fun `loadNotesWithFullContent reconstructs content from descendants`() = runTest {
         val mockQuery = mockk<Query>()
-        // Include parent AND children in the query result (all user notes)
         val docs = listOf(
             mockk<QueryDocumentSnapshot> {
                 every { id } returns "parent_note"
@@ -219,7 +183,8 @@ class NoteRepositoryTest {
                 every { toObject(Note::class.java) } returns Note(
                     id = "child_1",
                     content = "Second line",
-                    parentNoteId = "parent_note"
+                    parentNoteId = "parent_note",
+                    rootNoteId = "parent_note"
                 )
             },
             mockk<QueryDocumentSnapshot> {
@@ -227,7 +192,8 @@ class NoteRepositoryTest {
                 every { toObject(Note::class.java) } returns Note(
                     id = "child_2",
                     content = "Third line",
-                    parentNoteId = "parent_note"
+                    parentNoteId = "parent_note",
+                    rootNoteId = "parent_note"
                 )
             }
         )
@@ -650,19 +616,6 @@ class NoteRepositoryTest {
     }
 
     @Test
-    fun `softDeleteNote deletes root and old-format children`() = runTest {
-        // Empty tree query (no new-format descendants)
-        mockEmptyTreeQuery()
-        mockDocument("note_1", Note(containedNotes = listOf("old_1", "", "old_2")))
-        val batch = mockBatch()
-
-        repository.softDeleteNote("note_1").getOrThrow()
-
-        // Should update 3 docs: root + 2 non-empty children (empty string is spacer)
-        verify(exactly = 3) { batch.update(any(), any<Map<String, Any?>>()) }
-    }
-
-    @Test
     fun `softDeleteNote deletes only root when no descendants`() = runTest {
         mockEmptyTreeQuery()
         mockDocument("note_1", Note(containedNotes = emptyList()))
@@ -679,17 +632,6 @@ class NoteRepositoryTest {
             "child_1" to Note(id = "child_1", rootNoteId = "note_1", state = "deleted"),
             "child_2" to Note(id = "child_2", rootNoteId = "note_1", state = "deleted"),
         ))
-        val batch = mockBatch()
-
-        repository.undeleteNote("note_1").getOrThrow()
-
-        verify(exactly = 3) { batch.update(any(), any<Map<String, Any?>>()) }
-    }
-
-    @Test
-    fun `undeleteNote restores root and old-format children`() = runTest {
-        mockEmptyTreeQuery()
-        mockDocument("note_1", Note(containedNotes = listOf("old_1", "old_2")))
         val batch = mockBatch()
 
         repository.undeleteNote("note_1").getOrThrow()

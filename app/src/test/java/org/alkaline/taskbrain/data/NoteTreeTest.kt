@@ -403,36 +403,4 @@ class NoteTreeTest {
         assertEquals(listOf("e"), nodeD.containedNoteIds)
     }
 
-    // --- isOldFormat ---
-
-    @Test
-    fun `isOldFormat - empty descendants returns false`() {
-        assertFalse(isOldFormat(emptyList()))
-    }
-
-    @Test
-    fun `isOldFormat - descendants with rootNoteId returns false`() {
-        val descendants = listOf(
-            note("a", "A", rootNoteId = "root"),
-        )
-        assertFalse(isOldFormat(descendants))
-    }
-
-    @Test
-    fun `isOldFormat - descendants without rootNoteId returns true`() {
-        val descendants = listOf(
-            note("a", "A"),
-            note("b", "B"),
-        )
-        assertTrue(isOldFormat(descendants))
-    }
-
-    @Test
-    fun `isOldFormat - mixed descendants returns false`() {
-        val descendants = listOf(
-            note("a", "A", rootNoteId = "root"),
-            note("b", "B"),
-        )
-        assertFalse(isOldFormat(descendants))
-    }
 }
