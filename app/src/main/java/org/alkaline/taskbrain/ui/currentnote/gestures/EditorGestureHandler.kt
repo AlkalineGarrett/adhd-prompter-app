@@ -487,6 +487,8 @@ internal fun Modifier.editorPointerInput(
     density: Float,
     scrollState: ScrollState?,
     directiveResults: Map<String, DirectiveResult> = emptyMap(),
+    /** Lines with inline editors — gestures on these lines are handled by the child editor. */
+    inlineEditLineIndices: Set<Int> = emptySet(),
     onCursorPositioned: (Int) -> Unit,
     onTapOnSelection: ((Offset) -> Unit)? = null,
     onSelectionCompleted: ((Offset) -> Unit)? = null
@@ -496,7 +498,8 @@ internal fun Modifier.editorPointerInput(
         awaitPointerEventScope {
             while (true) {
                 val gsm = awaitGestureStart(
-                    state, lineLayouts, touchSlop, cursorDragRadiusPx, directiveResults, onCursorPositioned
+                    state, lineLayouts, touchSlop, cursorDragRadiusPx,
+                    directiveResults, inlineEditLineIndices, onCursorPositioned
                 ) ?: continue
 
                 val longPressJob = launchLongPressDetection(longPressTimeoutMillis, gsm)
@@ -519,13 +522,21 @@ private suspend fun AwaitPointerEventScope.awaitGestureStart(
     touchSlop: Float,
     cursorDragRadiusPx: Float,
     directiveResults: Map<String, DirectiveResult>,
+    inlineEditLineIndices: Set<Int>,
     onCursorDragged: (Int) -> Unit
 ): GestureStateMachine? {
     // Use Main pass so children (like DirectiveEditRow) can consume in Initial pass first
     val down = awaitPointerEvent(PointerEventPass.Main)
     val downChange = down.changes.firstOrNull { it.pressed } ?: return null
-    // Skip if a child already consumed this event
     if (downChange.isConsumed) return null
+
+    // Skip if the touch landed on a line with an inline editor — that editor
+    // has its own editorPointerInput and will handle gestures independently.
+    if (inlineEditLineIndices.isNotEmpty()) {
+        val touchLine = findLineIndexAtY(downChange.position.y, lineLayouts, state.lines.lastIndex)
+        if (touchLine in inlineEditLineIndices) return null
+    }
+
     return createGestureTracker(
         downChange.position, state, lineLayouts, touchSlop, cursorDragRadiusPx,
         directiveResults, onCursorDragged

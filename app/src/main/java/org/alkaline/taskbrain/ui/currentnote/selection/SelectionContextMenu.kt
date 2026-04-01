@@ -1,7 +1,7 @@
 package org.alkaline.taskbrain.ui.currentnote.selection
 
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -78,56 +78,46 @@ fun SelectionContextMenu(
     selectionBounds: SelectionBounds? = null
 ) {
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = with(density) { configuration.screenWidthDp.dp.toPx() }
+    val menuWidthPx = with(density) { MENU_WIDTH.toPx() }
+    val marginPx = with(density) { MENU_MARGIN.toPx() }
 
-    BoxWithConstraints {
-        val screenWidthPx = with(density) { maxWidth.toPx() }
-        val menuWidthPx = with(density) { MENU_WIDTH.toPx() }
-        val marginPx = with(density) { MENU_MARGIN.toPx() }
+    val offset = with(density) {
+        if (selectionBounds != null) {
+            val centerY = (selectionBounds.topY + selectionBounds.bottomY) / 2
+            val y = (centerY - 100f).coerceAtLeast(marginPx)
 
-        val offset = with(density) {
-            if (selectionBounds != null) {
-                // Calculate vertical position: centered on selection
-                val centerY = (selectionBounds.topY + selectionBounds.bottomY) / 2
-                val y = (centerY - 100f).coerceAtLeast(marginPx)  // Offset up a bit since menu expands down
+            val spaceOnRight = screenWidthPx - selectionBounds.rightX
+            val spaceOnLeft = selectionBounds.leftX
 
-                // Calculate horizontal position: left or right of selection
-                val spaceOnRight = screenWidthPx - selectionBounds.rightX
-                val spaceOnLeft = selectionBounds.leftX
-
-                val x = if (selectionBounds.isMultiline) {
-                    // Multi-line: prefer right edge (text typically doesn't extend there)
-                    screenWidthPx - menuWidthPx - marginPx
-                } else if (spaceOnRight >= menuWidthPx + marginPx * 2) {
-                    // Enough space on right - position to the right of selection
-                    selectionBounds.rightX + marginPx
-                } else if (spaceOnLeft >= menuWidthPx + marginPx * 2) {
-                    // Enough space on left - position to the left of selection
-                    selectionBounds.leftX - menuWidthPx - marginPx
-                } else {
-                    // Not enough space on either side - position at right edge
-                    screenWidthPx - menuWidthPx - marginPx
-                }
-
-                // Clamp: never position left of screen center
-                val minX = screenWidthPx / 2f
-                DpOffset(x.coerceAtLeast(minX).toDp(), y.toDp())
+            val x = if (selectionBounds.isMultiline) {
+                screenWidthPx - menuWidthPx - marginPx
+            } else if (spaceOnRight >= menuWidthPx + marginPx * 2) {
+                selectionBounds.rightX + marginPx
+            } else if (spaceOnLeft >= menuWidthPx + marginPx * 2) {
+                selectionBounds.leftX - menuWidthPx - marginPx
             } else {
-                // Fallback: use provided offset, clamped to right half
-                val minX = screenWidthPx / 2f
-                DpOffset(
-                    menuOffset.x.coerceAtLeast(minX).toDp(),
-                    menuOffset.y.toDp() - 48.dp
-                )
+                screenWidthPx - menuWidthPx - marginPx
             }
-        }
 
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = onDismissRequest,
-            offset = offset,
-            // Don't take focus so keyboard stays open
-            properties = PopupProperties(focusable = false)
-        ) {
+            val minX = screenWidthPx / 2f
+            DpOffset(x.coerceAtLeast(minX).toDp(), y.toDp())
+        } else {
+            val minX = screenWidthPx / 2f
+            DpOffset(
+                menuOffset.x.coerceAtLeast(minX).toDp(),
+                menuOffset.y.toDp() - 48.dp
+            )
+        }
+    }
+
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismissRequest,
+        offset = offset,
+        properties = PopupProperties(focusable = false)
+    ) {
         DropdownMenuItem(
             text = { Text(stringResource(R.string.action_copy)) },
             leadingIcon = {
@@ -183,7 +173,6 @@ fun SelectionContextMenu(
             },
             onClick = actions.onDelete
         )
-        }
     }
 }
 

@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -81,9 +82,11 @@ import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 import org.alkaline.taskbrain.dsl.ui.ButtonExecutionState
 import org.alkaline.taskbrain.dsl.ui.DirectiveEditRow
 import org.alkaline.taskbrain.dsl.ui.DirectiveTextInput
+import org.alkaline.taskbrain.ui.currentnote.gestures.editorPointerInput
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
 import org.alkaline.taskbrain.ui.currentnote.rendering.ControlledLineView
 import org.alkaline.taskbrain.ui.currentnote.rendering.DirectiveCallbacks
+import org.alkaline.taskbrain.ui.currentnote.selection.EditorSelectionLayer
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
 import org.alkaline.taskbrain.ui.currentnote.selection.GutterSelectionState
 import org.alkaline.taskbrain.ui.currentnote.selection.rememberGutterSelectionState
@@ -1155,17 +1158,35 @@ private fun InlineNoteEditor(
         }
     }
 
-    // Use focusGroup to track focus at editor level
-    // Focus loss is only reported when focus leaves the ENTIRE group
-    // AND we're not expecting focus on another line (from a tap)
     // Write layouts and gutter state to InlineEditState (keyed by noteId),
     // decoupled from the session so they survive session transitions.
     inlineEditState?.viewLineLayouts?.set(session.noteId, lineLayouts)
     inlineEditState?.viewGutterStates?.set(session.noteId, gutterSelectionState)
 
+    val viewConfiguration = LocalViewConfiguration.current
+
+    EditorSelectionLayer(
+        state = editorState,
+        controller = controller,
+        lineLayouts = lineLayouts,
+        directiveResults = directiveResults
+    ) { selectionConfig ->
+
     Column(
         modifier = modifier
             .focusGroup()
+            .editorPointerInput(
+                state = editorState,
+                lineLayouts = lineLayouts,
+                longPressTimeoutMillis = viewConfiguration.longPressTimeoutMillis,
+                touchSlop = viewConfiguration.touchSlop,
+                density = LocalDensity.current.density,
+                scrollState = null,
+                directiveResults = directiveResults,
+                onCursorPositioned = controller::setCursorFromGlobalOffset,
+                onTapOnSelection = selectionConfig.contextMenuState::handleTapOnSelection,
+                onSelectionCompleted = { _ -> selectionConfig.onSelectionCompleted() }
+            )
             .onFocusChanged { focusState ->
                 val wasFocused = isEditorFocused
                 isEditorFocused = focusState.hasFocus
@@ -1265,6 +1286,8 @@ private fun InlineNoteEditor(
             }
         }
     }
+
+    }  // EditorSelectionLayer
 }
 
 /**

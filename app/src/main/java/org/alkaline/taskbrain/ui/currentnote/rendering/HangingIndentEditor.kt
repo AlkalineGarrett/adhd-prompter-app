@@ -28,7 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.ClipboardManager
-import androidx.compose.ui.platform.LocalClipboardManager
+import org.alkaline.taskbrain.ui.currentnote.selection.EditorSelectionLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewConfiguration
@@ -44,12 +44,10 @@ import org.alkaline.taskbrain.ui.currentnote.selection.SelectionContextMenu
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionMenuActions
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionHandle
 import org.alkaline.taskbrain.ui.currentnote.selection.rememberGutterSelectionState
-import org.alkaline.taskbrain.ui.currentnote.selection.rememberHandleDragState
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionBounds
 import org.alkaline.taskbrain.ui.currentnote.selection.calculateHandlePosition
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionHandles
 import org.alkaline.taskbrain.ui.currentnote.selection.createMenuActions
-import org.alkaline.taskbrain.ui.currentnote.selection.rememberContextMenuState
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.EditorState
@@ -72,7 +70,7 @@ import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
  * Calculates and remembers selection handle positions.
  */
 @Composable
-private fun rememberHandlePositions(
+internal fun rememberHandlePositions(
     state: EditorState,
     lineLayouts: List<LineLayoutInfo>,
     gutterOffsetPx: Float,
@@ -150,33 +148,14 @@ fun HangingIndentEditor(
     val lineLayouts = rememberLineLayouts(lineCount)
 
     // UI state
-    val contextMenuState = rememberContextMenuState()
     val gutterSelectionState = rememberGutterSelectionState()
-    val handleDragState = rememberHandleDragState()
 
     // Platform state
     val viewConfiguration = LocalViewConfiguration.current
-    val clipboardManager = LocalClipboardManager.current
     val density = LocalDensity.current
 
-    // SINGLE callback for all selection completion events
-    // This ensures consistent behavior regardless of how selection was made
-    // (long-press drag, gutter tap, gutter drag, etc.)
-    val coordinatorForMenu = LocalSelectionCoordinator.current
-    val onSelectionCompleted: () -> Unit = {
-        if (coordinatorForMenu?.hasAnySelection() == true || state.hasSelection) {
-            contextMenuState.show(Offset.Zero)
-        }
-    }
-
-    // Focus management - triggers when focusedLineIndex or stateVersion changes.
-    // Only request focus when stateVersion > 0 to avoid focusing before content loads.
-    //
-    // IMPORTANT: Hidden lines have no composable, so their FocusRequesters are unattached.
-    // Calling requestFocus() on an unattached FocusRequester crashes. We guard here
-    // (the single focus entry point) rather than at each caller, because
-    // EditorState.setSelection() internally sets focusedLineIndex to the selection start
-    // which may be a hidden line.
+    // Focus management — hidden lines have no composable, so their FocusRequesters
+    // are unattached. Guard here to avoid crashing on requestFocus().
     LaunchedEffect(externalFocusRequester, state.focusedLineIndex, state.stateVersion) {
         if (state.stateVersion > 0 && state.focusedLineIndex in focusRequesters.indices) {
             val lineTexts = state.lines.map { it.text }
@@ -195,103 +174,37 @@ fun HangingIndentEditor(
         }
     }
 
-    // Handle positions
     val gutterOffsetPx = if (showGutter) with(density) { EditorConfig.GutterWidth.toPx() } else 0f
-    val (startHandlePosition, endHandlePosition) = rememberHandlePositions(state, lineLayouts, gutterOffsetPx, directiveResults)
 
-    // Render
-    EditorLayout(
+    EditorSelectionLayer(
         state = state,
         controller = controller,
-        textStyle = textStyle,
-        focusRequesters = focusRequesters,
         lineLayouts = lineLayouts,
-        viewConfiguration = viewConfiguration,
-        scrollState = scrollState,
-        showGutter = showGutter,
-        showCompleted = showCompleted,
-        gutterSelectionState = gutterSelectionState,
-        handleDragState = handleDragState,
-        startHandlePosition = startHandlePosition,
-        endHandlePosition = endHandlePosition,
-        contextMenuState = contextMenuState,
-        clipboardManager = clipboardManager,
-        onEditorFocusChanged = onEditorFocusChanged,
-        onSelectionCompleted = onSelectionCompleted,
-        directiveResults = directiveResults,
-        directiveCallbacks = directiveCallbacks,
-        buttonCallbacks = buttonCallbacks,
-        onSymbolTap = onSymbolTap,
-        symbolOverlaysProvider = symbolOverlaysProvider,
-        modifier = modifier
-    )
-}
-
-// =============================================================================
-// Editor Layout
-// =============================================================================
-
-@Composable
-private fun EditorLayout(
-    state: EditorState,
-    controller: EditorController,
-    textStyle: TextStyle,
-    focusRequesters: List<FocusRequester>,
-    lineLayouts: MutableList<LineLayoutInfo>,
-    viewConfiguration: ViewConfiguration,
-    scrollState: ScrollState?,
-    showGutter: Boolean,
-    showCompleted: Boolean,
-    gutterSelectionState: GutterSelectionState,
-    handleDragState: HandleDragState,
-    startHandlePosition: HandlePosition?,
-    endHandlePosition: HandlePosition?,
-    contextMenuState: ContextMenuState,
-    clipboardManager: ClipboardManager,
-    onEditorFocusChanged: ((Boolean) -> Unit)?,
-    onSelectionCompleted: () -> Unit,
-    directiveResults: Map<String, DirectiveResult>,
-    directiveCallbacks: DirectiveCallbacks,
-    buttonCallbacks: ButtonCallbacks,
-    onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)?,
-    symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)?,
-    modifier: Modifier
-) {
-    Box(modifier = modifier) {
-        // Main content row
-        EditorRow(
-            state = state,
-            controller = controller,
-            textStyle = textStyle,
-            focusRequesters = focusRequesters,
-            lineLayouts = lineLayouts,
-            viewConfiguration = viewConfiguration,
-            scrollState = scrollState,
-            showGutter = showGutter,
-            showCompleted = showCompleted,
-            gutterSelectionState = gutterSelectionState,
-            contextMenuState = contextMenuState,
-            onEditorFocusChanged = onEditorFocusChanged,
-            onSelectionCompleted = onSelectionCompleted,
-            directiveResults = directiveResults,
-            directiveCallbacks = directiveCallbacks,
-            buttonCallbacks = buttonCallbacks,
-            onSymbolTap = onSymbolTap,
-            symbolOverlaysProvider = symbolOverlaysProvider
-        )
-
-        // Selection overlay (handles + context menu)
-        SelectionOverlay(
-            state = state,
-            controller = controller,
-            lineLayouts = lineLayouts,
-            handleDragState = handleDragState,
-            startHandlePosition = startHandlePosition,
-            endHandlePosition = endHandlePosition,
-            contextMenuState = contextMenuState,
-            clipboardManager = clipboardManager,
-            directiveResults = directiveResults
-        )
+        gutterOffsetPx = gutterOffsetPx,
+        directiveResults = directiveResults
+    ) { selectionConfig ->
+        Box(modifier = modifier) {
+            EditorRow(
+                state = state,
+                controller = controller,
+                textStyle = textStyle,
+                focusRequesters = focusRequesters,
+                lineLayouts = lineLayouts,
+                viewConfiguration = viewConfiguration,
+                scrollState = scrollState,
+                showGutter = showGutter,
+                showCompleted = showCompleted,
+                gutterSelectionState = gutterSelectionState,
+                contextMenuState = selectionConfig.contextMenuState,
+                onEditorFocusChanged = onEditorFocusChanged,
+                onSelectionCompleted = selectionConfig.onSelectionCompleted,
+                directiveResults = directiveResults,
+                directiveCallbacks = directiveCallbacks,
+                buttonCallbacks = buttonCallbacks,
+                onSymbolTap = onSymbolTap,
+                symbolOverlaysProvider = symbolOverlaysProvider
+            )
+        }
     }
 }
 
@@ -423,6 +336,7 @@ private fun EditorRow(
             directiveResults = directiveResults,
             directiveCallbacks = directiveCallbacks,
             buttonCallbacks = buttonCallbacks,
+            inlineEditLineIndices = inlineEditLineIndices,
             onDirectiveEditHeightMeasured = { key, height -> directiveEditHeights[key] = height },
             onSymbolTap = onSymbolTap,
             symbolOverlaysProvider = symbolOverlaysProvider,
@@ -488,7 +402,7 @@ private fun selectHiddenBlock(
 // =============================================================================
 
 @Composable
-private fun SelectionOverlay(
+internal fun SelectionOverlay(
     state: EditorState,
     controller: EditorController,
     lineLayouts: List<LineLayoutInfo>,
@@ -615,6 +529,7 @@ private fun EditorContent(
     directiveCallbacks: DirectiveCallbacks,
     buttonCallbacks: ButtonCallbacks,
     onDirectiveEditHeightMeasured: ((directiveKey: String, heightPx: Int) -> Unit)?,
+    inlineEditLineIndices: Set<Int> = emptySet(),
     onSymbolTap: ((lineIndex: Int, charOffsetInLine: Int) -> Unit)? = null,
     symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null,
     modifier: Modifier = Modifier
@@ -630,9 +545,9 @@ private fun EditorContent(
                 density = LocalDensity.current.density,
                 scrollState = scrollState,
                 directiveResults = directiveResults,
+                inlineEditLineIndices = inlineEditLineIndices,
                 onCursorPositioned = onCursorPositioned,
                 onTapOnSelection = onTapOnSelection,
-                // Wrap the callback to ignore the Offset parameter - we use selectionBounds for positioning
                 onSelectionCompleted = { _ -> onSelectionCompleted() }
             )
     ) {
