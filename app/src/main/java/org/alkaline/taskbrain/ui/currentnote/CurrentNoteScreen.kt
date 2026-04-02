@@ -90,7 +90,7 @@ fun CurrentNoteScreen(
     val redoRollbackWarning by currentNoteViewModel.redoRollbackWarning.observeAsState()
     val saveWarning by currentNoteViewModel.saveWarning.observeAsState()
     val isNoteDeletedFromVm by currentNoteViewModel.isNoteDeleted.observeAsState(false)
-    val showCompleted by currentNoteViewModel.showCompleted.observeAsState(true)
+    val showCompletedFromVm by currentNoteViewModel.showCompleted.observeAsState(true)
     // Generation counter bumps after async cache fills, triggering recomposition
     val directiveCacheGeneration by currentNoteViewModel.directiveCacheGeneration.observeAsState(0)
     val buttonExecutionStates by currentNoteViewModel.buttonExecutionStates.observeAsState(emptyMap())
@@ -116,9 +116,13 @@ fun CurrentNoteScreen(
         ?: storeContent?.content
         ?: ""
     val initialIsDeleted = cachedContent?.isDeleted ?: (storeContent?.state == "deleted")
+    val initialShowCompleted = storeContent?.showCompleted ?: true
 
     var isNoteDeleted by remember(displayedNoteId) { mutableStateOf(initialIsDeleted) }
     LaunchedEffect(isNoteDeletedFromVm) { isNoteDeleted = isNoteDeletedFromVm }
+
+    var showCompleted by remember(displayedNoteId) { mutableStateOf(initialShowCompleted) }
+    LaunchedEffect(showCompletedFromVm) { showCompleted = showCompletedFromVm }
 
     var userContent by remember(displayedNoteId) { mutableStateOf(initialContent) }
     var textFieldValue by remember(displayedNoteId) {

@@ -404,13 +404,11 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val fullContent = cached.noteLines.joinToString("\n") { it.content }
             Log.d(TAG, "loadContent: restoring dirty editor cache for $noteId")
             _isNoteDeleted.value = cached.isDeleted
+            _showCompleted.value = NoteStore.getNoteById(noteId)?.showCompleted ?: true
             currentNoteLines = cached.noteLines
             _loadStatus.value = LoadStatus.Success(noteId, fullContent, noteLinesToNoteIds(cached.noteLines))
             viewModelScope.launch {
                 repository.updateLastAccessed(noteId)
-                repository.loadNoteById(noteId).onSuccess { note ->
-                    _showCompleted.value = note?.showCompleted ?: true
-                }
                 loadDirectiveResults(fullContent, noteId)
             }
             loadAlarmStates()
@@ -444,13 +442,11 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             }
             Log.d(TAG, "loadContent: using NoteStore content for $noteId (${storeLines.size} lines, noteIds: ${storeLines.count { it.noteId != null }}/${storeLines.size})")
             _isNoteDeleted.value = storeNote.state == "deleted"
+            _showCompleted.value = storeNote.showCompleted
             currentNoteLines = storeLines
             _loadStatus.value = LoadStatus.Success(noteId, content, noteLinesToNoteIds(storeLines))
             viewModelScope.launch {
                 repository.updateLastAccessed(noteId)
-                repository.loadNoteById(noteId).onSuccess { note ->
-                    _showCompleted.value = note?.showCompleted ?: true
-                }
                 loadDirectiveResults(content, noteId)
             }
             loadAlarmStates()
