@@ -87,7 +87,8 @@ describe('updateFromText preserves noteIds', () => {
     // Reorder: B, A, C
     state.updateFromText('Line B\nLine A\nLine C')
 
-    expect(state.lines[0]!.noteIds).toEqual(['noteB'])
+    // parentNoteId ('noteA') is enforced as first element on line 0
+    expect(state.lines[0]!.noteIds).toEqual(['noteA', 'noteB'])
     expect(state.lines[1]!.noteIds).toEqual(['noteA'])
     expect(state.lines[2]!.noteIds).toEqual(['noteC'])
   })

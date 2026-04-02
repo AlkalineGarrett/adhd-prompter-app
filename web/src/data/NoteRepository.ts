@@ -572,6 +572,14 @@ export function matchLinesToIds(
     },
   )
 
+  // Phase 3: Positional fallback for lines that changed too much for similarity matching.
+  for (let i = 0; i < newLinesContent.length; i++) {
+    if (newIds[i] == null && i < existingLines.length && !oldConsumed[i]) {
+      newIds[i] = existingLines[i]!.noteId
+      oldConsumed[i] = true
+    }
+  }
+
   const trackedLines = newLinesContent.map((content, index) => ({
     content,
     noteId: newIds[index] ?? null,

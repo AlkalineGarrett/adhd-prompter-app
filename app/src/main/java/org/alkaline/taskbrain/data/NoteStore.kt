@@ -269,9 +269,6 @@ object NoteStore {
         }
 
         // Don't rebuild hot notes — local state is authoritative.
-        // rawNotes may temporarily have stale data from a racing persist echo,
-        // but the correct persist (always the last one debounced) will eventually
-        // deliver the right data to rawNotes via a later snapshot.
         affectedRoots.removeAll { isHot(it) }
 
         if (affectedRoots.isNotEmpty()) {

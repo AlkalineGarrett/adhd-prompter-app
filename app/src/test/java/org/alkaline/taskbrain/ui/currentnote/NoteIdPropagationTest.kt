@@ -93,7 +93,8 @@ class NoteIdPropagationTest {
         // Reorder: B, A, C
         state.updateFromText("Line B\nLine A\nLine C")
 
-        assertEquals(listOf("noteB"), state.lines[0].noteIds)
+        // Line 0 gets parentNoteId (noteA) enforced as primary, with noteB as secondary
+        assertEquals(listOf("noteA", "noteB"), state.lines[0].noteIds)
         assertEquals(listOf("noteA"), state.lines[1].noteIds)
         assertEquals(listOf("noteC"), state.lines[2].noteIds)
     }

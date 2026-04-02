@@ -789,7 +789,6 @@ private fun ViewDirectiveInlineContent(
     val notes = viewVal.notes
     val renderedContents = viewVal.renderedContents
 
-    // Track which note is currently being edited (by index)
     var editingNoteIndex by remember { mutableStateOf<Int?>(null) }
 
     Column(
@@ -842,7 +841,6 @@ private fun ViewDirectiveInlineContent(
                     isEditing = editingNoteIndex == 0,
                     onStartEditing = { editingNoteIndex = 0 },
                     onSave = { newContent ->
-                        editingNoteIndex = null
                         onNoteTap(note.id, newContent)
                     },
                     onCancel = { editingNoteIndex = null }
@@ -869,11 +867,6 @@ private fun ViewDirectiveInlineContent(
                             isEditing = editingNoteIndex == index,
                             onStartEditing = { editingNoteIndex = index },
                             onSave = { newContent ->
-                                // Only clear editingNoteIndex if still pointing to this note
-                                // (avoids overwriting when transitioning to another note)
-                                if (editingNoteIndex == index) {
-                                    editingNoteIndex = null
-                                }
                                 onNoteTap(note.id, newContent)
                             },
                             onCancel = {
@@ -975,7 +968,6 @@ private fun EditableViewNoteSection(
         }
     }
 
-    // Single session — always exists. Registered as active when editing starts.
     val session = remember(note.id, editContent) {
         val s = EditorState()
         s.updateFromText(editContent)
@@ -1182,7 +1174,7 @@ private fun InlineNoteEditor(
                 touchSlop = viewConfiguration.touchSlop,
                 density = LocalDensity.current.density,
                 scrollState = null,
-                directiveResults = directiveResults,
+                directiveResults = emptyMap(),
                 onCursorPositioned = controller::setCursorFromGlobalOffset,
                 onTapOnSelection = selectionConfig.contextMenuState::handleTapOnSelection,
                 onSelectionCompleted = { _ -> selectionConfig.onSelectionCompleted() }

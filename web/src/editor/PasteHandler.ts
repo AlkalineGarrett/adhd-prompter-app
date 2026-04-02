@@ -7,6 +7,7 @@ import {
 } from './EditorSelection'
 import { getLineStartOffset, getLineAndLocalOffset } from './SelectionCoordinates'
 import { type ParsedLine, parsedLineHasPrefix, buildLineText } from './ClipboardParser'
+import { performSimilarityMatching } from './ContentSimilarity'
 
 export interface PasteResult {
   lines: LineState[]
@@ -277,13 +278,17 @@ function rebuildWithNoteIds(newTexts: string[], oldLines: LineState[]): LineStat
     }
   })
 
-  // Phase 2: Positional fallback
-  newTexts.forEach((_, index) => {
-    if (matchedNoteIds[index] == null && index < oldLines.length && !oldConsumed[index]) {
-      matchedNoteIds[index] = oldLines[index]!.noteIds
-      oldConsumed[index] = true
-    }
-  })
+  // Phase 2: Similarity-based matching for modifications and splits.
+  performSimilarityMatching(
+    new Set(newTexts.map((_, i) => i).filter((i) => matchedNoteIds[i] == null)),
+    oldLines.map((_, i) => i).filter((i) => !oldConsumed[i]),
+    (idx) => oldLines[idx]!.text,
+    (idx) => newTexts[idx]!,
+    (oldIdx, newIdx) => {
+      matchedNoteIds[newIdx] = oldLines[oldIdx]!.noteIds
+      oldConsumed[oldIdx] = true
+    },
+  )
 
   return newTexts.map((t, i) => new LineState(t, undefined, matchedNoteIds[i] ?? []))
 }

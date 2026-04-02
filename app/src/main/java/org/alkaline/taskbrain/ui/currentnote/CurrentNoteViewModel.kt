@@ -38,7 +38,6 @@ import org.alkaline.taskbrain.service.RecurrenceTemplateManager
 import org.alkaline.taskbrain.service.RecurrenceScheduler
 import org.alkaline.taskbrain.ui.currentnote.components.RecurrenceConfig
 import org.alkaline.taskbrain.data.NoteLine
-import org.alkaline.taskbrain.data.NoteLineTracker
 import org.alkaline.taskbrain.data.NoteRepository
 import org.alkaline.taskbrain.data.NoteStore
 import org.alkaline.taskbrain.data.PrompterAgent
@@ -254,7 +253,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
     /**
      * Saves the current note to Firestore.
-     * On success, handles post-save bookkeeping: updating line tracker IDs,
+     * On success, handles post-save bookkeeping: updating noteIds,
      * notifying the UI, and syncing alarm line content.
      * NoteStore's hot/cool mechanism prevents the collection listener from
      * overwriting local state with a stale Firestore echo.
@@ -263,10 +262,17 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val result = repository.saveNoteWithChildren(noteId, trackedLines)
         result.fold(
             onSuccess = { newIdsMap ->
-                for ((index, newId) in newIdsMap) {
-                    lineTracker.updateLineNoteId(index, newId)
+                // Update currentNoteLines with newly assigned IDs
+                if (newIdsMap.isNotEmpty()) {
+                    val updated = currentNoteLines.toMutableList()
+                    for ((index, newId) in newIdsMap) {
+                        if (index < updated.size) {
+                            updated[index] = updated[index].copy(noteId = newId)
+                        }
+                    }
+                    currentNoteLines = updated
+                    _newlyAssignedNoteIds.tryEmit(newIdsMap)
                 }
-                if (newIdsMap.isNotEmpty()) _newlyAssignedNoteIds.tryEmit(newIdsMap)
                 syncAlarmLineContent(trackedLines)
                 _saveStatus.value = SaveStatus.Success(noteId)
                 _saveCompleted.tryEmit(Unit)
@@ -299,22 +305,26 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      */
     fun getCurrentNoteId(): String = currentNoteId
 
-    // Track lines with their corresponding note IDs
-    private var lineTracker = NoteLineTracker(currentNoteId)
+    /**
+     * The ViewModel's current view of note lines with their noteIds.
+     * Updated on load, save, and when new IDs are assigned.
+     * This is the ViewModel's single source of truth for note-line identity.
+     */
+    private var currentNoteLines: List<NoteLine> = emptyList()
 
     /**
      * Gets the current tracked lines for cache updates.
      * Returns a copy to prevent external modification.
      */
-    fun getTrackedLines(): List<NoteLine> = lineTracker.getTrackedLines()
+    fun getTrackedLines(): List<NoteLine> = currentNoteLines
 
     /** Extracts noteIds from NoteLines for passing to EditorState via LoadStatus. */
     private fun noteLinesToNoteIds(lines: List<NoteLine>): List<List<String>> =
         lines.map { listOfNotNull(it.noteId) }
 
-    /** Returns per-line noteIds from the line tracker for directive key generation. */
+    /** Returns per-line noteIds for directive key generation. */
     fun getLineNoteIds(): List<String?> =
-        lineTracker.getTrackedLines().map { it.noteId }
+        currentNoteLines.map { it.noteId }
 
     /**
      * Push the current editor content to NoteStore immediately.
@@ -372,8 +382,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // Save the current note as the last viewed note
         sharedPreferences.edit().putString(LAST_VIEWED_NOTE_KEY, noteId).apply()
 
-        // Recreate line tracker with new parent note ID
-        lineTracker = NoteLineTracker(noteId)
+        // Reset note lines for the new note
+        currentNoteLines = emptyList()
 
         // Clear expanded state from previous note
         expandedDirectiveHashes.clear()
@@ -383,8 +393,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // 2. NoteStore: always-fresh reconstructed content (instant, no Firestore round-trip)
         // 3. Firestore: canonical load with full noteId mappings
         //
-        // The RecentTabsViewModel cache stores NoteLine[] with per-line noteId mappings
-        // needed by NoteLineTracker. It is ONLY used for dirty notes (unsaved edits).
+        // The RecentTabsViewModel cache stores NoteLine[] with per-line noteId mappings.
+        // It is ONLY used for dirty notes (unsaved edits).
         // For clean notes, NoteStore has the canonical content and Firestore provides
         // noteId mappings in a background refresh.
 
@@ -394,7 +404,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val fullContent = cached.noteLines.joinToString("\n") { it.content }
             Log.d(TAG, "loadContent: restoring dirty editor cache for $noteId")
             _isNoteDeleted.value = cached.isDeleted
-            lineTracker.setTrackedLines(cached.noteLines)
+            currentNoteLines = cached.noteLines
             _loadStatus.value = LoadStatus.Success(noteId, fullContent, noteLinesToNoteIds(cached.noteLines))
             viewModelScope.launch {
                 repository.updateLastAccessed(noteId)
@@ -413,7 +423,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     val freshContent = freshLines.joinToString("\n") { it.content }
                     if (freshContent == fullContent) {
                         // Content matches — update noteId mappings without changing editor
-                        lineTracker.setTrackedLines(freshLines)
+                        currentNoteLines = freshLines
                     }
                 }
             }
@@ -434,7 +444,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             }
             Log.d(TAG, "loadContent: using NoteStore content for $noteId (${storeLines.size} lines, noteIds: ${storeLines.count { it.noteId != null }}/${storeLines.size})")
             _isNoteDeleted.value = storeNote.state == "deleted"
-            lineTracker.setTrackedLines(storeLines)
+            currentNoteLines = storeLines
             _loadStatus.value = LoadStatus.Success(noteId, content, noteLinesToNoteIds(storeLines))
             viewModelScope.launch {
                 repository.updateLastAccessed(noteId)
@@ -472,7 +482,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val result = repository.loadNoteWithChildren(noteId)
             result.fold(
                 onSuccess = { loadedLines ->
-                    lineTracker.setTrackedLines(loadedLines)
+                    currentNoteLines = loadedLines
                     val fullContent = loadedLines.joinToString("\n") { it.content }
                     _loadStatus.value = LoadStatus.Success(noteId, fullContent, noteLinesToNoteIds(loadedLines))
 
@@ -505,11 +515,59 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     }
 
     /**
-     * Updates the tracked lines based on the new content provided by the user.
-     * It uses a heuristic to match lines and preserve Note IDs across edits, insertions, and deletions.
+     * Updates currentNoteLines from raw content using content-based matching.
+     * Used as a fallback when editor noteIds are not available.
      */
     fun updateTrackedLines(newContent: String) {
-        lineTracker.updateTrackedLines(newContent)
+        val newLinesContent = newContent.lines()
+        val oldLines = currentNoteLines
+
+        if (oldLines.isEmpty()) {
+            currentNoteLines = newLinesContent.mapIndexed { index, content ->
+                NoteLine(content, if (index == 0) currentNoteId else null)
+            }
+            return
+        }
+
+        val contentToOldIndices = mutableMapOf<String, MutableList<Int>>()
+        oldLines.forEachIndexed { index, line ->
+            contentToOldIndices.getOrPut(line.content) { mutableListOf() }.add(index)
+        }
+
+        val newIds = arrayOfNulls<String>(newLinesContent.size)
+        val oldConsumed = BooleanArray(oldLines.size)
+
+        // Exact matches
+        newLinesContent.forEachIndexed { index, content ->
+            val indices = contentToOldIndices[content]
+            if (!indices.isNullOrEmpty()) {
+                val oldIdx = indices.removeAt(0)
+                newIds[index] = oldLines[oldIdx].noteId
+                oldConsumed[oldIdx] = true
+            }
+        }
+
+        // Similarity-based matching for modifications and splits
+        org.alkaline.taskbrain.data.performSimilarityMatching(
+            unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
+            unconsumedOldIndices = oldLines.indices.filter { !oldConsumed[it] },
+            getOldContent = { oldLines[it].content },
+            getNewContent = { newLinesContent[it] },
+        ) { oldIdx, newIdx ->
+            newIds[newIdx] = oldLines[oldIdx].noteId
+            oldConsumed[oldIdx] = true
+        }
+
+        val result = newLinesContent.mapIndexed { index, content ->
+            NoteLine(content, newIds[index])
+        }.toMutableList()
+
+        // Ensure first line always has parent ID
+        if (result.isNotEmpty() && result[0].noteId != currentNoteId) {
+            result[0] = result[0].copy(noteId = currentNoteId)
+        }
+
+        currentNoteLines = result
     }
 
     fun toggleShowCompleted() {
@@ -527,14 +585,14 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // Use editor noteIds when available (they track undo/redo and line moves).
         // Fall back to content-based matching when editor noteIds are empty
         // (can happen when loaded via updateFromText instead of initFromNoteLines).
-        val hasEditorNoteIds = lineNoteIds.any { it.isNotEmpty() }
-        if (hasEditorNoteIds) {
-            val contentLines = content.lines()
-            val noteLines = resolveNoteIds(contentLines, lineNoteIds)
-            lineTracker.setTrackedLines(noteLines)
+        val capturedLines = if (lineNoteIds.any { it.isNotEmpty() }) {
+            resolveNoteIds(content.lines(), lineNoteIds)
         } else {
+            // Fallback: build from content with no noteId info
             updateTrackedLines(content)
+            currentNoteLines
         }
+        currentNoteLines = capturedLines
 
         _saveStatus.value = SaveStatus.Saving
 
@@ -549,12 +607,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             NoteStore.updateNote(savedNoteId, existing.copy(content = content), persist = false)
         }
         MetadataHasher.invalidateCache()
-
-        // Capture tracked lines NOW on the main thread — before any async loadContent
-        // from a newly-composed screen can overwrite lineTracker. Without this, the
-        // coroutine might read a different lineTracker that was reset by loadContent,
-        // causing noteId loss and spurious child-note soft-deletes.
-        val capturedLines = lineTracker.getTrackedLines()
 
         // persistCurrentNote does a structured save (with noteId mappings) — more
         // precise than the auto-persist callback, so we passed persist = false above.
@@ -581,7 +633,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 _loadStatus.value = LoadStatus.Success(
                     capturedNoteId,
                     updatedContent,
-                    noteLinesToNoteIds(lineTracker.getTrackedLines())
+                    noteLinesToNoteIds(currentNoteLines)
                 )
                 
                 // Signal that the content has been modified and is unsaved
@@ -630,9 +682,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Returns the parent note ID if the line doesn't have an associated note.
      */
     fun getNoteIdForLine(lineIndex: Int): String {
-        val lines = lineTracker.getTrackedLines()
-        return if (lineIndex < lines.size) {
-            lines[lineIndex].noteId ?: currentNoteId
+        return if (lineIndex < currentNoteLines.size) {
+            currentNoteLines[lineIndex].noteId ?: currentNoteId
         } else {
             currentNoteId
         }
@@ -693,7 +744,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * For recurring directives, fetches the RecurringAlarm → currentAlarmId → alarm instance.
      */
     fun loadAlarmStates() {
-        val extracted = extractAlarmIds(lineTracker.getTrackedLines())
+        val extracted = extractAlarmIds(currentNoteLines)
         if (extracted.alarmIds.isEmpty() && extracted.recurringAlarmIds.isEmpty()) {
             _alarmCache.value = emptyMap()
             _recurringAlarmCache.value = emptyMap()
@@ -786,8 +837,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val savedNoteId = currentNoteId
         viewModelScope.launch {
             updateTrackedLines(content)
-            val trackedLines = lineTracker.getTrackedLines()
-            val saveResult = persistCurrentNote(savedNoteId, trackedLines)
+            val saveResult = persistCurrentNote(savedNoteId, currentNoteLines)
 
             saveResult.onSuccess {
                 createAlarmInternal(lineContent, lineIndex, dueTime, stages)
@@ -809,8 +859,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         val savedNoteId = currentNoteId
         viewModelScope.launch {
             updateTrackedLines(content)
-            val trackedLines = lineTracker.getTrackedLines()
-            val saveResult = persistCurrentNote(savedNoteId, trackedLines)
+            val saveResult = persistCurrentNote(savedNoteId, currentNoteLines)
 
             saveResult.onSuccess {
                 createRecurringAlarmInternal(
@@ -1540,13 +1589,6 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         onSuccess: (() -> Unit)? = null,
         onFailure: ((Throwable) -> Unit)? = null
     ) {
-        val lines = newContent.lines()
-        Log.d("InlineEditCache", "=== saveInlineNoteContent START ===")
-        Log.d("InlineEditCache", "noteId=$noteId")
-        Log.d("InlineEditCache", "content has ${lines.size} lines, first='${lines.firstOrNull()}'")
-        Log.d("InlineEditCache", "full content: '${newContent.take(100).replace("\n", "\\n")}...'")
-        Log.d("InlineEditCache", "storeNotes=${NoteStore.notes.value.size}")
-
         // Optimistic update immediately so tab-switching shows the edit
         // before the async Firestore save completes (persist = false because
         // saveNoteWithFullContent below does a more appropriate save)
@@ -1556,9 +1598,15 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
 
         viewModelScope.launch {
-            startInlineEditSession(noteId)
+            // Only start a new edit session if one isn't already active for this note.
+            // Re-starting triggers a session switch (end + start) which fires the
+            // session-end listener → bumpDirectiveCacheGeneration → directive re-execution
+            // → session recreation → IME invalidation → focused line cleared.
+            if (!editSessionManager.isEditSessionActive() ||
+                editSessionManager.getEditContext()?.editedNoteId != noteId) {
+                startInlineEditSession(noteId)
+            }
 
-            Log.d("InlineEditCache", "saveInlineNoteContent: calling repository.saveNoteWithFullContent...")
             // Use saveNoteWithFullContent to properly handle multi-line notes
             // This preserves child note IDs and handles line additions/deletions
             //
@@ -1568,17 +1616,20 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
             saveResult
                 .onSuccess {
-                    Log.d("InlineEditCache", "=== saveInlineNoteContent SUCCESS for $noteId ===")
-
-                    // NoteStore was already updated synchronously before the coroutine.
-                    // Just clear directive caches so they re-execute with the new content.
+                    // NoteStore was already updated synchronously (before the coroutine)
+                    // with the new content. Clear directive caches so the next re-execution
+                    // uses fresh data. Do NOT bump cache generation here — that would force
+                    // immediate recomposition of the directive line, which recreates the
+                    // ControlledLineView composables and invalidates the focused line's IME
+                    // InputConnection, causing the keyboard to clear the focused line's text.
+                    // The cache will be naturally re-evaluated when the user defocuses.
                     MetadataHasher.invalidateCache()
                     directiveCacheManager.clearAll()
 
                     onSuccess?.invoke()
                 }
                 .onFailure { e ->
-                    Log.e("InlineEditCache", "=== saveInlineNoteContent FAILED for $noteId ===", e)
+                    Log.e("NoteRepository", "=== saveInlineNoteContent FAILED for $noteId ===", e)
 
                     // Abort edit session on failure (don't apply pending invalidations)
                     editSessionManager.abortEditSession()

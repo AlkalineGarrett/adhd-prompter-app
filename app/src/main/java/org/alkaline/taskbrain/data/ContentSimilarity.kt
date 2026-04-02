@@ -3,7 +3,7 @@ package org.alkaline.taskbrain.data
 /**
  * Content similarity utilities for matching edited lines to their originals.
  *
- * Used by line matching algorithms (NoteLineTracker, EditorState.updateFromText)
+ * Used by line matching algorithms (EditorState.updateFromText, CurrentNoteViewModel)
  * to assign note IDs to the line fragment with the highest proportion of original
  * content after a line split.
  */

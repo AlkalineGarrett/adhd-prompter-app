@@ -583,13 +583,24 @@ class NoteRepository(
             }
         }
 
-        // Positional matches for modifications
-        newLinesContent.forEachIndexed { index, _ ->
-            if (newIds[index] == null) {
-                if (index < existingLines.size && !oldConsumed[index]) {
-                    newIds[index] = existingLines[index].noteId
-                    oldConsumed[index] = true
-                }
+        // Similarity-based matching for modifications and splits
+        performSimilarityMatching(
+            unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
+            unconsumedOldIndices = existingLines.indices.filter { !oldConsumed[it] },
+            getOldContent = { existingLines[it].content },
+            getNewContent = { newLinesContent[it] },
+        ) { oldIdx, newIdx ->
+            newIds[newIdx] = existingLines[oldIdx].noteId
+            oldConsumed[oldIdx] = true
+        }
+
+        // Positional fallback: if a new line at the same index as an unconsumed old line
+        // still has no match, assign by position. This handles cases where content changed
+        // too much for similarity matching (e.g., complete rewrite of a line).
+        for (index in newLinesContent.indices) {
+            if (newIds[index] == null && index < existingLines.size && !oldConsumed[index]) {
+                newIds[index] = existingLines[index].noteId
+                oldConsumed[index] = true
             }
         }
 

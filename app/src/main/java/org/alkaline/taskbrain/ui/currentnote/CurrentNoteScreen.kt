@@ -672,8 +672,8 @@ private fun LifecycleAutoSaveEffect(
 
     // Track whether the dirty-note save has already fired (ON_STOP or onDispose —
     // whichever runs first). Without this guard, both fire saveContent with the same
-    // content, launching two concurrent persistCurrentNote coroutines that race on
-    // lineTracker and can produce duplicate or conflicting Firestore writes.
+    // content, launching two concurrent persistCurrentNote coroutines that race and
+    // can produce duplicate or conflicting Firestore writes.
     val alreadySaved = remember { mutableStateOf(false) }
 
     DisposableEffect(lifecycleOwner) {
@@ -697,11 +697,10 @@ private fun LifecycleAutoSaveEffect(
                 UndoStatePersistence.saveStateBlocking(context, noteId, controller.undoManager)
             }
             if (!currentIsSaved && currentUserContent.isNotEmpty()) {
-                currentNoteViewModel.updateTrackedLines(currentUserContent)
-                val trackedLines = currentNoteViewModel.getTrackedLines()
+                val noteLines = controller.state.toNoteLines()
                 recentTabsViewModel.cacheNoteContent(
                     currentNoteIdForPersistence!!,
-                    trackedLines,
+                    noteLines,
                     currentIsNoteDeleted,
                     isDirty = true
                 )

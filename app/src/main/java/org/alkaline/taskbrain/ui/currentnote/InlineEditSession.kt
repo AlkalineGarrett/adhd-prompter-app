@@ -28,13 +28,16 @@ import org.alkaline.taskbrain.dsl.directives.DirectiveResult
 @Stable
 class InlineEditSession(
     val noteId: String,
-    var originalContent: String,
+    originalContent: String,
     val editorState: EditorState,
     val controller: EditorController
 ) {
     /**
      * Whether the content has been modified from the original.
      */
+    var originalContent by mutableStateOf(originalContent)
+        private set
+
     val isDirty: Boolean
         get() = editorState.text != originalContent
 

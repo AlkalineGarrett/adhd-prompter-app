@@ -12,6 +12,7 @@ import org.alkaline.taskbrain.ui.currentnote.move.MoveExecutor
 import org.alkaline.taskbrain.ui.currentnote.move.MoveTargetFinder
 import org.alkaline.taskbrain.ui.currentnote.selection.EditorSelection
 import org.alkaline.taskbrain.ui.currentnote.selection.SelectionCoordinates
+import org.alkaline.taskbrain.data.NoteLine
 import org.alkaline.taskbrain.ui.currentnote.util.IndentationUtils
 
 /**
@@ -20,6 +21,9 @@ import org.alkaline.taskbrain.ui.currentnote.util.IndentationUtils
 class EditorState {
     internal val lines: SnapshotStateList<LineState> = mutableStateListOf(LineState(""))
     var focusedLineIndex by mutableIntStateOf(0)
+        internal set
+
+    var parentNoteId: String = ""
         internal set
 
     var selection by mutableStateOf(EditorSelection.None)
@@ -491,22 +495,12 @@ class EditorState {
             lines.add(LineState(lineText, lineText.length, matchedNoteIds[index] ?: emptyList()))
         }
         focusedLineIndex = focusedLineIndex.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
-    }
 
-    /**
-     * Syncs primary noteIds from the line tracker into LineState.
-     *
-     * The line tracker (NoteLineTracker) is the source of truth for noteIds.
-     * LineState also maintains noteIds for undo/redo snapshots and merge tracking.
-     * This method keeps them in sync so directive key lookups use consistent noteIds.
-     */
-    internal fun syncNoteIds(trackerNoteIds: List<String?>) {
-        for (i in lines.indices) {
-            val trackerId = trackerNoteIds.getOrNull(i) ?: continue
-            val currentIds = lines[i].noteIds
-            if (currentIds.isEmpty() || currentIds.first() != trackerId) {
-                // Set primary noteId from tracker, keep secondary IDs from merges
-                lines[i].noteIds = listOf(trackerId) + currentIds.drop(1).filter { it != trackerId }
+        // Enforce that line 0 always has parentNoteId as its primary noteId
+        if (parentNoteId.isNotEmpty() && lines.isNotEmpty()) {
+            val first = lines[0]
+            if (first.noteIds.isEmpty() || first.noteIds.first() != parentNoteId) {
+                first.noteIds = listOf(parentNoteId) + first.noteIds.filter { it != parentNoteId }
             }
         }
     }
@@ -516,6 +510,7 @@ class EditorState {
      * Used when loading a note from Firestore.
      */
     internal fun initFromNoteLines(noteLines: List<Pair<String, List<String>>>) {
+        parentNoteId = noteLines.firstOrNull()?.second?.firstOrNull() ?: ""
         lines.clear()
         noteLines.forEach { (text, noteIds) ->
             lines.add(LineState(text, text.length, noteIds))
@@ -547,6 +542,12 @@ class EditorState {
     internal fun notifyChange() {
         onTextChange?.invoke(text)
     }
+
+    /**
+     * Converts the current editor lines to a list of NoteLines for save operations.
+     * Uses the first (primary) noteId from each line.
+     */
+    fun toNoteLines(): List<NoteLine> = lines.map { NoteLine(it.text, it.noteIds.firstOrNull()) }
 }
 
 /**

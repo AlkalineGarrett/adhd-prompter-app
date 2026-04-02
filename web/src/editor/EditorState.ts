@@ -17,6 +17,7 @@ const DOUBLE_SPACE_THRESHOLD_MS = 250
 export class EditorState {
   lines: LineState[] = [new LineState('')]
   focusedLineIndex = 0
+  parentNoteId: string = ''
   selection: EditorSelection = SELECTION_NONE
   /** Anchor point for shift+click/arrow selection. Global character offset. */
   selectionAnchor = -1
@@ -392,11 +393,21 @@ export class EditorState {
 
     this.lines = newLineTexts.map((t, i) => new LineState(t, undefined, matchedNoteIds[i] ?? []))
     this.focusedLineIndex = Math.max(0, Math.min(this.focusedLineIndex, this.lines.length - 1))
+
+    if (this.parentNoteId && this.lines.length > 0) {
+      const first = this.lines[0]!
+      if (!first.noteIds.includes(this.parentNoteId)) {
+        first.noteIds = [this.parentNoteId, ...first.noteIds]
+      } else if (first.noteIds[0] !== this.parentNoteId) {
+        first.noteIds = [this.parentNoteId, ...first.noteIds.filter(id => id !== this.parentNoteId)]
+      }
+    }
   }
 
   /** Initializes editor lines with noteIds from loaded note data. */
   initFromNoteLines(noteLines: Array<{ text: string; noteIds: string[] }>): void {
     this.lines = noteLines.map((nl) => new LineState(nl.text, undefined, nl.noteIds))
+    this.parentNoteId = noteLines[0]?.noteIds[0] ?? ''
     this.focusedLineIndex = 0
     this.clearSelection()
   }

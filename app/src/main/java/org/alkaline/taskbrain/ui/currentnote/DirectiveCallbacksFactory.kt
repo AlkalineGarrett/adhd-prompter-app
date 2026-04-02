@@ -51,10 +51,6 @@ fun rememberDirectiveCallbacks(
                 onSuccess = {
                     inlineEditState.activeSession?.markSaved()
                     recentTabsViewModel.invalidateCache(noteId)
-                    currentNoteViewModel.forceRefreshAllDirectives {
-                        currentNoteViewModel.endInlineEditSession()
-                        inlineEditState.endSession()
-                    }
                 }
             )
         },

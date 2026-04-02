@@ -131,7 +131,7 @@ data class ParsedDirectiveLocation(
 
 /**
  * Parses all directives from content and returns their locations.
- * @param lineNoteIds Optional noteId per line (from NoteLineTracker).
+ * @param lineNoteIds Optional noteId per line (from EditorState).
  */
 fun parseAllDirectiveLocations(content: String, lineNoteIds: List<String?> = emptyList()): List<ParsedDirectiveLocation> {
     val result = mutableListOf<ParsedDirectiveLocation>()
