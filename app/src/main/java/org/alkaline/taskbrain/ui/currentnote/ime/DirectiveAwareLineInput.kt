@@ -95,6 +95,7 @@ import org.alkaline.taskbrain.ui.currentnote.EditorController
 import org.alkaline.taskbrain.ui.currentnote.EditorId
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.LocalInlineEditState
+import org.alkaline.taskbrain.ui.currentnote.util.LocalSymbolOverlaysProvider
 import org.alkaline.taskbrain.ui.currentnote.LocalSelectionCoordinator
 import org.alkaline.taskbrain.ui.currentnote.InlineEditSession
 import org.alkaline.taskbrain.ui.currentnote.util.SymbolOverlay
@@ -1068,6 +1069,7 @@ private fun InlineNoteEditor(
     val controller = session.controller
     val directiveResults = session.directiveResults
     val inlineEditState = LocalInlineEditState.current
+    val symbolOverlaysLookup = LocalSymbolOverlaysProvider.current
 
     // Track expanded directive
     val expandedDirectiveKey = session.expandedDirectiveKey
@@ -1235,6 +1237,7 @@ private fun InlineNoteEditor(
                             lineLayouts[index] = lineLayouts[index].copy(prefixWidthPx = prefixWidthPx)
                         }
                     },
+                    symbolOverlays = symbolOverlaysLookup(lineState.content),
                     directiveResults = directiveResults,
                     directiveCallbacks = DirectiveCallbacks(
                         onDirectiveTap = { directiveKey, sourceText ->

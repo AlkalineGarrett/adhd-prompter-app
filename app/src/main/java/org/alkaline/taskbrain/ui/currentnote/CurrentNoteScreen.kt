@@ -8,6 +8,7 @@ import org.alkaline.taskbrain.data.NoteStore
 import org.alkaline.taskbrain.data.TabState
 import org.alkaline.taskbrain.ui.currentnote.rendering.ButtonCallbacks
 import org.alkaline.taskbrain.ui.currentnote.util.AlarmSymbolUtils
+import org.alkaline.taskbrain.ui.currentnote.util.LocalSymbolOverlaysProvider
 import org.alkaline.taskbrain.ui.currentnote.util.TappableSymbol
 import org.alkaline.taskbrain.ui.currentnote.components.AlarmDialogMode
 import org.alkaline.taskbrain.ui.currentnote.util.ClipboardHtmlConverter
@@ -50,6 +51,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.StateFlow
 import org.alkaline.taskbrain.dsl.runtime.MutationType
+import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 import org.alkaline.taskbrain.BuildConfig
 import org.alkaline.taskbrain.ui.currentnote.components.AgentCommandSection
 import org.alkaline.taskbrain.ui.currentnote.components.CommandBar
@@ -180,6 +182,17 @@ fun CurrentNoteScreen(
         // NoteStore already has the latest content (pushed on every keystroke via updateContent).
         // No flush needed — just compute directives.
         currentNoteViewModel.directiveManager.computeDirectiveResults(userContent, displayedNoteId)
+    }
+
+    // Load alarm states for notes displayed in view directives so overlays render correctly.
+    LaunchedEffect(directiveResults) {
+        val viewNoteContents = directiveResults.values
+            .mapNotNull { (it.toValue() as? ViewVal)?.notes }
+            .flatten()
+            .map { it.content }
+        if (viewNoteContents.isNotEmpty()) {
+            currentNoteViewModel.alarmManager.loadAlarmStatesForContent(viewNoteContents)
+        }
     }
 
     // Update hidden indices for move system when showCompleted or lines change
@@ -539,7 +552,13 @@ fun CurrentNoteScreen(
                 errors = buttonErrors
             )
 
-            androidx.compose.runtime.CompositionLocalProvider(LocalSelectionCoordinator provides coordinator) {
+            val symbolOverlaysLookup = remember(alarmCacheForOverlay, recurringAlarmCacheForOverlay) {
+                { lineContent: String -> currentNoteViewModel.alarmManager.getSymbolOverlays(lineContent, alarmCacheForOverlay, recurringAlarmCacheForOverlay) }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalSelectionCoordinator provides coordinator,
+                LocalSymbolOverlaysProvider provides symbolOverlaysLookup
+            ) {
             ProvideInlineEditState(inlineEditState) {
                 key(displayedNoteId) {
                     NoteTextField(
@@ -582,7 +601,7 @@ fun CurrentNoteScreen(
                         showCompleted = showCompleted,
                         symbolOverlaysProvider = { lineIndex ->
                             val lineContent = editorState.lines.getOrNull(lineIndex)?.content ?: ""
-                            currentNoteViewModel.alarmManager.getSymbolOverlays(lineContent, alarmCacheForOverlay, recurringAlarmCacheForOverlay)
+                            symbolOverlaysLookup(lineContent)
                         },
                         modifier = Modifier.weight(1f)
                     )

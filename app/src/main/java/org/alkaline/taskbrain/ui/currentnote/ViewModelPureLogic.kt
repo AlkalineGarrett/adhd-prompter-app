@@ -50,7 +50,16 @@ internal suspend fun findAlarmNoteIdUpdates(
 internal data class ExtractedAlarmIds(
     val alarmIds: List<String>,
     val recurringAlarmIds: List<String>
-)
+) {
+    operator fun plus(other: ExtractedAlarmIds) = ExtractedAlarmIds(
+        alarmIds = (alarmIds + other.alarmIds).distinct(),
+        recurringAlarmIds = (recurringAlarmIds + other.recurringAlarmIds).distinct()
+    )
+
+    companion object {
+        val EMPTY = ExtractedAlarmIds(emptyList(), emptyList())
+    }
+}
 
 /**
  * Extracts all distinct alarm IDs and recurring alarm IDs from directive markers in tracked lines.
@@ -67,6 +76,14 @@ internal fun extractAlarmIds(trackedLines: List<NoteLine>): ExtractedAlarmIds {
         alarmIds = alarmIds.distinct(),
         recurringAlarmIds = recurringAlarmIds.distinct()
     )
+}
+
+/**
+ * Extracts alarm IDs from raw content strings (e.g. view directive note content).
+ */
+internal fun extractAlarmIdsFromContent(contentLines: List<String>): ExtractedAlarmIds {
+    if (contentLines.isEmpty()) return ExtractedAlarmIds.EMPTY
+    return extractAlarmIds(contentLines.map { NoteLine(content = it) })
 }
 
 // ==================== Recurring alarm instance resolution ====================

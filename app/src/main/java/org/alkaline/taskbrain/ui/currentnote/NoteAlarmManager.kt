@@ -98,7 +98,30 @@ class NoteAlarmManager(
      * on the first frame, then refreshes from Firestore in the background.
      */
     fun loadAlarmStates() {
-        val extracted = extractAlarmIds(getCurrentNoteLines())
+        val combined = extractAlarmIds(getCurrentNoteLines()) +
+            extractAlarmIdsFromContent(supplementalContentLines)
+        loadAlarmIds(combined)
+    }
+
+    /**
+     * Registers additional content (e.g. notes displayed in view directives) so their
+     * alarm IDs are included in every [loadAlarmStates] call. Triggers an immediate
+     * reload so overlays appear without waiting for the next save or navigation.
+     */
+    fun loadAlarmStatesForContent(contentLines: List<String>) {
+        if (contentLines == supplementalContentLines) return
+        supplementalContentLines = contentLines
+        loadAlarmStates()
+    }
+
+    /** Content lines from view directive notes, included in every [loadAlarmStates] call. */
+    private var supplementalContentLines: List<String> = emptyList()
+
+    /**
+     * Core alarm loading logic. Fetches alarm data for the given IDs.
+     * Replaces the LiveData cache with the results.
+     */
+    private fun loadAlarmIds(extracted: ExtractedAlarmIds) {
         if (extracted.alarmIds.isEmpty() && extracted.recurringAlarmIds.isEmpty()) {
             _alarmCache.value = emptyMap()
             _recurringAlarmCache.value = emptyMap()

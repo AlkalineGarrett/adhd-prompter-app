@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.ui.currentnote.util
 
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -47,3 +48,11 @@ data class SymbolOverlay(
     val symbol: String,
     val badge: SymbolBadge
 )
+
+/**
+ * CompositionLocal for looking up alarm symbol overlays by line content.
+ * Provided at the screen level where alarm cache state is available;
+ * consumed deep in the composable tree by both main and inline editors
+ * without threading through intermediate layers.
+ */
+val LocalSymbolOverlaysProvider = compositionLocalOf<(lineContent: String) -> List<SymbolOverlay>> { { emptyList() } }

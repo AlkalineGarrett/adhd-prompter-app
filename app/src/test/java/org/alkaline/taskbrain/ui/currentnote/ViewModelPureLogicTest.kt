@@ -149,6 +149,48 @@ class ViewModelPureLogicTest {
         assertEquals(listOf("rec1"), result.recurringAlarmIds)
     }
 
+    // ==================== ExtractedAlarmIds.plus ====================
+
+    @Test
+    fun `plus deduplicates alarm IDs across parent and supplemental`() {
+        val parent = extractAlarmIds(listOf(NoteLine("Task [alarm(\"a1\")]", "note1")))
+        val supplemental = extractAlarmIds(listOf(
+            NoteLine("Child [alarm(\"a2\")]"),
+            NoteLine("Child [alarm(\"a1\")]")  // duplicate with parent
+        ))
+        val combined = parent + supplemental
+        assertEquals(listOf("a1", "a2"), combined.alarmIds)
+    }
+
+    @Test
+    fun `plus combines recurring IDs from both sources`() {
+        val parent = extractAlarmIds(listOf(NoteLine("No alarms here")))
+        val supplemental = extractAlarmIds(listOf(
+            NoteLine("Child [recurringAlarm(\"rec1\")]"),
+            NoteLine("Child [alarm(\"a1\")]")
+        ))
+        val combined = parent + supplemental
+        assertEquals(listOf("a1"), combined.alarmIds)
+        assertEquals(listOf("rec1"), combined.recurringAlarmIds)
+    }
+
+    // ==================== extractAlarmIdsFromContent ====================
+
+    @Test
+    fun `extractAlarmIdsFromContent extracts from raw content strings`() {
+        val result = extractAlarmIdsFromContent(listOf(
+            "Task [alarm(\"view1\")] with alarm",
+            "Another [recurringAlarm(\"viewRec1\")]"
+        ))
+        assertEquals(listOf("view1"), result.alarmIds)
+        assertEquals(listOf("viewRec1"), result.recurringAlarmIds)
+    }
+
+    @Test
+    fun `extractAlarmIdsFromContent returns EMPTY for empty list`() {
+        assertEquals(ExtractedAlarmIds.EMPTY, extractAlarmIdsFromContent(emptyList()))
+    }
+
     // ==================== selectCurrentInstance ====================
 
     @Test
