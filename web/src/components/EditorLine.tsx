@@ -28,7 +28,7 @@ interface EditorLineProps {
   onDirectiveEdit?: (key: string, newSourceText: string) => void
   onDirectiveRefresh?: (key: string, sourceText: string) => void
   onButtonClick?: (key: string) => void
-  onViewNoteSave?: (noteId: string, newContent: string) => Promise<void>
+  onViewNoteSave?: (noteId: string, newContent: string) => Promise<Map<number, string>>
   onDragStart?: (anchorGlobalOffset: number) => void
   onGutterDragStart?: (lineIndex: number, clientY?: number) => void
   onGutterDragUpdate?: (lineIndex: number, clientY?: number) => void

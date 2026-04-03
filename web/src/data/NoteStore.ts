@@ -34,7 +34,7 @@ export class NoteStore {
   private unsubscribe: Unsubscribe | null = null
   private listeners = new Set<() => void>()
   private errorListeners = new Set<() => void>()
-  private pendingSaves = new Map<string, Promise<void>>()
+  private pendingSaves = new Map<string, Promise<unknown>>()
   private _error: string | null = null
 
   subscribe = (listener: () => void): (() => void) => {
@@ -219,7 +219,7 @@ export class NoteStore {
   }
 
   /** Track an in-flight save so loaders can await it before reading from Firestore. */
-  trackSave(noteId: string, promise: Promise<void>): void {
+  trackSave(noteId: string, promise: Promise<unknown>): void {
     this.pendingSaves.set(noteId, promise)
     void promise.finally(() => {
       if (this.pendingSaves.get(noteId) === promise) {

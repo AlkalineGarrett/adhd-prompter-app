@@ -261,16 +261,6 @@ class NoteAlarmManager(
 
     // region Creation
 
-    internal suspend fun createAlarmInternal(
-        lineContent: String,
-        lineIndex: Int?,
-        dueTime: Timestamp?,
-        stages: List<AlarmStage>
-    ) {
-        val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else getCurrentNoteId()
-        createAlarmForNote(noteId, lineContent, lineIndex, dueTime, stages)
-    }
-
     internal suspend fun createAlarmForNote(
         noteId: String,
         lineContent: String,
@@ -308,17 +298,6 @@ class NoteAlarmManager(
                 _alarmError.value = e
             }
         )
-    }
-
-    internal suspend fun createRecurringAlarmInternal(
-        lineContent: String,
-        lineIndex: Int?,
-        dueTime: Timestamp?,
-        stages: List<AlarmStage>,
-        recurrenceConfig: RecurrenceConfig
-    ) {
-        val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else getCurrentNoteId()
-        createRecurringAlarmForNote(noteId, lineContent, lineIndex, dueTime, stages, recurrenceConfig)
     }
 
     internal suspend fun createRecurringAlarmForNote(
@@ -392,7 +371,8 @@ class NoteAlarmManager(
         stages: List<AlarmStage> = Alarm.DEFAULT_STAGES
     ) {
         scope.launch {
-            createAlarmInternal(lineContent, lineIndex, dueTime, stages)
+            val noteId = if (lineIndex != null) getNoteIdForLine(lineIndex) else getCurrentNoteId()
+            createAlarmForNote(noteId, lineContent, lineIndex, dueTime, stages)
         }
     }
 

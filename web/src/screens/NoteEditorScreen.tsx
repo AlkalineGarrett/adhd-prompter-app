@@ -113,7 +113,7 @@ export function NoteEditorScreen() {
     }
   }, [directiveMutations, handleMutations])
 
-  const handleViewNoteSave = useCallback(async (viewedNoteId: string, newContent: string) => {
+  const handleViewNoteSave = useCallback(async (viewedNoteId: string, newContent: string): Promise<Map<number, string>> => {
     // Update store optimistically so directives see the edit before Firestore confirms
     const existing = noteStore.getNoteById(viewedNoteId)
     if (existing) {
@@ -122,8 +122,9 @@ export function NoteEditorScreen() {
     // Track the Firestore write so useEditor can await it before loading
     const savePromise = noteRepo.saveNoteWithFullContent(viewedNoteId, newContent)
     noteStore.trackSave(viewedNoteId, savePromise)
-    await savePromise
+    const createdIds = await savePromise
     invalidateAndRecompute()
+    return createdIds
   }, [invalidateAndRecompute])
 
   // Add/move tab to front when note first opens, and remember for nav

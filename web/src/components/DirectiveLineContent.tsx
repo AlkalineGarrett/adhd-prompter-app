@@ -13,7 +13,7 @@ interface DirectiveLineContentProps {
   onDirectiveEdit?: (oldSourceText: string, newSourceText: string) => void
   onDirectiveRefresh?: (key: string, sourceText: string) => void
   onButtonClick?: (key: string) => void
-  onViewNoteSave?: (noteId: string, newContent: string) => Promise<void>
+  onViewNoteSave?: (noteId: string, newContent: string) => Promise<Map<number, string>>
 }
 
 /**

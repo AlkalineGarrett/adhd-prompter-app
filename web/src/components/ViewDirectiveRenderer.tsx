@@ -13,8 +13,8 @@ import styles from './ViewDirectiveRenderer.module.css'
 
 interface ViewDirectiveRendererProps {
   viewVal: ViewVal
-  /** Called to save edited note content; returns a promise that resolves when done */
-  onNoteSave?: (noteId: string, newContent: string) => Promise<void>
+  /** Called to save edited note content; returns created noteId map for new lines */
+  onNoteSave?: (noteId: string, newContent: string) => Promise<Map<number, string>>
   /** Called when the gear icon is clicked to switch to directive editing mode */
   onEditDirective?: () => void
 }
@@ -99,9 +99,7 @@ export function ViewDirectiveRenderer({
           {noteIndex > 0 && <hr className={styles.separator} />}
           <ViewNoteSection
             note={note}
-            onSave={onNoteSave ? async (content) => {
-              await onNoteSave(note.id, content)
-            } : undefined}
+            onSave={onNoteSave ? (content) => onNoteSave(note.id, content) : undefined}
             onDirtyChange={getDirtyCallback(note.id)}
             saveRef={dirtyNoteId === note.id ? saveRef : undefined}
           />
@@ -114,7 +112,7 @@ export function ViewDirectiveRenderer({
 
 interface ViewNoteSectionProps {
   note: Note
-  onSave?: (newContent: string) => Promise<void>
+  onSave?: (newContent: string) => Promise<Map<number, string>>
   onDirtyChange?: (dirty: boolean) => void
   saveRef?: React.MutableRefObject<(() => Promise<void>) | null>
 }
@@ -209,7 +207,8 @@ function ViewNoteSection({
     lastSavedContentRef.current = content
     setSaveError(null)
     try {
-      await onSave(content)
+      const createdIds = await onSave(content)
+      s.applyCreatedIds(createdIds)
       s.markSaved(content)
     } catch (e) {
       const msg = e instanceof Error ? e.message : SAVE_ERROR_BANNER
@@ -267,7 +266,7 @@ function ViewNoteSection({
     // Always save dirty content on blur
     const s = sessionRef.current
     if (s?.isDirty && onSave) {
-      void onSave(s.sortAndGetText()).catch(() => { /* handled by unmount fallback */ })
+      void onSave(s.sortAndGetText()).then(ids => s?.applyCreatedIds(ids)).catch(() => { /* handled by unmount fallback */ })
     }
     // Only deactivate if this section's session is still the active one —
     // a sibling ViewNoteSection may have already activated its own session.

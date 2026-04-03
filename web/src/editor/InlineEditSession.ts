@@ -83,4 +83,17 @@ export class InlineEditSession {
     this.controller.sortCompletedToBottom()
     return this.getText()
   }
+
+  /**
+   * Merges newly created noteIds (from Firestore save) into the editor state
+   * so subsequent saves preserve child note associations without page refresh.
+   */
+  applyCreatedIds(createdIds: Map<number, string>): void {
+    if (createdIds.size === 0) return
+    const updatedNoteIds = this.editorState.lines.map((line, i) => {
+      const newId = createdIds.get(i)
+      return newId ? [newId, ...line.noteIds] : line.noteIds
+    })
+    this.editorState.updateNoteIds(updatedNoteIds)
+  }
 }

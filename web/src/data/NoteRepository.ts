@@ -334,7 +334,7 @@ export class NoteRepository {
    * Saves a note with full multi-line content.
    * Used for inline editing of notes within view directives.
    */
-  async saveNoteWithFullContent(noteId: string, newContent: string): Promise<void> {
+  async saveNoteWithFullContent(noteId: string, newContent: string): Promise<Map<number, string>> {
     return this.logged('saveNoteWithFullContent', async () => {
       this.requireUserId()
 
@@ -347,7 +347,7 @@ export class NoteRepository {
 
       const newLinesContent = newContent.split('\n')
       const trackedLines = matchLinesToIds(noteId, existingLinesNoTrailing, newLinesContent)
-      await this.saveNoteWithChildren(noteId, trackedLines)
+      return this.saveNoteWithChildren(noteId, trackedLines)
     })
   }
 

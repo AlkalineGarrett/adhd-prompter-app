@@ -9,7 +9,7 @@ interface DirectiveChipProps {
   result: DirectiveResult | null
   onClick?: () => void
   onButtonClick?: () => void
-  onViewNoteSave?: (noteId: string, newContent: string) => Promise<void>
+  onViewNoteSave?: (noteId: string, newContent: string) => Promise<Map<number, string>>
   /** Called when the gear icon on a view directive is clicked */
   onEditDirective?: () => void
 }
