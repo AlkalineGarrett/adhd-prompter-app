@@ -757,7 +757,19 @@ export class EditorController {
       this.state.clearSelection()
     }
 
-    line.updateContent(newContent, contentCursor)
+    // Convert source prefixes to display prefixes (e.g. "* " → "• ")
+    // Only when the line doesn't already have a bullet/checkbox prefix
+    const converted = convertSourcePrefix(newContent, line.prefix)
+    if (converted) {
+      // Use updateFull to avoid double-read of the prefix getter in updateContent
+      // (the converted content starts with a display prefix, which would be counted
+      // twice: once as existing prefix, once as part of new text)
+      const newText = line.prefix + converted.text
+      const newCursor = line.prefix.length + converted.cursor
+      line.updateFull(newText, newCursor)
+    } else {
+      line.updateContent(newContent, contentCursor)
+    }
     this.state.notifyChange()
 
     if (contentChanged) {
@@ -872,4 +884,30 @@ function buildMergedContentLengths(line: LineState): number[] {
     return line.noteIdContentLengths
   }
   return line.noteIds.length > 0 ? [line.content.length] : []
+}
+
+/**
+ * Converts source prefixes typed by the user into display prefixes.
+ * "* " → "• ", "[] " → "☐ ", "[x] " → "☑ "
+ * All require a trailing space to trigger conversion.
+ * Only converts when the line's existing prefix has no bullet/checkbox (just tabs or empty).
+ * Returns the converted content with absolute content cursor, or null if no conversion.
+ */
+function convertSourcePrefix(content: string, existingPrefix: string): { text: string; cursor: number } | null {
+  // Only convert if the existing prefix is tabs-only (no bullet/checkbox already present)
+  if (/[^\t]/.test(existingPrefix)) return null
+
+  if (content.startsWith(LP.ASTERISK_SPACE)) {
+    const rest = content.substring(LP.ASTERISK_SPACE.length)
+    return { text: LP.BULLET + rest, cursor: LP.BULLET.length + rest.length }
+  }
+  if (content.startsWith(LP.BRACKETS_CHECKED + ' ')) {
+    const rest = content.substring(LP.BRACKETS_CHECKED.length + 1)
+    return { text: LP.CHECKBOX_CHECKED + rest, cursor: LP.CHECKBOX_CHECKED.length + rest.length }
+  }
+  if (content.startsWith(LP.BRACKETS_EMPTY + ' ')) {
+    const rest = content.substring(LP.BRACKETS_EMPTY.length + 1)
+    return { text: LP.CHECKBOX_UNCHECKED + rest, cursor: LP.CHECKBOX_UNCHECKED.length + rest.length }
+  }
+  return null
 }

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { EditorState } from '../../editor/EditorState'
 import { EditorController } from '../../editor/EditorController'
 import { LineState } from '../../editor/LineState'
-import { BULLET, CHECKBOX_UNCHECKED } from '../../editor/LinePrefixes'
+import { BULLET, CHECKBOX_UNCHECKED, CHECKBOX_CHECKED } from '../../editor/LinePrefixes'
 
 // Mock navigator.clipboard for cut/copy tests
 const mockClipboard = { writeText: vi.fn().mockResolvedValue(undefined) }
@@ -527,5 +527,86 @@ describe('EditorController paste undo boundary', () => {
     // Second undo should undo the paste
     ctrl.undo()
     expect(ctrl.state.lines[0]!.text).toBe('hello')
+  })
+})
+
+describe('EditorController source prefix conversion', () => {
+  it('"* " converts to bullet prefix', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '* ', 2)
+    expect(ctrl.state.lines[0]!.text).toBe('• ')
+    expect(ctrl.state.lines[0]!.prefix).toBe('• ')
+    expect(ctrl.state.lines[0]!.content).toBe('')
+  })
+
+  it('"* " converts to bullet with trailing content', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '* hello', 7)
+    expect(ctrl.state.lines[0]!.text).toBe('• hello')
+    expect(ctrl.state.lines[0]!.content).toBe('hello')
+  })
+
+  it('"[] " converts to unchecked checkbox prefix', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '[] ', 3)
+    expect(ctrl.state.lines[0]!.text).toBe('☐ ')
+    expect(ctrl.state.lines[0]!.prefix).toBe('☐ ')
+    expect(ctrl.state.lines[0]!.content).toBe('')
+    expect(ctrl.state.lines[0]!.cursorPosition).toBe(2)
+  })
+
+  it('"[x] " converts to checked checkbox prefix', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '[x] ', 4)
+    expect(ctrl.state.lines[0]!.text).toBe('☑ ')
+    expect(ctrl.state.lines[0]!.prefix).toBe('☑ ')
+    expect(ctrl.state.lines[0]!.content).toBe('')
+    expect(ctrl.state.lines[0]!.cursorPosition).toBe(2)
+  })
+
+  it('does not convert "[]" without trailing space', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '[]', 2)
+    expect(ctrl.state.lines[0]!.text).toBe('[]')
+  })
+
+  it('does not convert "[x]" without trailing space', () => {
+    const ctrl = controllerWithLines('')
+    ctrl.updateLineContent(0, '[x]', 3)
+    expect(ctrl.state.lines[0]!.text).toBe('[x]')
+  })
+
+  it('does not convert when line already has bullet prefix', () => {
+    const ctrl = controllerWithLines(BULLET + 'text')
+    ctrl.updateLineContent(0, '* more', 6)
+    expect(ctrl.state.lines[0]!.text).toBe('• * more')
+  })
+
+  it('does not convert when line already has checkbox prefix', () => {
+    const ctrl = controllerWithLines(CHECKBOX_UNCHECKED + 'text')
+    ctrl.updateLineContent(0, '* more', 6)
+    expect(ctrl.state.lines[0]!.text).toBe('☐ * more')
+  })
+
+  it('converts on indented line (tabs-only prefix)', () => {
+    const ctrl = controllerWithLines('\t')
+    ctrl.updateLineContent(0, '* hello', 7)
+    expect(ctrl.state.lines[0]!.text).toBe('\t• hello')
+    expect(ctrl.state.lines[0]!.prefix).toBe('\t• ')
+    expect(ctrl.state.lines[0]!.content).toBe('hello')
+  })
+
+  it('"[] " converts on indented line', () => {
+    const ctrl = controllerWithLines('\t')
+    ctrl.updateLineContent(0, '[] ', 3)
+    expect(ctrl.state.lines[0]!.text).toBe('\t☐ ')
+    expect(ctrl.state.lines[0]!.prefix).toBe('\t☐ ')
+  })
+
+  it('"[x] " converts on indented line', () => {
+    const ctrl = controllerWithLines('\t')
+    ctrl.updateLineContent(0, '[x] ', 4)
+    expect(ctrl.state.lines[0]!.text).toBe('\t☑ ')
+    expect(ctrl.state.lines[0]!.prefix).toBe('\t☑ ')
   })
 })

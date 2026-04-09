@@ -166,4 +166,142 @@ class EditorControllerTest {
 
         assertTrue(controller.recentlyCheckedIndices.isEmpty())
     }
+
+    // ==================== Source prefix conversion ====================
+
+    @Test
+    fun `asterisk space converts to bullet prefix`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "* ", 2)
+
+        assertEquals("${LinePrefixes.BULLET}", state.lines[0].text)
+        assertEquals(LinePrefixes.BULLET, state.lines[0].prefix)
+        assertEquals("", state.lines[0].content)
+    }
+
+    @Test
+    fun `asterisk space converts to bullet with trailing content`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "* hello", 7)
+
+        assertEquals("${LinePrefixes.BULLET}hello", state.lines[0].text)
+        assertEquals("hello", state.lines[0].content)
+    }
+
+    @Test
+    fun `brackets space converts to unchecked checkbox prefix`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "[] ", 3)
+
+        assertEquals("${LinePrefixes.CHECKBOX_UNCHECKED}", state.lines[0].text)
+        assertEquals(LinePrefixes.CHECKBOX_UNCHECKED, state.lines[0].prefix)
+        assertEquals("", state.lines[0].content)
+        // cursor: 3 + (-1) = 2, which is end of "☐ "
+        assertEquals(2, state.lines[0].cursorPosition)
+    }
+
+    @Test
+    fun `brackets x space converts to checked checkbox prefix`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "[x] ", 4)
+
+        assertEquals("${LinePrefixes.CHECKBOX_CHECKED}", state.lines[0].text)
+        assertEquals(LinePrefixes.CHECKBOX_CHECKED, state.lines[0].prefix)
+        assertEquals("", state.lines[0].content)
+        // cursor: 4 + (-2) = 2, which is end of "☑ "
+        assertEquals(2, state.lines[0].cursorPosition)
+    }
+
+    @Test
+    fun `brackets without trailing space does not convert`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "[]", 2)
+
+        assertEquals("[]", state.lines[0].text)
+    }
+
+    @Test
+    fun `brackets x without trailing space does not convert`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("")
+
+        controller.updateLineContent(0, "[x]", 3)
+
+        assertEquals("[x]", state.lines[0].text)
+    }
+
+    @Test
+    fun `does not convert when line already has bullet prefix`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("${LinePrefixes.BULLET}text")
+
+        controller.updateLineContent(0, "* more", 6)
+
+        assertEquals("${LinePrefixes.BULLET}* more", state.lines[0].text)
+    }
+
+    @Test
+    fun `does not convert when line already has checkbox prefix`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("${LinePrefixes.CHECKBOX_UNCHECKED}text")
+
+        controller.updateLineContent(0, "* more", 6)
+
+        assertEquals("${LinePrefixes.CHECKBOX_UNCHECKED}* more", state.lines[0].text)
+    }
+
+    @Test
+    fun `converts asterisk space on indented line`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("\t")
+
+        controller.updateLineContent(0, "* hello", 7)
+
+        assertEquals("\t${LinePrefixes.BULLET}hello", state.lines[0].text)
+        assertEquals("\t${LinePrefixes.BULLET}", state.lines[0].prefix)
+        assertEquals("hello", state.lines[0].content)
+    }
+
+    @Test
+    fun `converts brackets space on indented line`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("\t")
+
+        controller.updateLineContent(0, "[] ", 3)
+
+        assertEquals("\t${LinePrefixes.CHECKBOX_UNCHECKED}", state.lines[0].text)
+        assertEquals("\t${LinePrefixes.CHECKBOX_UNCHECKED}", state.lines[0].prefix)
+    }
+
+    @Test
+    fun `converts brackets x space on indented line`() {
+        val state = EditorState()
+        val controller = EditorController(state)
+        state.updateFromText("\t")
+
+        controller.updateLineContent(0, "[x] ", 4)
+
+        assertEquals("\t${LinePrefixes.CHECKBOX_CHECKED}", state.lines[0].text)
+        assertEquals("\t${LinePrefixes.CHECKBOX_CHECKED}", state.lines[0].prefix)
+    }
 }

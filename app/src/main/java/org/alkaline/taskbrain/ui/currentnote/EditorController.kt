@@ -992,8 +992,19 @@ class EditorController(
             state.clearSelection()
         }
 
-        // Normal content update
-        line.updateContent(newContent, contentCursor)
+        // Convert source prefixes to display prefixes (e.g. "* " → "• ")
+        // Only when the line doesn't already have a bullet/checkbox prefix
+        val converted = convertSourcePrefix(newContent, line.prefix)
+        if (converted != null) {
+            // Use updateFull to avoid double-read of the prefix getter in updateContent
+            // (the converted content starts with a display prefix, which would be counted
+            // twice: once as existing prefix, once as part of new text)
+            val newText = line.prefix + converted.text
+            val newCursor = line.prefix.length + converted.cursor
+            line.updateFull(newText, newCursor)
+        } else {
+            line.updateContent(newContent, contentCursor)
+        }
         state.notifyChange()
 
         // Only mark content changed if it actually changed
@@ -1002,6 +1013,34 @@ class EditorController(
         if (contentChanged) {
             undoManager.markContentChanged()
         }
+    }
+
+    private data class ConvertedPrefix(val text: String, val cursor: Int)
+
+    /**
+     * Converts source prefixes typed by the user into display prefixes.
+     * "* " → "• ", "[] " → "☐ ", "[x] " → "☑ "
+     * All require a trailing space to trigger conversion.
+     * Only converts when the line's existing prefix has no bullet/checkbox (just tabs or empty).
+     * Returns the converted content with absolute content cursor, or null if no conversion.
+     */
+    private fun convertSourcePrefix(content: String, existingPrefix: String): ConvertedPrefix? {
+        // Only convert if the existing prefix is tabs-only (no bullet/checkbox already present)
+        if (existingPrefix.any { it != '\t' }) return null
+
+        if (content.startsWith(LinePrefixes.ASTERISK_SPACE)) {
+            val rest = content.substring(LinePrefixes.ASTERISK_SPACE.length)
+            return ConvertedPrefix(LinePrefixes.BULLET + rest, LinePrefixes.BULLET.length + rest.length)
+        }
+        if (content.startsWith(LinePrefixes.BRACKETS_CHECKED + " ")) {
+            val rest = content.substring(LinePrefixes.BRACKETS_CHECKED.length + 1)
+            return ConvertedPrefix(LinePrefixes.CHECKBOX_CHECKED + rest, LinePrefixes.CHECKBOX_CHECKED.length + rest.length)
+        }
+        if (content.startsWith(LinePrefixes.BRACKETS_EMPTY + " ")) {
+            val rest = content.substring(LinePrefixes.BRACKETS_EMPTY.length + 1)
+            return ConvertedPrefix(LinePrefixes.CHECKBOX_UNCHECKED + rest, LinePrefixes.CHECKBOX_UNCHECKED.length + rest.length)
+        }
+        return null
     }
 
     // =========================================================================
