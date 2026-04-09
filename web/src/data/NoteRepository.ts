@@ -16,6 +16,7 @@ import type { Auth } from 'firebase/auth'
 import { noteFromFirestore, type Note, type NoteLine } from './Note'
 import { reconstructNoteContent } from './NoteReconstruction'
 import { flattenTreeToLines } from './NoteTree'
+import { noteStore } from './NoteStore'
 import { performSimilarityMatching } from '@/editor/ContentSimilarity'
 
 export interface NoteLoadResult {
@@ -266,15 +267,23 @@ export class NoteRepository {
       // Fetch existing descendants for deletion tracking
       const existingDescendantIds = await this.fetchExistingDescendantIds(noteId)
 
+      // Fix parent cycles: if this note's parent chain loops back
+      // to itself, clear parentNoteId/rootNoteId to make it a root note.
+      const hasCycle = this.hasParentCycle(noteId)
+
       return runTransaction(this.db, async (transaction) => {
         const survivingIds = new Set<string>()
 
         // Update root
-        transaction.set(
-          parentRef,
-          { ...this.baseNoteData(userId, rootContent), containedNotes: childrenOfLine[0]! },
-          { merge: true },
-        )
+        const rootData: Record<string, unknown> = {
+          ...this.baseNoteData(userId, rootContent),
+          containedNotes: childrenOfLine[0]!,
+        }
+        if (hasCycle) {
+          rootData.parentNoteId = null
+          rootData.rootNoteId = null
+        }
+        transaction.set(parentRef, rootData, { merge: true })
 
         // Write each descendant
         for (let i = 1; i < linesToSave.length; i++) {
@@ -311,11 +320,13 @@ export class NoteRepository {
           }
         }
 
-        // Soft-delete removed notes
+        // Soft-delete removed notes and clear parent refs to prevent orphan cycles
         for (const id of existingDescendantIds) {
           if (!survivingIds.has(id)) {
             transaction.update(this.noteRef(id), {
               state: 'deleted',
+              parentNoteId: null,
+              rootNoteId: null,
               updatedAt: serverTimestamp(),
             })
           }
@@ -340,6 +351,17 @@ export class NoteRepository {
         .filter((d) => d.data().state !== 'deleted')
         .map((d) => d.id),
     )
+  }
+
+  private hasParentCycle(noteId: string): boolean {
+    const visited = new Set<string>()
+    let current: string | null = noteId
+    while (current) {
+      if (visited.has(current)) return true
+      visited.add(current)
+      current = noteStore.getRawNoteById(current)?.parentNoteId ?? null
+    }
+    return false
   }
 
   /**

@@ -209,6 +209,11 @@ export class NoteStore {
     return this.reconstructedNotes.find(n => n.id === noteId)
   }
 
+  /** Get a raw (unreconstructed) note by ID — includes notes filtered from the top-level list. */
+  getRawNoteById(noteId: string): Note | undefined {
+    return this.rawNotes.get(noteId)
+  }
+
   /** Returns per-line NoteLines for a note, using the tree structure for correct noteId mapping. */
   getNoteLinesById(noteId: string): NoteLine[] | undefined {
     const note = this.rawNotes.get(noteId)

@@ -297,10 +297,18 @@ class NoteRepository(
                 )
             }
 
+            // Fix parent cycles: if this note's parent chain loops back
+            // to itself, clear parentNoteId/rootNoteId to make it a root note.
+            val hasCycle = hasParentCycle(noteId)
+
             val result = db.runTransaction { transaction ->
                 // Update root
                 val rootData = baseNoteData(userId, rootContent).apply {
                     put("containedNotes", childrenOfLine[0].toList())
+                    if (hasCycle) {
+                        put("parentNoteId", FieldValue.delete())
+                        put("rootNoteId", FieldValue.delete())
+                    }
                 }
                 transaction.set(parentRef, rootData, SetOptions.merge())
 
@@ -341,11 +349,16 @@ class NoteRepository(
                     }
                 }
 
-                // Soft-delete removed notes
+                // Soft-delete removed notes and clear parent refs to prevent orphan cycles
                 for (id in toDelete) {
                     transaction.update(
                         noteRef(id),
-                        mapOf("state" to "deleted", "updatedAt" to FieldValue.serverTimestamp())
+                        mapOf(
+                            "state" to "deleted",
+                            "parentNoteId" to FieldValue.delete(),
+                            "rootNoteId" to FieldValue.delete(),
+                            "updatedAt" to FieldValue.serverTimestamp(),
+                        )
                     )
                 }
 
@@ -359,6 +372,20 @@ class NoteRepository(
     /**
      * Fetches IDs of all existing descendants for deletion tracking.
      */
+    /**
+     * Checks if a note's parent chain contains a cycle (using NoteStore's in-memory data).
+     * A cycle means the note can't be a proper root or child — it needs to be fixed.
+     */
+    private fun hasParentCycle(noteId: String): Boolean {
+        val visited = mutableSetOf<String>()
+        var current: String? = noteId
+        while (current != null) {
+            if (!visited.add(current)) return true
+            current = NoteStore.getRawNoteById(current)?.parentNoteId
+        }
+        return false
+    }
+
     private suspend fun fetchExistingDescendantIds(noteId: String): Set<String> {
         val userId = requireUserId()
         val descendants = notesCollection

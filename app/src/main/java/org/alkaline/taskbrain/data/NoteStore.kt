@@ -184,6 +184,9 @@ object NoteStore {
     fun getNoteById(noteId: String): Note? =
         _notes.value.find { it.id == noteId }
 
+    /** Get a raw (unreconstructed) note by ID — includes notes filtered from the top-level list. */
+    fun getRawNoteById(noteId: String): Note? = rawNotes[noteId]
+
     /**
      * Returns flattened note lines with proper noteId mappings from the in-memory tree.
      * Uses containedNotes arrays and rawNotes to reconstruct the same output as

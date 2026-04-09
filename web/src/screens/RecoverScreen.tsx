@@ -33,6 +33,7 @@ function detectOrphanedNotes(allNotes: Note[]): { note: Note; reason: OrphanReas
 
   for (const note of allNotes) {
     if (!note.parentNoteId) continue
+    if (note.state === 'deleted') continue
 
     if (note.parentNoteId === note.id) {
       orphans.push({ note, reason: 'self-parent' })
