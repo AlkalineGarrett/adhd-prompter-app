@@ -115,9 +115,15 @@ fun CurrentNoteScreen(
     val storeContent = remember(displayedNoteId) {
         displayedNoteId?.let { NoteStore.getNoteById(it) }
     }
-    val initialContent = cachedContent?.noteLines?.joinToString("\n") { it.content }
-        ?: storeContent?.content
-        ?: ""
+    // Resolve initial NoteLines (text + noteId per line) from the best available source.
+    // We need the structured shape — not just plain text — so the editor can be initialized
+    // via initFromNoteLines and never has to fall back to lossy text matching.
+    val initialNoteLines: List<org.alkaline.taskbrain.data.NoteLine> = remember(displayedNoteId) {
+        cachedContent?.noteLines
+            ?: displayedNoteId?.let { NoteStore.getNoteLinesById(it) }
+            ?: emptyList()
+    }
+    val initialContent = initialNoteLines.joinToString("\n") { it.content }
     val initialIsDeleted = cachedContent?.isDeleted ?: (storeContent?.state == "deleted")
     val initialShowCompleted = storeContent?.showCompleted ?: true
 
@@ -167,7 +173,16 @@ fun CurrentNoteScreen(
 
     val editorState = remember(displayedNoteId) {
         EditorState().apply {
-            if (initialContent.isNotEmpty()) updateFromText(initialContent)
+            // Initialize from the structured NoteLine list — never via the lossy
+            // updateFromText path. This guarantees that on first composition the editor
+            // already has its parentNoteId and per-line noteIds populated, so even if the
+            // LaunchedEffect on loadStatus later skips the reload (because content matches
+            // userContent), the editor's noteIds are already correct.
+            if (initialNoteLines.isNotEmpty()) {
+                initFromNoteLines(initialNoteLines.map { nl ->
+                    nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList())
+                })
+            }
         }
     }
     val controller = rememberEditorController(editorState)
@@ -178,8 +193,11 @@ fun CurrentNoteScreen(
     // Compute directive results synchronously — no async races.
     // The CachedDirectiveExecutor's L1 cache makes cache hits instant.
     // directiveCacheGeneration triggers recomposition after async cache fills (cold start).
+    val lineNoteIds = remember(userContent) {
+        editorState.lines.map { it.noteIds.firstOrNull() }
+    }
     val directiveResults = remember(userContent, directiveCacheGeneration, displayedNoteId) {
-        currentNoteViewModel.directiveManager.computeDirectiveResults(userContent, displayedNoteId)
+        currentNoteViewModel.directiveManager.computeDirectiveResults(userContent, displayedNoteId, lineNoteIds)
     }
 
     // Load alarm states for notes displayed in view directives so overlays render correctly.
@@ -204,11 +222,19 @@ fun CurrentNoteScreen(
     // Inline editing state for view directives
     val inlineEditState = rememberInlineEditState()
 
-    // Eagerly create edit sessions for all embedded notes so clicking is instant
+    // Eagerly create edit sessions for all embedded notes so clicking is instant.
+    // Also execute directives for each new session so they render immediately.
     remember(viewNotes) {
-        inlineEditState.ensureSessionsForNotes(viewNotes)
+        val newNoteIds = inlineEditState.ensureSessionsForNotes(viewNotes)
         val activeNoteIds = viewNotes.map { it.id }.toSet()
         inlineEditState.removeStaleSessionsExcept(activeNoteIds)
+        // Execute directives eagerly for newly created sessions
+        for (noteId in newNoteIds) {
+            val session = inlineEditState.viewSessions[noteId] ?: continue
+            currentNoteViewModel.directiveManager.executeDirectivesForContent(session.currentContent) { results ->
+                session.updateDirectiveResults(results)
+            }
+        }
     }
 
     LaunchedEffect(inlineEditState) {
@@ -383,15 +409,19 @@ fun CurrentNoteScreen(
 
     // Switches the directive text in the editor if the directive type changed.
     // e.g., [alarm("id")] → [recurringAlarm("recId")] or vice versa.
+    //
+    // Uses the surgical replaceDirectiveText helper so only the lines actually containing
+    // the directive are modified — every other line keeps its LineState (and noteIds)
+    // untouched. No round-trip through updateFromText.
     fun switchDirectiveIfNeeded(newDirective: String) {
         val tapped = tappedDirectiveText ?: return
         if (tapped == newDirective) return
-        val updatedText = editorState.text.replace(tapped, newDirective)
-        if (updatedText != editorState.text) {
-            editorState.updateFromText(updatedText)
+        val before = editorState.text
+        editorState.replaceDirectiveText(tapped, newDirective)
+        if (editorState.text != before) {
             updateContent(editorState.text)
             isSaved = false
-            currentNoteViewModel.saveContent(editorState.text, editorState.lines.map { it.noteIds })
+            currentNoteViewModel.saveContent(editorState.toNoteLines())
         }
     }
 
@@ -518,7 +548,7 @@ fun CurrentNoteScreen(
             onTabClick = { targetNoteId ->
                 if (!isSaved && userContent.isNotEmpty()) {
                     val dirtySessions = inlineEditState.getAllDirtySessions()
-                    currentNoteViewModel.saveAll(userContent, editorState.lines.map { it.noteIds }, dirtySessions)
+                    currentNoteViewModel.saveAll(editorState.toNoteLines(), dirtySessions)
                 }
                 displayedNoteId = targetNoteId
             },
@@ -765,8 +795,7 @@ private fun LifecycleAutoSaveEffect(
                     alreadySaved.value = true
                     val dirtySessions = currentInlineEditState?.getAllDirtySessions() ?: emptyList()
                     currentNoteViewModel.saveAll(
-                        currentUserContent,
-                        controller.state.lines.map { it.noteIds },
+                        controller.state.toNoteLines(),
                         dirtySessions
                     )
                 }
@@ -791,8 +820,7 @@ private fun LifecycleAutoSaveEffect(
                 if (!alreadySaved.value) {
                     val dirtySessions = currentInlineEditState?.getAllDirtySessions() ?: emptyList()
                     currentNoteViewModel.saveAll(
-                        currentUserContent,
-                        controller.state.lines.map { it.noteIds },
+                        noteLines,
                         dirtySessions
                     )
                 }
@@ -875,13 +903,16 @@ private fun DataLoadingEffects(
                 // CRITICAL: Update editorState BEFORE setBaseline() below!
                 // Without this line, editorState is empty when baseline is captured,
                 // which means undo can restore to empty state and LOSE USER DATA.
-                if (loadStatus.lineNoteIds.isNotEmpty()) {
-                    val noteLines = loadedContent.split("\n").zip(loadStatus.lineNoteIds)
-                    // Preserve cursor on external reloads (editor already has content)
-                    editorState.initFromNoteLines(noteLines, preserveCursor = editorState.lines.isNotEmpty())
-                } else {
-                    editorState.updateFromText(loadedContent)
+                //
+                // Always go through initFromNoteLines — never updateFromText. The latter
+                // is lossy and can wipe noteIds when previousLines is empty/stale, which
+                // is the root of the content-drop bug. LoadStatus.Success now always
+                // carries the structured NoteLine list directly.
+                val noteLines = loadStatus.lines.map { nl ->
+                    nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList())
                 }
+                // Preserve cursor on external reloads (editor already has content)
+                editorState.initFromNoteLines(noteLines, preserveCursor = editorState.lines.isNotEmpty())
             }
 
             // Always set up undo state (needed even for cached content on initial load)
@@ -1016,7 +1047,7 @@ private fun ContentSyncEffects(
                 event.alarmSnapshot?.let { snapshot ->
                     controller.recordAlarmCreation(snapshot)
                 }
-                currentNoteViewModel.saveContent(editorState.text, editorState.lines.map { it.noteIds })
+                currentNoteViewModel.saveContent(editorState.toNoteLines())
             }
 
             // Immediately render the new alarm icon (without waiting for snapshot reload)
@@ -1042,24 +1073,24 @@ private fun DirectiveMutationEffect(
     DisposableEffect(currentNoteViewModel, controller) {
         currentNoteViewModel.directiveManager.onEditorContentMutated = { noteId, newContent, mutationType, alreadyPersisted, appendedText ->
             if (noteId == currentNoteId) {
-                val updatedContent = when (mutationType) {
+                // Apply the mutation surgically — only the affected lines are touched, so
+                // every other line keeps its noteIds. No round-trip through updateFromText.
+                val mutated = when (mutationType) {
                     MutationType.CONTENT_CHANGED -> {
-                        val currentLines = userContent.lines()
-                        if (currentLines.size > 1) {
-                            (listOf(newContent) + currentLines.drop(1)).joinToString("\n")
-                        } else {
-                            newContent
-                        }
+                        editorState.replaceFirstLineContent(newContent)
+                        true
                     }
                     MutationType.CONTENT_APPENDED -> {
-                        if (appendedText != null) userContent + "\n" + appendedText else null
+                        if (appendedText != null) {
+                            editorState.appendContent(appendedText)
+                            true
+                        } else false
                     }
-                    MutationType.PATH_CHANGED -> null
+                    MutationType.PATH_CHANGED -> false
                 }
-
-                updatedContent?.let {
-                    editorState.updateFromText(it)
-                    onContentChanged(it, TextFieldValue(it, TextRange(it.length)))
+                if (mutated) {
+                    val updatedText = editorState.text
+                    onContentChanged(updatedText, TextFieldValue(updatedText, TextRange(updatedText.length)))
                 }
                 if (!alreadyPersisted) onMarkUnsaved()
                 controller.resetUndoHistory()
@@ -1110,8 +1141,7 @@ private fun NoteStatusBar(
             controller.commitUndoState(continueEditing = true)
             val dirtySessions = inlineEditState?.getAllDirtySessions() ?: emptyList()
             currentNoteViewModel.saveAll(
-                editorState.text,
-                editorState.lines.map { it.noteIds },
+                editorState.toNoteLines(),
                 dirtySessions
             )
         },
@@ -1141,14 +1171,16 @@ private fun NoteStatusBar(
                         alarmSnapshot = alarm,
                         onAlarmCreated = { newId ->
                             controller.updateLastUndoAlarmId(newId)
-                            // Update alarm directive in text with new ID
+                            // Update alarm directive in text with new ID. Surgical:
+                            // only the line(s) containing the old directive are modified;
+                            // every other line keeps its noteIds untouched.
                             val oldDirective = AlarmSymbolUtils.alarmDirective(alarm.id)
                             val newDirective = AlarmSymbolUtils.alarmDirective(newId)
-                            val updatedText = editorState.text.replace(oldDirective, newDirective)
-                            if (updatedText != editorState.text) {
-                                editorState.updateFromText(updatedText)
+                            val before = editorState.text
+                            editorState.replaceDirectiveText(oldDirective, newDirective)
+                            if (editorState.text != before) {
                                 onContentChanged(editorState.text)
-                                currentNoteViewModel.saveContent(editorState.text, editorState.lines.map { it.noteIds })
+                                currentNoteViewModel.saveContent(editorState.toNoteLines())
                             }
                         },
                         onFailure = { errorMessage ->

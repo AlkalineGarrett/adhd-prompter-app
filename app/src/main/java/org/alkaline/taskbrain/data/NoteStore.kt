@@ -208,6 +208,23 @@ object NoteStore {
         return flattenTreeToLines(rootNote, descendants)
     }
 
+    /**
+     * Like [getNoteLinesById], but never returns null. When the note isn't loaded into
+     * NoteStore yet, synthesizes a flat list from [fallbackContent], assigning the parent
+     * id to line 0 and leaving the rest with null noteIds (a new save will allocate fresh
+     * ids for them, matching the behavior of a never-saved single-line note).
+     *
+     * Use this from any embedded-editor / inline-edit init path so the editor can always
+     * be initialized via [org.alkaline.taskbrain.ui.currentnote.EditorState.initFromNoteLines]
+     * — no caller should ever fall back to the lossy `updateFromText` path.
+     */
+    fun getNoteLinesByIdOrSynthesize(noteId: String, fallbackContent: String): List<NoteLine> {
+        getNoteLinesById(noteId)?.let { return it }
+        return fallbackContent.split("\n").mapIndexed { index, line ->
+            NoteLine(line, if (index == 0) noteId else null)
+        }
+    }
+
     /** Track an in-flight save so loaders can await it before reading from Firestore. */
     fun trackSave(noteId: String, deferred: Deferred<Unit>) {
         pendingSaves[noteId] = deferred

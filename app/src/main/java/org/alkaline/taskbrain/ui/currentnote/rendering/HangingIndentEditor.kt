@@ -133,11 +133,19 @@ fun HangingIndentEditor(
     symbolOverlaysProvider: ((lineIndex: Int) -> List<SymbolOverlay>)? = null,
     modifier: Modifier = Modifier
 ) {
-    // Sync state with text prop
-    remember(text) {
-        if (state.text != text) state.updateFromText(text)
-        text
-    }
+    // NOTE: We intentionally do NOT sync `text` → `state` here via updateFromText.
+    //
+    // The earlier code had a `remember(text) { if (state.text != text) state.updateFromText(text) }`
+    // trap. That trap fired on every recomposition where the parent's `text` prop differed
+    // from `state.text`, calling the lossy `updateFromText`. When `state.lines` happened to be
+    // empty or stale at that moment, every line was reconstructed with empty noteIds — the root
+    // of the content-drop bug observed in production.
+    //
+    // The state-of-truth flows in one direction only: state → onTextChange → parent. Every place
+    // that needs to mutate the editor from outside (loader, directive mutations, alarm redo, etc.)
+    // calls `editorState.initFromNoteLines` or `editorState.updateFromText` explicitly with the
+    // correct context. The Compose `text` parameter exists for the parent's bookkeeping, not as
+    // a back-channel to mutate the editor.
     state.onTextChange = onTextChange
 
     // Use the provided EditorController - the SINGLE CHANNEL for all state modifications

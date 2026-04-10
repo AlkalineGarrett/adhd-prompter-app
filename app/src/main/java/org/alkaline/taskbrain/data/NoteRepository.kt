@@ -214,6 +214,27 @@ class NoteRepository(
         withContext(Dispatchers.IO) {
             if (trackedLines.isEmpty()) return@withContext emptyMap()
 
+            // Diagnostic: warn if the save shape has many null noteIds on non-empty lines.
+            // This is the fingerprint of the content-drop bug — the upstream editor or
+            // viewmodel handed us a tracked-lines list with mostly empty noteIds, and the
+            // content-drop guard is about to fire downstream. Log here to correlate with
+            // upstream causes (lossy reconciliation, parallel-array drift, etc.).
+            val nonEmpty = trackedLines.count { it.content.isNotEmpty() }
+            val nonEmptyMissing = trackedLines.count { it.content.isNotEmpty() && it.noteId == null }
+            if (nonEmpty >= 3 && nonEmptyMissing >= nonEmpty / 2) {
+                Log.w(
+                    TAG,
+                    "saveNoteWithChildren($noteId): $nonEmptyMissing of $nonEmpty non-empty lines have noteId=null. " +
+                        "This will cause new docs to be allocated for those lines. " +
+                        "First missing: ${
+                            trackedLines.withIndex()
+                                .filter { it.value.content.isNotEmpty() && it.value.noteId == null }
+                                .take(3)
+                                .joinToString { "[${it.index}] '${it.value.content.take(40)}'" }
+                        }"
+                )
+            }
+
             val userId = requireUserId()
             val parentRef = noteRef(noteId)
             val rootContent = trackedLines[0].content.trimStart('\t')
@@ -594,8 +615,13 @@ class NoteRepository(
     }.onFailure { Log.e(TAG, "Error updating lastAccessedAt", it) }
 
     /**
-     * Two-phase line matching: exact content match first, then positional fallback.
-     * Preserves note IDs across edits for alarm/DSL reference stability.
+     * Builds tracked lines from existing lines + new content via the shared
+     * [reconcileLineNoteIds] / [enforceParentNoteId] helpers.
+     *
+     * Logs a warning if any non-empty new line loses its noteId during matching —
+     * those lines will allocate fresh ids on save, which is correct semantically but
+     * worth surfacing because it almost always indicates either editor corruption or
+     * a substantial content rewrite.
      */
     private fun matchLinesToIds(
         parentNoteId: String,
@@ -608,54 +634,31 @@ class NoteRepository(
             }
         }
 
-        val contentToOldIndices = mutableMapOf<String, MutableList<Int>>()
-        existingLines.forEachIndexed { index, line ->
-            contentToOldIndices.getOrPut(line.content) { mutableListOf() }.add(index)
+        val oldContents = existingLines.map { it.content }
+        val oldNoteIds = existingLines.map { listOfNotNull(it.noteId) }
+
+        val unmatched = mutableListOf<Pair<Int, String>>()
+        val reconciled = reconcileLineNoteIds(
+            oldContents = oldContents,
+            oldNoteIds = oldNoteIds,
+            newContents = newLinesContent,
+            onUnmatchedNonEmpty = { idx, content -> unmatched.add(idx to content) },
+        )
+        val withParent = enforceParentNoteId(reconciled, parentNoteId)
+
+        if (unmatched.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "matchLinesToIds: ${unmatched.size} non-empty new line(s) lost noteIds " +
+                    "(no exact or similarity match). parentNoteId=$parentNoteId, " +
+                    "existing.size=${existingLines.size}, new.size=${newLinesContent.size}. " +
+                    "First: ${unmatched.take(3).joinToString { "[${it.first}] '${it.second.take(40)}'" }}"
+            )
         }
 
-        val newIds = arrayOfNulls<String>(newLinesContent.size)
-        val oldConsumed = BooleanArray(existingLines.size)
-
-        // Exact matches
-        newLinesContent.forEachIndexed { index, content ->
-            val indices = contentToOldIndices[content]
-            if (!indices.isNullOrEmpty()) {
-                val oldIdx = indices.removeAt(0)
-                newIds[index] = existingLines[oldIdx].noteId
-                oldConsumed[oldIdx] = true
-            }
+        return newLinesContent.mapIndexed { index, content ->
+            NoteLine(content, withParent[index].firstOrNull())
         }
-
-        // Similarity-based matching for modifications and splits
-        performSimilarityMatching(
-            unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
-            unconsumedOldIndices = existingLines.indices.filter { !oldConsumed[it] },
-            getOldContent = { existingLines[it].content },
-            getNewContent = { newLinesContent[it] },
-        ) { oldIdx, newIdx ->
-            newIds[newIdx] = existingLines[oldIdx].noteId
-            oldConsumed[oldIdx] = true
-        }
-
-        // Positional fallback: if a new line at the same index as an unconsumed old line
-        // still has no match, assign by position. This handles cases where content changed
-        // too much for similarity matching (e.g., complete rewrite of a line).
-        for (index in newLinesContent.indices) {
-            if (newIds[index] == null && index < existingLines.size && !oldConsumed[index]) {
-                newIds[index] = existingLines[index].noteId
-                oldConsumed[index] = true
-            }
-        }
-
-        val trackedLines = newLinesContent.mapIndexed { index, content ->
-            NoteLine(content, newIds[index])
-        }.toMutableList()
-
-        if (trackedLines.isNotEmpty() && trackedLines[0].noteId != parentNoteId) {
-            trackedLines[0] = trackedLines[0].copy(noteId = parentNoteId)
-        }
-
-        return trackedLines
     }
 
     /**

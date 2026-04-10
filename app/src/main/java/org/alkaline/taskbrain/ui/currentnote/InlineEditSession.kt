@@ -206,20 +206,20 @@ class InlineEditState {
     /**
      * Eagerly create sessions for all notes that don't already have one.
      * Existing sessions (including dirty ones) are preserved.
+     * @return IDs of newly created sessions (caller can execute directives for them)
      */
-    fun ensureSessionsForNotes(notes: List<Note>) {
+    fun ensureSessionsForNotes(notes: List<Note>): List<String> {
+        val newIds = mutableListOf<String>()
         for (note in notes) {
             if (viewSessions.containsKey(note.id)) continue
             val editorState = EditorState()
-            val storeLines = NoteStore.getNoteLinesById(note.id)
-            if (storeLines != null) {
-                val noteLines = storeLines.map { nl ->
-                    nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList())
-                }
-                editorState.initFromNoteLines(noteLines)
-            } else {
-                editorState.updateFromText(note.content)
+            // Always use NoteStore (with synthesized fallback) so the session is initialized
+            // via initFromNoteLines and never goes through the lossy updateFromText path.
+            val storeLines = NoteStore.getNoteLinesByIdOrSynthesize(note.id, note.content)
+            val noteLines = storeLines.map { nl ->
+                nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList())
             }
+            editorState.initFromNoteLines(noteLines)
             val session = InlineEditSession(
                 noteId = note.id,
                 originalContent = note.content,
@@ -227,7 +227,9 @@ class InlineEditState {
                 controller = EditorController(editorState)
             )
             viewSessions[note.id] = session
+            newIds.add(note.id)
         }
+        return newIds
     }
 
     /**
@@ -304,7 +306,12 @@ class InlineEditState {
      */
     fun startSession(noteId: String, content: String): InlineEditSession {
         val editorState = EditorState()
-        editorState.updateFromText(content)
+        // Always go through initFromNoteLines (with synthesized fallback) so the session
+        // never starts in the lossy updateFromText path with empty parentNoteId.
+        val storeLines = NoteStore.getNoteLinesByIdOrSynthesize(noteId, content)
+        editorState.initFromNoteLines(
+            storeLines.map { nl -> nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList()) }
+        )
         val controller = EditorController(editorState)
 
         val session = InlineEditSession(

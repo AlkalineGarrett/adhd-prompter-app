@@ -116,25 +116,30 @@ class EditorState {
 
     /**
      * Internal: Use EditorController.deleteSelectionWithUndo() for proper undo handling.
+     *
+     * Surgical implementation: only the lines actually touched by the selection are
+     * modified. Lines fully outside the selection keep their LineState (and noteIds)
+     * untouched — no lossy text matching needed. See [removeSelectedRange] for details.
      */
     internal fun deleteSelectionInternal(): Int {
         if (!hasSelection) return -1
 
         val fullText = text
         val (selStart, selEnd) = getEffectiveSelectionRange(fullText)
-        val newText = fullText.substring(0, selStart) + fullText.substring(selEnd)
-        val newCursorPos = selStart
+        val (startLineIdx, startLocalOffset) = getLineAndLocalOffset(selStart)
+        val (endLineIdx, endLocalOffset) = getLineAndLocalOffset(selEnd)
 
-        updateFromText(newText)
+        removeSelectedRange(startLineIdx, startLocalOffset, endLineIdx, endLocalOffset)
+
         clearSelection()
-
-        val (lineIndex, localOffset) = getLineAndLocalOffset(newCursorPos)
-        focusedLineIndex = lineIndex
-        lines.getOrNull(lineIndex)?.updateFull(lines[lineIndex].text, localOffset)
+        focusedLineIndex = startLineIdx.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+        lines.getOrNull(focusedLineIndex)?.let { line ->
+            line.updateFull(line.text, startLocalOffset.coerceIn(0, line.text.length))
+        }
 
         requestFocusUpdate()
         notifyChange()
-        return newCursorPos
+        return selStart
     }
 
     /**
@@ -142,36 +147,159 @@ class EditorState {
      * If no selection, inserts at the current cursor position.
      * Returns the new cursor position (at the end of inserted text).
      * Internal: Use EditorController.paste() for proper undo handling.
+     *
+     * Surgical implementation: same as [deleteSelectionInternal] for the deletion phase,
+     * then inserts the replacement at the cursor. Lines outside the selection are not
+     * touched and keep their noteIds. The inserted lines (between any newlines in the
+     * replacement) get empty noteIds, since they are new content. See [removeSelectedRange]
+     * and [insertTextAt] for details.
      */
     internal fun replaceSelectionInternal(replacement: String): Int {
-        val fullText = text
-        val insertPos: Int
-        val newText: String
-
+        // 1. Resolve the deletion range, then delete it (no-op if no selection).
+        val anchorLineIdx: Int
+        val anchorLocalOffset: Int
         if (hasSelection) {
+            val fullText = text
             val (selStart, selEnd) = getEffectiveSelectionRange(fullText)
-            insertPos = selStart
-            newText = fullText.substring(0, selStart) + replacement + fullText.substring(selEnd)
+            val (startLineIdx, startLocalOffset) = getLineAndLocalOffset(selStart)
+            val (endLineIdx, endLocalOffset) = getLineAndLocalOffset(selEnd)
+            removeSelectedRange(startLineIdx, startLocalOffset, endLineIdx, endLocalOffset)
+            anchorLineIdx = startLineIdx.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
+            anchorLocalOffset = startLocalOffset.coerceIn(
+                0,
+                lines.getOrNull(anchorLineIdx)?.text?.length ?: 0,
+            )
+            clearSelection()
         } else {
-            // Insert at current cursor position
             val currentLine = lines.getOrNull(focusedLineIndex) ?: return 0
-            insertPos = getLineStartOffset(focusedLineIndex) + currentLine.cursorPosition
-            newText = fullText.substring(0, insertPos) + replacement + fullText.substring(insertPos)
+            anchorLineIdx = focusedLineIndex
+            anchorLocalOffset = currentLine.cursorPosition
         }
 
-        val newCursorPos = insertPos + replacement.length
+        // 2. Insert the replacement at (anchorLineIdx, anchorLocalOffset).
+        val (cursorLineIdx, cursorLocalOffset) = insertTextAt(
+            anchorLineIdx,
+            anchorLocalOffset,
+            replacement,
+        )
 
-        updateFromText(newText)
+        focusedLineIndex = cursorLineIdx
+        lines.getOrNull(cursorLineIdx)?.let { line ->
+            line.updateFull(line.text, cursorLocalOffset.coerceIn(0, line.text.length))
+        }
+
+        // Compute the global cursor offset to return.
+        val newCursorPos = getLineStartOffset(cursorLineIdx) + cursorLocalOffset
         removeEmptyLineAtCursor(newCursorPos)
-        clearSelection()
-
-        val (lineIndex, localOffset) = getLineAndLocalOffset(newCursorPos)
-        focusedLineIndex = lineIndex
-        lines.getOrNull(lineIndex)?.updateFull(lines[lineIndex].text, localOffset)
 
         requestFocusUpdate()
         notifyChange()
         return newCursorPos
+    }
+
+    /**
+     * Removes the text in `[startLineIdx@startLocalOffset, endLineIdx@endLocalOffset)`
+     * from the line list, mutating only the affected lines.
+     *
+     * Lines fully outside the range are not touched (their `LineState`s — including
+     * `noteIds` — are preserved by reference). The start line is shrunk to its prefix
+     * portion (and merged with the end line's suffix portion, if any), and lines in
+     * `(startLineIdx..endLineIdx]` are removed.
+     *
+     * NoteId policy after merge:
+     * - If the surviving content comes entirely from the start line, keep its noteIds.
+     * - If the surviving content comes entirely from the end line (start prefix is empty
+     *   and end suffix is non-empty), inherit the end line's noteIds.
+     * - If the surviving content is empty, keep the start line's noteIds.
+     * - Mixed (both prefixes have content), keep the start line's noteIds — the end
+     *   line's noteId is dropped because the surviving line "is" the start line.
+     */
+    private fun removeSelectedRange(
+        startLineIdx: Int,
+        startLocalOffset: Int,
+        endLineIdx: Int,
+        endLocalOffset: Int,
+    ) {
+        if (startLineIdx == endLineIdx) {
+            val line = lines.getOrNull(startLineIdx) ?: return
+            val newText = line.text.substring(0, startLocalOffset) +
+                line.text.substring(endLocalOffset.coerceAtMost(line.text.length))
+            line.updateFull(newText, startLocalOffset)
+            return
+        }
+
+        val startLine = lines.getOrNull(startLineIdx) ?: return
+        val endLine = lines.getOrNull(endLineIdx) ?: return
+        val startPart = startLine.text.substring(0, startLocalOffset.coerceAtMost(startLine.text.length))
+        val endPart = endLine.text.substring(endLocalOffset.coerceAtMost(endLine.text.length))
+        val newStartText = startPart + endPart
+        val newNoteIds = when {
+            startPart.isEmpty() && endPart.isNotEmpty() -> endLine.noteIds
+            else -> startLine.noteIds
+        }
+        startLine.updateFull(newStartText, startLocalOffset)
+        startLine.noteIds = newNoteIds
+
+        // Remove lines (startLineIdx, endLineIdx] in reverse so indices stay valid.
+        for (i in endLineIdx downTo startLineIdx + 1) {
+            lines.removeAt(i)
+        }
+    }
+
+    /**
+     * Inserts [replacement] into the line list at `lineIdx@localOffset`. Returns the
+     * `(lineIdx, localOffset)` of the cursor after insertion (the end of the inserted text).
+     *
+     * Single-line replacements modify only the target line in place. Multi-line
+     * replacements split the target line at the cursor, with the first replacement
+     * line appended to the prefix portion and the last replacement line prepended to
+     * the suffix portion. Newly created lines (everything between the first and last
+     * replacement line) get empty `noteIds` — they are new content. The original line's
+     * `noteIds` are preserved on the line containing its prefix portion.
+     */
+    private fun insertTextAt(
+        lineIdx: Int,
+        localOffset: Int,
+        replacement: String,
+    ): Pair<Int, Int> {
+        val line = lines.getOrNull(lineIdx) ?: return lineIdx to localOffset
+        val replacementLines = replacement.split("\n")
+
+        if (replacementLines.size == 1) {
+            val newText = line.text.substring(0, localOffset) +
+                replacement +
+                line.text.substring(localOffset)
+            line.updateFull(newText, localOffset + replacement.length)
+            return lineIdx to localOffset + replacement.length
+        }
+
+        // Multi-line: split the target line at the cursor.
+        val prefix = line.text.substring(0, localOffset)
+        val suffix = line.text.substring(localOffset)
+
+        // Original line keeps its noteIds and gets `prefix + first replacement line`.
+        val firstNewText = prefix + replacementLines.first()
+        line.updateFull(firstNewText, firstNewText.length)
+        // line.noteIds intentionally unchanged.
+
+        // Middle replacement lines are inserted as new LineStates with empty noteIds.
+        var insertAt = lineIdx + 1
+        for (i in 1 until replacementLines.size - 1) {
+            lines.add(insertAt, LineState(replacementLines[i], replacementLines[i].length, emptyList()))
+            insertAt++
+        }
+
+        // The last replacement line + the original suffix becomes the cursor line.
+        val lastReplacement = replacementLines.last()
+        val lastLineText = lastReplacement + suffix
+        // The suffix half should keep its identity if it has noteIds — but since we
+        // mutated the original line in place, those noteIds went with it. The new last
+        // line carries empty noteIds. This is the conservative choice: a multi-line
+        // insert/paste creates new content, and we'd rather allocate fresh ids than
+        // risk attaching the original line's id to a fragment that doesn't represent it.
+        lines.add(insertAt, LineState(lastLineText, lastReplacement.length, emptyList()))
+
+        return insertAt to lastReplacement.length
     }
 
     /**
@@ -455,54 +583,123 @@ class EditorState {
         notifyChange()
     }
 
+    // =========================================================================
+    // Surgical mutations for directive-driven content rewrites
+    //
+    // These are the safe replacement for `editorState.text.replace(...) → updateFromText(...)`,
+    // which used to round-trip the entire editor through lossy text matching. Each helper
+    // modifies only the lines that actually change and preserves noteIds on every other line.
+    // =========================================================================
+
+    /**
+     * Replaces the first line's full text with [newContent], preserving its noteIds.
+     *
+     * If [newContent] contains newlines, the additional lines are inserted as new
+     * `LineState`s right after the first line, pushing existing content down. The newly
+     * inserted lines get empty noteIds — they will be allocated fresh ids on save.
+     *
+     * Use for directive `CONTENT_CHANGED` mutations that update the host note's title /
+     * first line from a directive runtime.
+     */
+    internal fun replaceFirstLineContent(newContent: String) {
+        val newLines = newContent.split("\n")
+        if (lines.isEmpty()) {
+            // Defensive: shouldn't happen because EditorState always starts with a single
+            // empty LineState, but seed the editor with the new content if it does.
+            // The first new line gets parentNoteId (if known) so save still attaches the
+            // parent doc; subsequent lines get empty noteIds (allocated fresh on save).
+            val firstIds = if (parentNoteId.isNotEmpty()) listOf(parentNoteId) else emptyList()
+            lines.add(LineState(newLines[0], newLines[0].length, firstIds))
+            for (i in 1 until newLines.size) {
+                lines.add(LineState(newLines[i], newLines[i].length, emptyList()))
+            }
+            notifyChange()
+            return
+        }
+        // Mutate line 0 in place — noteIds preserved.
+        lines[0].updateFull(newLines[0], newLines[0].length)
+        // Insert any additional lines from the new content right after line 0.
+        for (i in 1 until newLines.size) {
+            lines.add(i, LineState(newLines[i], newLines[i].length, emptyList()))
+        }
+        notifyChange()
+    }
+
+    /**
+     * Appends [content] to the editor as one or more new lines.
+     *
+     * If [content] contains newlines, each segment becomes its own `LineState`. All
+     * appended lines get empty noteIds — they are new content and will be allocated
+     * fresh ids on save. Existing lines are not touched.
+     *
+     * Mirrors the behavior of `userContent + "\n" + content` followed by reload, but
+     * without going through the lossy text-matching path.
+     */
+    internal fun appendContent(content: String) {
+        val newLines = content.split("\n")
+        for (line in newLines) {
+            lines.add(LineState(line, line.length, emptyList()))
+        }
+        notifyChange()
+    }
+
+    /**
+     * Replaces every occurrence of [oldDirective] with [newDirective] across all lines,
+     * modifying each affected line in place. Lines that don't contain [oldDirective] are
+     * not touched and keep their `LineState` (and `noteIds`) untouched.
+     *
+     * Use for directive type-switches (e.g. `[alarm("id")] → [recurringAlarm("recId")]`)
+     * and for the redo-of-alarm-create id patch path.
+     */
+    internal fun replaceDirectiveText(oldDirective: String, newDirective: String) {
+        if (oldDirective.isEmpty() || oldDirective == newDirective) return
+        var changed = false
+        for (line in lines) {
+            if (!line.content.contains(oldDirective)) continue
+            val newLineContent = line.content.replace(oldDirective, newDirective)
+            line.updateContent(newLineContent, line.contentCursorPosition.coerceAtMost(newLineContent.length))
+            changed = true
+        }
+        if (changed) notifyChange()
+    }
+
     internal fun updateFromText(newText: String) {
         val oldNoteIds = lines.map { it.noteIds }
         val oldContents = lines.map { it.text }
-        val oldConsumed = BooleanArray(oldContents.size)
         val newLines = newText.split("\n")
 
-        // Build content→indices map for exact matching
-        val contentToIndices = mutableMapOf<String, MutableList<Int>>()
-        oldContents.forEachIndexed { i, content ->
-            contentToIndices.getOrPut(content) { mutableListOf() }.add(i)
+        val unmatched = mutableListOf<Pair<Int, String>>()
+        val reconciled = org.alkaline.taskbrain.data.reconcileLineNoteIds(
+            oldContents = oldContents,
+            oldNoteIds = oldNoteIds,
+            newContents = newLines,
+            onUnmatchedNonEmpty = { idx, content -> unmatched.add(idx to content) },
+        )
+        val withParent = org.alkaline.taskbrain.data.enforceParentNoteId(reconciled, parentNoteId)
+
+        if (parentNoteId.isEmpty() && newLines.isNotEmpty() && newLines[0].isNotEmpty()) {
+            android.util.Log.w(
+                "LineReconciliation",
+                "EditorState.updateFromText: parentNoteId is empty — line[0] will not get parent enforcement. " +
+                    "newLines.size=${newLines.size}, oldLines.size=${oldContents.size}, " +
+                    "first='${newLines[0].take(60)}'"
+            )
         }
-
-        val matchedNoteIds = arrayOfNulls<List<String>>(newLines.size)
-
-        // Exact content match
-        newLines.forEachIndexed { index, lineText ->
-            val indices = contentToIndices[lineText]
-            if (!indices.isNullOrEmpty()) {
-                val oldIdx = indices.removeAt(0)
-                matchedNoteIds[index] = oldNoteIds[oldIdx]
-                oldConsumed[oldIdx] = true
-            }
-        }
-
-        // Similarity-based matching for modifications and splits
-        org.alkaline.taskbrain.data.performSimilarityMatching(
-            unmatchedNewIndices = newLines.indices.filter { matchedNoteIds[it] == null }.toSet(),
-            unconsumedOldIndices = oldContents.indices.filter { !oldConsumed[it] },
-            getOldContent = { oldContents[it] },
-            getNewContent = { newLines[it] },
-        ) { oldIdx, newIdx ->
-            matchedNoteIds[newIdx] = oldNoteIds[oldIdx]
-            oldConsumed[oldIdx] = true
+        if (unmatched.isNotEmpty()) {
+            android.util.Log.w(
+                "LineReconciliation",
+                "EditorState.updateFromText: ${unmatched.size} non-empty new line(s) lost noteIds " +
+                    "(no exact or similarity match). " +
+                    "oldLines.size=${oldContents.size}, newLines.size=${newLines.size}. " +
+                    "First: ${unmatched.take(3).joinToString { "[${it.first}] '${it.second.take(40)}'" }}"
+            )
         }
 
         lines.clear()
         newLines.forEachIndexed { index, lineText ->
-            lines.add(LineState(lineText, lineText.length, matchedNoteIds[index] ?: emptyList()))
+            lines.add(LineState(lineText, lineText.length, withParent[index]))
         }
         focusedLineIndex = focusedLineIndex.coerceIn(0, lines.lastIndex.coerceAtLeast(0))
-
-        // Enforce that line 0 always has parentNoteId as its primary noteId
-        if (parentNoteId.isNotEmpty() && lines.isNotEmpty()) {
-            val first = lines[0]
-            if (first.noteIds.isEmpty() || first.noteIds.first() != parentNoteId) {
-                first.noteIds = listOf(parentNoteId) + first.noteIds.filter { it != parentNoteId }
-            }
-        }
     }
 
     /**
@@ -569,10 +766,57 @@ class EditorState {
     }
 
     /**
-     * Converts the current editor lines to a list of NoteLines for save operations.
-     * Uses the first (primary) noteId from each line.
+     * Converts the current editor lines to a list of [NoteLine]s ready for save.
+     *
+     * This is the canonical "build save shape from the editor" function. Save callers
+     * should always go through here rather than zipping `text` and
+     * `lines.map { it.noteIds }` separately, which is fragile when content and noteIds
+     * drift apart.
+     *
+     * Behavior:
+     * - Resolves duplicate noteIds via [resolveNoteIds] (longest-content wins)
+     * - Enforces [parentNoteId] as the primary id of line 0
+     * - Logs a warning if [parentNoteId] is empty (line 0 will not get its parent id)
+     *   or if many non-empty lines have no noteId (likely indicates corruption)
      */
-    fun toNoteLines(): List<NoteLine> = lines.map { NoteLine(it.text, it.noteIds.firstOrNull()) }
+    fun toNoteLines(): List<NoteLine> {
+        val contentLines = lines.map { it.text }
+        val lineNoteIds = lines.map { it.noteIds }
+        val tracked = resolveNoteIds(contentLines, lineNoteIds).toMutableList()
+
+        if (parentNoteId.isNotEmpty() && tracked.isNotEmpty() && tracked[0].noteId != parentNoteId) {
+            tracked[0] = tracked[0].copy(noteId = parentNoteId)
+        }
+
+        // Diagnostics: warn loudly if the editor's noteIds are mostly empty at save time.
+        // This is the symptom of the content-drop bug — log it BEFORE the save guard fires
+        // so we can correlate with the upstream cause.
+        val nonEmptyLines = tracked.count { it.content.isNotEmpty() }
+        val nonEmptyMissingId = tracked.count { it.content.isNotEmpty() && it.noteId == null }
+        if (parentNoteId.isEmpty() && nonEmptyLines > 0) {
+            android.util.Log.w(
+                "LineReconciliation",
+                "EditorState.toNoteLines: parentNoteId is empty — line[0] will save with no parent id. " +
+                    "lines.size=${lines.size}, nonEmpty=$nonEmptyLines"
+            )
+        }
+        if (nonEmptyLines >= 3 && nonEmptyMissingId >= nonEmptyLines / 2) {
+            android.util.Log.w(
+                "LineReconciliation",
+                "EditorState.toNoteLines: $nonEmptyMissingId of $nonEmptyLines non-empty lines have no noteId. " +
+                    "This will cause new docs to be allocated on save. " +
+                    "parentNoteId='$parentNoteId'. " +
+                    "First missing: ${
+                        tracked.withIndex()
+                            .filter { it.value.content.isNotEmpty() && it.value.noteId == null }
+                            .take(3)
+                            .joinToString { "[${it.index}] '${it.value.content.take(40)}'" }
+                    }"
+            )
+        }
+
+        return tracked
+    }
 }
 
 /**

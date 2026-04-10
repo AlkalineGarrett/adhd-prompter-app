@@ -195,6 +195,7 @@ internal fun DirectiveAwareLineInput(
     symbolOverlays: List<SymbolOverlay> = emptyList(),
     /** Called before a tap changes cursor/focus — used by inline editors to track pending focus. */
     onTapStarting: (() -> Unit)? = null,
+    lineNoteId: String? = null,
     modifier: Modifier = Modifier
 ) {
     // Unpack callback bundles for internal use
@@ -220,8 +221,8 @@ internal fun DirectiveAwareLineInput(
     }
 
     // Build display text with directive results
-    val displayResult = remember(content, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, directiveResults)
+    val displayResult = remember(content, directiveResults, lineNoteId) {
+        DirectiveSegmenter.buildDisplayText(content, directiveResults, lineNoteId)
     }
 
     // Map source cursor to display cursor
@@ -944,15 +945,14 @@ private fun EditableViewNoteSection(
     // Session is eagerly created by InlineEditState.ensureSessionsForNotes() when
     // directive results are computed. Look it up from viewSessions.
     val session = inlineEditState?.viewSessions?.get(note.id) ?: remember(note.id) {
-        // Fallback: create on demand if not yet in viewSessions (shouldn't happen normally)
+        // Fallback: create on demand if not yet in viewSessions (shouldn't happen normally).
+        // Always go through initFromNoteLines (with synthesized fallback) so we never
+        // touch the lossy updateFromText path.
         val s = EditorState()
-        val storeLines = NoteStore.getNoteLinesById(note.id)
-        if (storeLines != null) {
-            val noteLines = storeLines.map { nl -> nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList()) }
-            s.initFromNoteLines(noteLines)
-        } else {
-            s.updateFromText(editContent)
-        }
+        val storeLines = NoteStore.getNoteLinesByIdOrSynthesize(note.id, editContent)
+        s.initFromNoteLines(
+            storeLines.map { nl -> nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList()) }
+        )
         InlineEditSession(
             noteId = note.id,
             originalContent = editContent,
@@ -964,13 +964,11 @@ private fun EditableViewNoteSection(
     // Update existing session content in place on external changes (same pattern as
     // main editor's initFromNoteLines). Skipped when the session has unsaved edits.
     if (editContent != session.originalContent && !session.isDirty) {
-        val storeLines = NoteStore.getNoteLinesById(note.id)
-        if (storeLines != null) {
-            val noteLines = storeLines.map { nl -> nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList()) }
-            session.editorState.initFromNoteLines(noteLines, preserveCursor = true)
-        } else {
-            session.editorState.updateFromText(editContent)
-        }
+        val storeLines = NoteStore.getNoteLinesByIdOrSynthesize(note.id, editContent)
+        session.editorState.initFromNoteLines(
+            storeLines.map { nl -> nl.content to (nl.noteId?.let { listOf(it) } ?: emptyList()) },
+            preserveCursor = true,
+        )
         session.syncOriginalContent(editContent)
         session.editorState.requestFocusUpdate()
     }

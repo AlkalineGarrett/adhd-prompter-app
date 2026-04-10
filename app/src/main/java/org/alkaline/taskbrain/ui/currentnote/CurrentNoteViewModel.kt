@@ -160,7 +160,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
 
                 val storeLines = NoteStore.getNoteLinesById(noteId) ?: return@collect
                 applyNoteContent(
-                    noteId, storeNote.content, storeLines,
+                    noteId, storeLines,
                     isDeleted = storeNote.state == "deleted",
                     showCompleted = storeNote.showCompleted,
                 )
@@ -233,17 +233,12 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      */
     fun getTrackedLines(): List<NoteLine> = currentNoteLines
 
-    /** Extracts noteIds from NoteLines for passing to EditorState via LoadStatus. */
-    private fun noteLinesToNoteIds(lines: List<NoteLine>): List<List<String>> =
-        lines.map { listOfNotNull(it.noteId) }
-
     /**
      * Apply resolved note data to the editor: update metadata, lines, load status, and directives.
      * All load paths (dirty cache, NoteStore, Firestore, external change) converge here.
      */
     private fun applyNoteContent(
         noteId: String,
-        content: String,
         lines: List<NoteLine>,
         isDeleted: Boolean,
         showCompleted: Boolean,
@@ -251,7 +246,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         _isNoteDeleted.value = isDeleted
         _showCompleted.value = showCompleted
         currentNoteLines = lines
-        _loadStatus.value = LoadStatus.Success(noteId, content, noteLinesToNoteIds(lines))
+        val content = lines.joinToString("\n") { it.content }
+        _loadStatus.value = LoadStatus.Success(noteId, lines)
         viewModelScope.launch {
             repository.updateLastAccessed(noteId)
             directiveManager.loadDirectiveResults(content, noteId)
@@ -338,21 +334,21 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // Path 1: Dirty editor cache — restore unsaved edits
         val cached = recentTabsViewModel?.getCachedContent(noteId)
         if (cached != null && cached.isDirty) {
-            val fullContent = cached.noteLines.joinToString("\n") { it.content }
             Log.d(TAG, "loadContent: restoring dirty editor cache for $noteId")
             applyNoteContent(
-                noteId, fullContent, cached.noteLines,
+                noteId, cached.noteLines,
                 isDeleted = cached.isDeleted,
                 showCompleted = NoteStore.getNoteById(noteId)?.showCompleted ?: true,
             )
 
             // Background refresh for proper noteId mappings (the fire-and-forget save
             // may have created new child notes with IDs we don't have yet)
+            val cachedContent = cached.noteLines.joinToString("\n") { it.content }
             viewModelScope.launch {
                 repository.loadNoteWithChildren(noteId).onSuccess { result ->
                     if (noteId != currentNoteId) return@onSuccess
                     val freshContent = result.lines.joinToString("\n") { it.content }
-                    if (freshContent == fullContent) {
+                    if (freshContent == cachedContent) {
                         // Content matches — update noteId mappings without changing editor
                         currentNoteLines = result.lines
                     }
@@ -366,16 +362,15 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // Path 2: NoteStore — instant display from the collection listener's data
         val storeNote = NoteStore.getNoteById(noteId)
         if (storeNote != null) {
-            val content = storeNote.content
             // Use getNoteLinesById to get proper noteId mappings from the in-memory tree,
             // avoiding the race condition where a save could happen before a background
             // Firestore refresh provides the real IDs.
-            val storeLines = NoteStore.getNoteLinesById(noteId) ?: content.lines().mapIndexed { index, line ->
+            val storeLines = NoteStore.getNoteLinesById(noteId) ?: storeNote.content.lines().mapIndexed { index, line ->
                 NoteLine(content = line, noteId = if (index == 0) noteId else null)
             }
             Log.d(TAG, "loadContent: using NoteStore content for $noteId (${storeLines.size} lines, noteIds: ${storeLines.count { it.noteId != null }}/${storeLines.size})")
             applyNoteContent(
-                noteId, content, storeLines,
+                noteId, storeLines,
                 isDeleted = storeNote.state == "deleted",
                 showCompleted = storeNote.showCompleted,
             )
@@ -392,8 +387,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             val result = repository.loadNoteWithChildren(noteId)
             result.fold(
                 onSuccess = { (loadedLines, isDeleted, showCompleted) ->
-                    val fullContent = loadedLines.joinToString("\n") { it.content }
-                    applyNoteContent(noteId, fullContent, loadedLines, isDeleted, showCompleted)
+                    applyNoteContent(noteId, loadedLines, isDeleted, showCompleted)
                 },
                 onFailure = { e ->
                     if (isPermissionDenied(e)) {
@@ -421,6 +415,9 @@ class CurrentNoteViewModel @JvmOverloads constructor(
     /**
      * Updates currentNoteLines from raw content using content-based matching.
      * Used as a fallback when editor noteIds are not available.
+     *
+     * Delegates to the shared [reconcileLineNoteIds] / [enforceParentNoteId] helpers.
+     * Logs a warning if any non-empty line loses its noteId during matching.
      */
     fun updateTrackedLines(newContent: String) {
         val newLinesContent = newContent.lines()
@@ -433,45 +430,31 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             return
         }
 
-        val contentToOldIndices = mutableMapOf<String, MutableList<Int>>()
-        oldLines.forEachIndexed { index, line ->
-            contentToOldIndices.getOrPut(line.content) { mutableListOf() }.add(index)
+        val oldContents = oldLines.map { it.content }
+        val oldNoteIds = oldLines.map { listOfNotNull(it.noteId) }
+
+        val unmatched = mutableListOf<Pair<Int, String>>()
+        val reconciled = org.alkaline.taskbrain.data.reconcileLineNoteIds(
+            oldContents = oldContents,
+            oldNoteIds = oldNoteIds,
+            newContents = newLinesContent,
+            onUnmatchedNonEmpty = { idx, content -> unmatched.add(idx to content) },
+        )
+        val withParent = org.alkaline.taskbrain.data.enforceParentNoteId(reconciled, currentNoteId)
+
+        if (unmatched.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "updateTrackedLines: ${unmatched.size} non-empty new line(s) lost noteIds " +
+                    "(no exact or similarity match). " +
+                    "oldLines.size=${oldLines.size}, newLines.size=${newLinesContent.size}. " +
+                    "First: ${unmatched.take(3).joinToString { "[${it.first}] '${it.second.take(40)}'" }}"
+            )
         }
 
-        val newIds = arrayOfNulls<String>(newLinesContent.size)
-        val oldConsumed = BooleanArray(oldLines.size)
-
-        // Exact matches
-        newLinesContent.forEachIndexed { index, content ->
-            val indices = contentToOldIndices[content]
-            if (!indices.isNullOrEmpty()) {
-                val oldIdx = indices.removeAt(0)
-                newIds[index] = oldLines[oldIdx].noteId
-                oldConsumed[oldIdx] = true
-            }
+        currentNoteLines = newLinesContent.mapIndexed { index, content ->
+            NoteLine(content, withParent[index].firstOrNull())
         }
-
-        // Similarity-based matching for modifications and splits
-        org.alkaline.taskbrain.data.performSimilarityMatching(
-            unmatchedNewIndices = newLinesContent.indices.filter { newIds[it] == null }.toSet(),
-            unconsumedOldIndices = oldLines.indices.filter { !oldConsumed[it] },
-            getOldContent = { oldLines[it].content },
-            getNewContent = { newLinesContent[it] },
-        ) { oldIdx, newIdx ->
-            newIds[newIdx] = oldLines[oldIdx].noteId
-            oldConsumed[oldIdx] = true
-        }
-
-        val result = newLinesContent.mapIndexed { index, content ->
-            NoteLine(content, newIds[index])
-        }.toMutableList()
-
-        // Ensure first line always has parent ID
-        if (result.isNotEmpty() && result[0].noteId != currentNoteId) {
-            result[0] = result[0].copy(noteId = currentNoteId)
-        }
-
-        currentNoteLines = result
     }
 
     fun toggleShowCompleted() {
@@ -485,18 +468,16 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         }
     }
 
-    fun saveContent(content: String, lineNoteIds: List<List<String>> = emptyList()) {
-        // Use editor noteIds when available (they track undo/redo and line moves).
-        // Fall back to content-based matching when editor noteIds are empty
-        // (can happen when loaded via updateFromText instead of initFromNoteLines).
-        val capturedLines = if (lineNoteIds.any { it.isNotEmpty() }) {
-            resolveNoteIds(content.lines(), lineNoteIds)
-        } else {
-            // Fallback: build from content with no noteId info
-            updateTrackedLines(content)
-            currentNoteLines
-        }
-        currentNoteLines = capturedLines
+    /**
+     * Saves the main note from a pre-built list of [NoteLine]s.
+     *
+     * Callers must build [trackedLines] via [EditorState.toNoteLines] (or equivalent)
+     * — we no longer accept `(text, lineNoteIds)` as parallel arrays because that shape
+     * is fragile when text and noteIds drift apart.
+     */
+    fun saveContent(trackedLines: List<NoteLine>) {
+        currentNoteLines = trackedLines
+        val content = trackedLines.joinToString("\n") { it.content }
 
         _saveStatus.value = UnifiedSaveStatus.Saving
 
@@ -515,10 +496,10 @@ class CurrentNoteViewModel @JvmOverloads constructor(
         // persistCurrentNote does a structured save (with noteId mappings) — more
         // precise than the auto-persist callback, so we passed persist = false above.
         viewModelScope.launch {
-            val result = persistCurrentNote(savedNoteId, capturedLines)
+            val result = persistCurrentNote(savedNoteId, trackedLines)
 
             result.onSuccess {
-                alarmManager.syncAlarmNoteIds(capturedLines)
+                alarmManager.syncAlarmNoteIds(trackedLines)
                 directiveManager.onSaveCompleted(content)
             }
         }
@@ -534,11 +515,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                 updateTrackedLines(updatedContent)
 
                 // Update the UI with the new content
-                _loadStatus.value = LoadStatus.Success(
-                    capturedNoteId,
-                    updatedContent,
-                    noteLinesToNoteIds(currentNoteLines)
-                )
+                _loadStatus.value = LoadStatus.Success(capturedNoteId, currentNoteLines)
                 
                 // Signal that the content has been modified and is unsaved
                 _contentModified.value = true
@@ -694,23 +671,22 @@ class CurrentNoteViewModel @JvmOverloads constructor(
      * Saves the main note and all dirty inline edit sessions at once.
      * On partial failure, saves what succeeds and reports the failures.
      */
+    /**
+     * Saves the main note and all dirty inline edit sessions.
+     *
+     * Callers must build [trackedLines] via [EditorState.toNoteLines]; the parallel-array
+     * `(text, lineNoteIds)` shape was removed because it was fragile when text and noteIds
+     * drift apart (e.g., the editor's noteIds list got mostly emptied via a lossy reload).
+     */
     fun saveAll(
-        content: String,
-        lineNoteIds: List<List<String>>,
+        trackedLines: List<NoteLine>,
         dirtySessions: List<InlineEditSession>
     ) {
         _saveStatus.value = UnifiedSaveStatus.Saving
 
         val savedNoteId = currentNoteId
-
-        // Prepare main note lines
-        val capturedLines = if (lineNoteIds.any { it.isNotEmpty() }) {
-            resolveNoteIds(content.lines(), lineNoteIds)
-        } else {
-            updateTrackedLines(content)
-            currentNoteLines
-        }
-        currentNoteLines = capturedLines
+        val content = trackedLines.joinToString("\n") { it.content }
+        currentNoteLines = trackedLines
 
         // Update NoteStore synchronously before async writes
         val existing = NoteStore.getNoteById(savedNoteId)
@@ -724,7 +700,7 @@ class CurrentNoteViewModel @JvmOverloads constructor(
             var lastError: Throwable? = null
 
             // Save main note (without persistCurrentNote's status side effects)
-            val mainResult = repository.saveNoteWithChildren(savedNoteId, capturedLines)
+            val mainResult = repository.saveNoteWithChildren(savedNoteId, trackedLines)
             mainResult.onSuccess { newIdsMap ->
                 if (newIdsMap.isNotEmpty()) {
                     val updated = currentNoteLines.toMutableList()
@@ -736,8 +712,8 @@ class CurrentNoteViewModel @JvmOverloads constructor(
                     currentNoteLines = updated
                     _newlyAssignedNoteIds.tryEmit(newIdsMap)
                 }
-                alarmManager.syncAlarmLineContent(capturedLines)
-                alarmManager.syncAlarmNoteIds(capturedLines)
+                alarmManager.syncAlarmLineContent(trackedLines)
+                alarmManager.syncAlarmNoteIds(trackedLines)
                 directiveManager.onSaveCompleted(content)
             }.onFailure { e ->
                 failedNoteIds.add(savedNoteId)
@@ -787,11 +763,23 @@ sealed class UnifiedSaveStatus {
 
 sealed class LoadStatus {
     object Loading : LoadStatus()
+    /**
+     * A note has been loaded.
+     *
+     * Carries the full [NoteLine] list (text + noteId per line) so the editor can
+     * always be initialized via [EditorState.initFromNoteLines]. The earlier shape
+     * passed `content: String` and `lineNoteIds: List<List<String>>` as parallel
+     * arrays — that shape is fragile because the two could drift out of sync, and
+     * forced a lossy `updateFromText` fallback when `lineNoteIds` was missing.
+     *
+     * [content] is a convenience accessor that joins line texts with newlines.
+     */
     data class Success(
         val noteId: String,
-        val content: String,
-        val lineNoteIds: List<List<String>> = emptyList(),
-    ) : LoadStatus()
+        val lines: List<NoteLine>,
+    ) : LoadStatus() {
+        val content: String get() = lines.joinToString("\n") { it.content }
+    }
     data class Error(val throwable: Throwable) : LoadStatus()
 }
 

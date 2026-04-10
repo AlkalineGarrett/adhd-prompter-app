@@ -231,7 +231,7 @@ Saving creates an undo point while allowing continued editing on the same line:
 2. **When set**: First time a note is loaded since app start (if no persisted state exists)
 3. **Behavior**: When undo stack is empty, undo returns to the baseline instead of doing nothing
 4. **Persistence**: Baseline is persisted with undo state when app backgrounds and restored on resume
-5. **CRITICAL Implementation Note**: `editorState.updateFromText()` MUST be called BEFORE `setBaseline()`. Otherwise the baseline captures empty content and defeats its purpose. This is an integration timing issue that unit tests cannot catch - see test "CRITICAL - baseline must contain actual content"
+5. **CRITICAL Implementation Note**: The editor MUST be populated (via `editorState.initFromNoteLines()` — never the lossy `updateFromText()`) BEFORE `setBaseline()` is called. Otherwise the baseline captures empty content and defeats its purpose. This is an integration timing issue that unit tests cannot catch - see test "CRITICAL - baseline must contain actual content"
 
 ### Edge Cases
 1. **Empty edits**: If user focuses a line but makes no changes, no undo point created
