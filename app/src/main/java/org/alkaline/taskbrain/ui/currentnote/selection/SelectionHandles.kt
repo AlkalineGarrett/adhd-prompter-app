@@ -214,7 +214,7 @@ internal fun calculateHandlePosition(
 
     // Build display text info to map between source and display coordinates
     val displayResult = DirectiveSegmenter.buildDisplayText(
-        lineState.content, directiveResults
+        lineState.content, directiveResults, lineState.noteIds.firstOrNull()
     )
 
     // Convert to content-local offset (offset within the content, not including prefix)

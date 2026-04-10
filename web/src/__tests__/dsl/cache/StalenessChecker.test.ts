@@ -24,6 +24,7 @@ function makeNote(id: string, content = 'Note content', path = `path/${id}`): No
     path,
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
   }
 }
 

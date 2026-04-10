@@ -113,7 +113,7 @@ internal fun positionToGlobalOffset(
 
     // Build display text info to map between display and source positions
     val displayResult = DirectiveSegmenter.buildDisplayText(
-        lineState.content, directiveResults
+        lineState.content, directiveResults, lineState.noteIds.firstOrNull()
     )
 
     val displayOffset = getCharacterOffsetInContent(
@@ -275,7 +275,7 @@ private fun getCursorScreenPosition(
     // Map source cursor position to display position for directive-aware lines
     val contentCursor = lineState.contentCursorPosition
     val displayResult = DirectiveSegmenter.buildDisplayText(
-        lineState.content, directiveResults
+        lineState.content, directiveResults, lineState.noteIds.firstOrNull()
     )
     val displayCursor = mapSourceToDisplayOffset(contentCursor, displayResult, mapInsideDirective = false)
         .coerceIn(0, displayResult.displayText.length)

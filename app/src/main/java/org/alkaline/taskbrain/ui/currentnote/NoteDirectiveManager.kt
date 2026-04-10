@@ -20,8 +20,10 @@ import org.alkaline.taskbrain.dsl.cache.EditSessionManager
 import org.alkaline.taskbrain.dsl.cache.MetadataHasher
 import org.alkaline.taskbrain.dsl.cache.RefreshScheduler
 import org.alkaline.taskbrain.dsl.cache.RefreshTriggerAnalyzer
+import kotlinx.coroutines.tasks.await
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.onceAwareKey
 import org.alkaline.taskbrain.dsl.directives.DirectiveResultRepository
 import org.alkaline.taskbrain.dsl.directives.DirectiveSegment
 import org.alkaline.taskbrain.dsl.directives.ScheduleManager
@@ -31,6 +33,7 @@ import org.alkaline.taskbrain.dsl.runtime.MutationType
 import org.alkaline.taskbrain.dsl.runtime.NoteContext
 import org.alkaline.taskbrain.dsl.runtime.NoteMutation
 import org.alkaline.taskbrain.dsl.runtime.NoteRepositoryOperations
+import org.alkaline.taskbrain.dsl.runtime.PersistableOnceCache
 import org.alkaline.taskbrain.dsl.runtime.values.AlarmVal
 import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 import org.alkaline.taskbrain.dsl.runtime.values.DateTimeVal
@@ -73,6 +76,10 @@ class NoteDirectiveManager(
 
     // Tracks which directives are expanded (by hash key). Default state is collapsed.
     private val expandedDirectiveHashes = mutableSetOf<String>()
+
+    // Staged once cache entries from computeDirectiveResults, persisted during save.
+    private var pendingOnceCacheEntries: Map<String, Map<String, Any?>>? = null
+    private var pendingOnceCacheNoteId: String? = null
 
     // Note operations for DSL mutations
     // Use injected provider for testing, or create from Firebase for production
@@ -202,6 +209,10 @@ class NoteDirectiveManager(
             val allMutations = mutableListOf<NoteMutation>()
             for (line in content.lines()) {
                 for (directive in DirectiveFinder.findDirectives(line)) {
+                    // Once-directives are handled by computeDirectiveResults with
+                    // per-line PersistableOnceCache — skip in the post-save path.
+                    if (directive.sourceText.contains("once[")) continue
+
                     val cachedResult = cachedDirectiveExecutor.execute(
                         directive.sourceText, notes, currentNote, noteOperations
                     )
@@ -248,6 +259,14 @@ class NoteDirectiveManager(
      * Called by the ViewModel after a successful save to execute and store directives.
      */
     fun onSaveCompleted(content: String) {
+        // Flush staged once cache entries to Firestore (safe here — save already wrote to the doc)
+        val entries = pendingOnceCacheEntries
+        val noteId = pendingOnceCacheNoteId
+        if (entries != null && noteId != null) {
+            persistOnceCacheEntries(noteId, entries)
+            pendingOnceCacheEntries = null
+            pendingOnceCacheNoteId = null
+        }
         executeAndStoreDirectives(content)
     }
 
@@ -283,6 +302,10 @@ class NoteDirectiveManager(
 
         val missingTexts = mutableListOf<String>()
         for (sourceText in directiveTexts) {
+            // Once-directives are handled by computeDirectiveResults with per-line
+            // PersistableOnceCache — don't prime or re-execute them here.
+            if (sourceText.contains("once[")) continue
+
             val textHash = DirectiveResult.hashDirective(sourceText)
             val cached = cachedByHash[textHash]
             val cachedValue = cached?.toValue()
@@ -348,20 +371,41 @@ class NoteDirectiveManager(
      * Applies collapsed state from [expandedDirectiveHashes].
      * When notes haven't loaded yet, still returns alarm results (trivial pure functions).
      */
-    fun computeDirectiveResults(content: String, noteId: String? = null): Map<String, DirectiveResult> {
+    fun computeDirectiveResults(
+        content: String,
+        noteId: String? = null,
+        lineNoteIds: List<String?> = emptyList()
+    ): Map<String, DirectiveResult> {
         val effectiveNoteId = noteId ?: getCurrentNoteId()
         val notes = NoteStore.notes.value.takeIf { it.isNotEmpty() }
         val currentNote = NoteStore.getNoteById(effectiveNoteId)
+        val onceCache = currentNote?.let { PersistableOnceCache(it.onceCache) }
         val hashResults = mutableMapOf<String, DirectiveResult>()
-        for (line in content.lines()) {
+        val lines = content.lines()
+        for ((lineIndex, line) in lines.withIndex()) {
+            val lineNoteId = lineNoteIds.getOrNull(lineIndex)
             for (directive in DirectiveFinder.findDirectives(line)) {
-                val hash = DirectiveResult.hashDirective(directive.sourceText)
-                if (hashResults.containsKey(hash)) continue
+                val isOnceDirective = directive.sourceText.contains("once[")
+                val key = onceAwareKey(directive.sourceText, lineNoteId)
+                if (hashResults.containsKey(key)) continue
 
                 val result = if (notes != null) {
-                    cachedDirectiveExecutor.execute(
-                        directive.sourceText, notes, currentNote, noteOperations
-                    ).result
+                    if (isOnceDirective && onceCache != null) {
+                        // Once-directives bypass the CachedDirectiveExecutor — the
+                        // PersistableOnceCache handles per-line caching via Firestore.
+                        DirectiveFinder.executeDirective(
+                            sourceText = directive.sourceText,
+                            notes = notes,
+                            currentNote = currentNote,
+                            noteOperations = noteOperations,
+                            onceCache = onceCache,
+                            lineNoteId = lineNoteId
+                        ).result
+                    } else {
+                        cachedDirectiveExecutor.execute(
+                            directive.sourceText, notes, currentNote, noteOperations
+                        ).result
+                    }
                 } else {
                     // Notes not loaded yet — only alarm directives can be resolved
                     val alarmId = DirectiveSegment.Directive.alarmIdFromSource(directive.sourceText)
@@ -369,10 +413,21 @@ class NoteDirectiveManager(
                     if (alarmId != null) DirectiveResult.success(AlarmVal(alarmId)) else continue
                 }
 
+                val hash = DirectiveResult.hashDirective(directive.sourceText)
                 val collapsed = hash !in expandedDirectiveHashes
-                hashResults[hash] = result.copy(collapsed = collapsed)
+                hashResults[key] = result.copy(collapsed = collapsed)
             }
         }
+
+        // Stage new once cache entries for persistence during save.
+        // Do NOT write to Firestore here — this runs during rendering, and a
+        // Firestore write would trigger a snapshot that can cause the editor
+        // to rebuild state and lose noteId tracking.
+        if (onceCache != null && onceCache.hasNewEntries()) {
+            pendingOnceCacheEntries = onceCache.newEntries()
+            pendingOnceCacheNoteId = effectiveNoteId
+        }
+
         return hashResults
     }
 
@@ -844,6 +899,27 @@ class NoteDirectiveManager(
             }
             is Assignment -> findRefreshExpr(expr.value)
             else -> null
+        }
+    }
+
+    /**
+     * Persist new once cache entries to Firestore as a merge update on the note document.
+     * Fires asynchronously — does not block the calling thread.
+     */
+    private fun persistOnceCacheEntries(noteId: String, newEntries: Map<String, Map<String, Any?>>) {
+        if (newEntries.isEmpty()) return
+        scope.launch {
+            try {
+                val updates = newEntries.mapKeys { (key, _) -> "onceCache.$key" }
+                FirebaseFirestore.getInstance()
+                    .collection("notes")
+                    .document(noteId)
+                    .update(updates)
+                    .await()
+                Log.d(TAG, "Persisted ${newEntries.size} once cache entries for note $noteId")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to persist once cache entries", e)
+            }
         }
     }
 

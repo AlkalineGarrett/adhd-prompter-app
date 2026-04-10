@@ -3,6 +3,8 @@ import type { Note, NoteLine } from '@/data/Note'
 import type { ViewVal } from '@/dsl/runtime/DslValue'
 import { directiveResultToValue } from '@/dsl/directives/DirectiveResult'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
+import { findDirectives, directiveHash } from '@/dsl/directives/DirectiveFinder'
+import { executeDirectiveWithMutations } from '@/dsl/directives/DirectiveExecutor'
 import { noteStore } from '@/data/NoteStore'
 import { InlineEditSession } from '@/editor/InlineEditSession'
 import { useActiveEditor } from '@/editor/ActiveEditorContext'
@@ -37,6 +39,30 @@ export function ViewDirectiveRenderer({
   // Eagerly create sessions for all notes in this view directive
   useMemo(() => sessionManager.ensureSessions(notes), [notes, sessionManager])
 
+  // Compute directive results for each viewed note's content
+  const viewedNoteDirectiveResults = useMemo(() => {
+    const allNotes = noteStore.getSnapshot()
+    const resultsByNoteId = new Map<string, Map<string, DirectiveResult>>()
+    for (const note of notes) {
+      const lines = note.content.split('\n')
+      const results = new Map<string, DirectiveResult>()
+      for (const line of lines) {
+        for (const directive of findDirectives(line)) {
+          const hash = directiveHash(directive.sourceText)
+          if (results.has(hash)) continue
+          const { result } = executeDirectiveWithMutations(
+            directive.sourceText, allNotes, note,
+          )
+          results.set(hash, result)
+        }
+      }
+      if (results.size > 0) {
+        resultsByNoteId.set(note.id, results)
+      }
+    }
+    return resultsByNoteId
+  }, [notes])
+
   const gearButton = onEditDirective ? (
     <button
       className={styles.editButton}
@@ -67,6 +93,7 @@ export function ViewDirectiveRenderer({
           <ViewNoteSection
             note={note}
             session={sessionManager.getSession(note.id)!}
+            directiveResults={viewedNoteDirectiveResults.get(note.id)}
             onSave={onNoteSave ? (trackedLines) => onNoteSave(note.id, trackedLines) : undefined}
           />
         </div>
@@ -79,6 +106,7 @@ export function ViewDirectiveRenderer({
 interface ViewNoteSectionProps {
   note: Note
   session: InlineEditSession
+  directiveResults?: Map<string, DirectiveResult>
   onSave?: (trackedLines: NoteLine[]) => Promise<Map<number, string>>
 }
 
@@ -87,6 +115,7 @@ const PENDING_VIEW_SAVE_ERROR_KEY = 'pendingViewSaveError'
 function ViewNoteSection({
   note,
   session: preCreatedSession,
+  directiveResults: viewDirectiveResults,
   onSave,
 }: ViewNoteSectionProps) {
   const { activateSession, deactivateSession, activeSession, notifyActiveChange, sessionManager } = useActiveEditor()
@@ -199,6 +228,7 @@ function ViewNoteSection({
               lineIndex={i}
               controller={displayController}
               editorState={displayState}
+              directiveResults={viewDirectiveResults}
               onDragStart={handleDragStart}
               onGutterDragStart={handleGutterDragStart}
               onGutterDragUpdate={handleGutterDragUpdate}

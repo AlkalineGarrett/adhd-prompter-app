@@ -18,6 +18,7 @@ function makeNote(id: string, path: string): Note {
     path,
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
   }
 }
 

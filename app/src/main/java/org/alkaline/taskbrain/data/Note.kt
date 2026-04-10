@@ -20,4 +20,6 @@ data class Note(
     val rootNoteId: String? = null,
     /** Whether completed (checked) lines are shown. Per-note toggle, defaults to true. */
     val showCompleted: Boolean = true,
+    /** Persistent cache for once[...] expression results. Keys are normalized AST strings, values are serialized DslValues. */
+    val onceCache: Map<String, Map<String, Any>> = emptyMap(),
 )

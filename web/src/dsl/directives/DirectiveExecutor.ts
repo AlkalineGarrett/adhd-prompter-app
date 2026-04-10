@@ -9,6 +9,7 @@ import { Parser } from '../language/Parser'
 import { Executor } from '../runtime/Executor'
 import { Environment } from '../runtime/Environment'
 import { ExecutionException } from '../runtime/ExecutionException'
+import type { OnceCache } from '../runtime/OnceCache'
 import { IdempotencyAnalyzer } from '../language'
 
 export interface DirectiveExecutionResult {
@@ -25,6 +26,8 @@ export function executeDirectiveWithMutations(
   currentNote: Note | null,
   noteOperations?: NoteOperations,
   viewStack: string[] = [],
+  onceCache?: OnceCache,
+  lineNoteId?: string,
 ): DirectiveExecutionResult {
   try {
     const lexer = new Lexer(sourceText)
@@ -47,6 +50,8 @@ export function executeDirectiveWithMutations(
       currentNote: currentNote ?? undefined,
       noteOperations,
       viewStack,
+      onceCache,
+      lineNoteId,
     })
     const executor = new Executor()
     const result = executor.execute(directive, env)

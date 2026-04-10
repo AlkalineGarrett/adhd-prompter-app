@@ -40,6 +40,7 @@ function makeNote(overrides: Partial<Note> & { id: string }): Note {
     path: overrides.path ?? '',
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
     ...overrides,
   }
 }

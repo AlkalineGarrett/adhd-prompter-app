@@ -1,4 +1,4 @@
-import { findDirectives, directiveHash } from './DirectiveFinder'
+import { findDirectives, onceAwareKey } from './DirectiveFinder'
 import type { DirectiveResult } from './DirectiveResult'
 import { directiveResultToValue, isComputed, isViewResult } from './DirectiveResult'
 import { toDisplayString } from '../runtime/DslValue'
@@ -87,6 +87,7 @@ export function segmentLine(
   content: string,
   _lineId: string,
   results: Map<string, DirectiveResult>,
+  lineNoteId?: string,
 ): DirectiveSegment[] {
   const directives = findDirectives(content)
 
@@ -107,7 +108,7 @@ export function segmentLine(
       })
     }
 
-    const key = directiveHash(directive.sourceText)
+    const key = onceAwareKey(directive.sourceText, lineNoteId)
     const result = results.get(key) ?? null
     const computed = result ? isComputed(result) : false
     let displayText = directive.sourceText
@@ -148,8 +149,9 @@ export function buildDisplayText(
   content: string,
   lineId: string,
   results: Map<string, DirectiveResult>,
+  lineNoteId?: string,
 ): DisplayTextResult {
-  const segments = segmentLine(content, lineId, results)
+  const segments = segmentLine(content, lineId, results, lineNoteId)
 
   if (segments.length === 0) {
     return { displayText: '', segments: [], directiveDisplayRanges: [] }

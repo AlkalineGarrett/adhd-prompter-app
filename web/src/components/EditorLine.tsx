@@ -111,7 +111,7 @@ export function EditorLine({
     let selStart = contentSelection[0]
     let selEnd = contentSelection[1]
     if (!overlayRef.current && directiveContentRef.current) {
-      const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map())
+      const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map(), line.noteIds[0])
       selStart = mapSourceOffsetToDisplay(selStart, segments)
       selEnd = mapSourceOffsetToDisplay(selEnd, segments)
     }
@@ -492,7 +492,7 @@ export function EditorLine({
       if (directiveEl) {
         const displayOffset = getCharOffsetFromPoint(directiveEl, e.clientX, e.clientY)
         if (displayOffset != null) {
-          const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map())
+          const segments = segmentLine(content, line.effectiveId, directiveResults ?? new Map(), line.noteIds[0])
           return mapDisplayOffsetToSource(displayOffset, segments)
         }
       }
@@ -587,7 +587,7 @@ export function EditorLine({
 
   // Check if any directive on this line is a view — views stay rendered even when focused
   const lineHasDirectives = directiveResults && hasDirectives(content)
-  const viewSegment = lineHasDirectives ? segmentLine(content, line.effectiveId, directiveResults).find(
+  const viewSegment = lineHasDirectives ? segmentLine(content, line.effectiveId, directiveResults, line.noteIds[0]).find(
     (s) => s.kind === 'Directive' && isViewSegment(s),
   ) : undefined
   const hasViewDirective = viewSegment != null
@@ -633,6 +633,7 @@ export function EditorLine({
           <DirectiveLineContent
             content={content}
             lineId={line.effectiveId}
+            lineNoteId={line.noteIds[0]}
             results={directiveResults}
             onDirectiveEdit={onDirectiveEdit}
             onDirectiveRefresh={onDirectiveRefresh}

@@ -37,6 +37,19 @@ export function directiveHash(sourceText: string): string {
 }
 
 /**
+ * Compute the result-map key for a directive. For directives containing once[...],
+ * the key is scoped per-line ({lineNoteId}:{hash}) so different lines can hold
+ * independent once values. For regular directives, the key is just the hash.
+ */
+export function onceAwareKey(sourceText: string, lineNoteId?: string): string {
+  const hash = directiveHash(sourceText)
+  if (lineNoteId && sourceText.includes('once[')) {
+    return `${lineNoteId}:${hash}`
+  }
+  return hash
+}
+
+/**
  * Extracts the startOffset from a directive key regardless of format.
  */
 export function startOffsetFromKey(key: string): number | undefined {

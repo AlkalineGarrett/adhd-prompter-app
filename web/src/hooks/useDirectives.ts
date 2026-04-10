@@ -4,8 +4,10 @@ import type { NoteOperations } from '@/dsl/runtime/NoteOperations'
 import type { NoteMutation } from '@/dsl/runtime/NoteMutation'
 import type { EditorState } from '@/editor/EditorState'
 import type { DirectiveResult } from '@/dsl/directives/DirectiveResult'
-import { findDirectives, directiveHash } from '@/dsl/directives/DirectiveFinder'
+import { findDirectives, onceAwareKey } from '@/dsl/directives/DirectiveFinder'
+import { executeDirectiveWithMutations } from '@/dsl/directives/DirectiveExecutor'
 import { CachedDirectiveExecutor } from '@/dsl/cache/CachedDirectiveExecutor'
+import { PersistableOnceCache } from '@/dsl/runtime/PersistableOnceCache'
 import { noteStore } from '@/data/NoteStore'
 
 interface UseDirectivesOptions {
@@ -55,30 +57,49 @@ export function useDirectives({ noteId, editorState, notes, currentNote, noteOpe
   // Cache hits return instantly; misses execute and cache for next time.
   // noteId here is loadedNoteId — it only changes after the editor has been populated,
   // guaranteeing editorState.text reflects the correct note.
-  const { results, mutations } = useMemo(() => {
-    const empty = { results: new Map<string, DirectiveResult>(), mutations: [] as NoteMutation[] }
+  const { results, mutations, pendingOnceCacheEntries } = useMemo(() => {
+    const empty = { results: new Map<string, DirectiveResult>(), mutations: [] as NoteMutation[], pendingOnceCacheEntries: null as Record<string, Record<string, unknown>> | null }
     if (!noteId || notesRef.current.length === 0) return empty
 
     const content = editorState.text
     if (!content) return empty
 
+    const currentNote = currentNoteRef.current
+    const onceCache = currentNote ? new PersistableOnceCache(currentNote.onceCache ?? {}) : undefined
     const hashResults = new Map<string, DirectiveResult>()
     const allMutations: NoteMutation[] = []
     const lines = content.split('\n')
 
-    for (const line of lines) {
-      for (const directive of findDirectives(line)) {
-        const hash = directiveHash(directive.sourceText)
-        if (hashResults.has(hash)) continue
-        const { result, mutations: directiveMutations } = cachedExecutor.execute(
-          directive.sourceText, notesRef.current, currentNoteRef.current, noteOperations,
-        )
-        hashResults.set(hash, result)
-        allMutations.push(...directiveMutations)
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      const lineNoteId = editorState.lines[lineIndex]?.noteIds[0]
+      for (const directive of findDirectives(lines[lineIndex]!)) {
+        const isOnceDirective = directive.sourceText.includes('once[')
+        const key = onceAwareKey(directive.sourceText, lineNoteId)
+        if (hashResults.has(key)) continue
+
+        if (isOnceDirective && onceCache) {
+          // Once-directives bypass CachedDirectiveExecutor — PersistableOnceCache provides caching
+          const { result, mutations: directiveMutations } = executeDirectiveWithMutations(
+            directive.sourceText, notesRef.current, currentNote ?? null, noteOperations,
+            [], onceCache, lineNoteId,
+          )
+          hashResults.set(key, result)
+          allMutations.push(...directiveMutations)
+        } else {
+          const { result, mutations: directiveMutations } = cachedExecutor.execute(
+            directive.sourceText, notesRef.current, currentNote ?? null, noteOperations,
+          )
+          hashResults.set(key, result)
+          allMutations.push(...directiveMutations)
+        }
       }
     }
 
-    return { results: hashResults, mutations: allMutations }
+    // Stage new once cache entries — persisted when the caller saves (not during render,
+    // which would trigger a Firestore snapshot and potentially cause editor state loss).
+    const staged = onceCache?.hasNewEntries() ? onceCache.newEntries() : null
+
+    return { results: hashResults, mutations: allMutations, pendingOnceCacheEntries: staged }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [noteId, noteOperations, cachedExecutor, generation])
 
@@ -104,6 +125,7 @@ export function useDirectives({ noteId, editorState, notes, currentNote, noteOpe
   return {
     results,
     mutations,
+    pendingOnceCacheEntries,
     invalidateAndRecompute,
     refreshDirective,
   }

@@ -9,6 +9,7 @@ import org.alkaline.taskbrain.dsl.language.ParseException
 import org.alkaline.taskbrain.dsl.language.Parser
 import org.alkaline.taskbrain.dsl.runtime.CachedExecutorInterface
 import org.alkaline.taskbrain.dsl.runtime.Environment
+import org.alkaline.taskbrain.dsl.runtime.OnceCache
 import org.alkaline.taskbrain.dsl.runtime.ExecutionException
 import org.alkaline.taskbrain.dsl.runtime.Executor
 import org.alkaline.taskbrain.dsl.runtime.values.DslValue
@@ -143,10 +144,12 @@ object DirectiveFinder {
         currentNote: Note? = null,
         noteOperations: NoteOperations? = null,
         viewStack: List<String> = emptyList(),
-        cachedExecutor: CachedExecutorInterface? = null
+        cachedExecutor: CachedExecutorInterface? = null,
+        onceCache: OnceCache? = null,
+        lineNoteId: String? = null
     ): DirectiveExecutionResult {
         Log.d(TAG, "executeDirective: sourceText='$sourceText'")
-        val env = createEnvironment(notes, currentNote, noteOperations, viewStack, cachedExecutor)
+        val env = createEnvironment(notes, currentNote, noteOperations, viewStack, cachedExecutor, onceCache, lineNoteId)
         return try {
             val tokens = Lexer(sourceText).tokenize()
             Log.d(TAG, "executeDirective: tokenized successfully, ${tokens.size} tokens")
@@ -212,7 +215,9 @@ object DirectiveFinder {
         currentNote: Note?,
         noteOperations: NoteOperations?,
         viewStack: List<String> = emptyList(),
-        cachedExecutor: CachedExecutorInterface? = null
+        cachedExecutor: CachedExecutorInterface? = null,
+        onceCache: OnceCache? = null,
+        lineNoteId: String? = null
     ): Environment {
         return Environment(
             NoteContext(
@@ -220,7 +225,9 @@ object DirectiveFinder {
                 currentNote = currentNote,
                 noteOperations = noteOperations,
                 viewStack = viewStack,
-                cachedExecutor = cachedExecutor
+                cachedExecutor = cachedExecutor,
+                onceCache = onceCache,
+                lineNoteId = lineNoteId
             )
         )
     }

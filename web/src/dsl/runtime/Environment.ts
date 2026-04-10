@@ -17,6 +17,8 @@ interface NoteContext {
   onceCache?: OnceCache
   mockedTime?: Date
   cachedExecutor?: CachedExecutorInterface
+  /** The noteId of the specific line containing the directive being executed. */
+  lineNoteId?: string
 }
 
 /**
@@ -70,6 +72,7 @@ export class Environment {
       onceCache: this.getOnceCache(),
       mockedTime: this.getMockedTime(),
       cachedExecutor: this.getCachedExecutor(),
+      lineNoteId: this.getLineNoteId(),
     })
   }
 
@@ -132,6 +135,7 @@ export class Environment {
       onceCache: this.getOnceCache(),
       mockedTime: this.getMockedTime(),
       cachedExecutor: this.getCachedExecutor(),
+      lineNoteId: this.getLineNoteId(),
     })
   }
 
@@ -151,7 +155,14 @@ export class Environment {
       onceCache: this.getOnceCache(),
       mockedTime: this.getMockedTime(),
       cachedExecutor,
+      lineNoteId: this.getLineNoteId(),
     })
+  }
+
+  // ---- Line Note ID ----
+
+  getLineNoteId(): string | undefined {
+    return this.context.lineNoteId ?? this.parent?.getLineNoteId()
   }
 
   // ---- OnceCache ----
@@ -190,6 +201,7 @@ export class Environment {
       onceCache: this.getOnceCache(),
       mockedTime: this.getMockedTime(),
       cachedExecutor: this.getCachedExecutor(),
+      lineNoteId: this.getLineNoteId(),
     })
   }
 
@@ -209,6 +221,7 @@ export class Environment {
       onceCache: this.getOnceCache(),
       mockedTime: time,
       cachedExecutor: this.getCachedExecutor(),
+      lineNoteId: this.getLineNoteId(),
     })
   }
 

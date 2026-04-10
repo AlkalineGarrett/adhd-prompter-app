@@ -325,7 +325,7 @@ const dummyNote: Note = {
   id: 'n1', userId: 'u1', parentNoteId: null, content: 'test',
   createdAt: null, updatedAt: null, lastAccessedAt: null,
   tags: [], containedNotes: [], state: null, path: '/test',
-  rootNoteId: null, showCompleted: true,
+  rootNoteId: null, showCompleted: true, onceCache: {},
 }
 
 describe('isViewSegment', () => {

@@ -76,7 +76,9 @@ data class NoteContext(
     val viewStack: List<String> = emptyList(),
     val onceCache: OnceCache? = null,
     val mockedTime: LocalDateTime? = null,
-    val cachedExecutor: CachedExecutorInterface? = null
+    val cachedExecutor: CachedExecutorInterface? = null,
+    /** The noteId of the specific line containing the directive being executed. */
+    val lineNoteId: String? = null
 ) {
     companion object {
         val EMPTY = NoteContext()

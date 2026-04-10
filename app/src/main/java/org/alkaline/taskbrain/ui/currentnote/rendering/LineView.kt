@@ -109,8 +109,9 @@ internal fun ControlledLineView(
     }
 
     // Build display text info to map between source and display coordinates
-    val displayResult = remember(content, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(content, directiveResults)
+    val lineNoteId = lineState.noteIds.firstOrNull()
+    val displayResult = remember(content, directiveResults, lineNoteId) {
+        DirectiveSegmenter.buildDisplayText(content, directiveResults, lineNoteId)
     }
 
     // Convert line selection to content selection range (in source coordinates)
@@ -218,6 +219,7 @@ internal fun ControlledLineView(
                 onSymbolTap = onSymbolTap,
                 symbolOverlays = symbolOverlays,
                 onTapStarting = onTapStarting,
+                lineNoteId = lineNoteId,
                 modifier = Modifier.fillMaxWidth()
             )
         }

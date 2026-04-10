@@ -22,6 +22,7 @@ function note(
     state: null,
     path: '',
     showCompleted: true,
+    onceCache: {},
   }
 }
 

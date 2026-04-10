@@ -312,6 +312,7 @@ object NoteStore {
                 path = data["path"] as? String ?: "",
                 rootNoteId = data["rootNoteId"] as? String,
                 showCompleted = data["showCompleted"] as? Boolean ?: true,
+                onceCache = (data["onceCache"] as? Map<String, Map<String, Any>>) ?: emptyMap(),
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing note $id", e)

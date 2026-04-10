@@ -83,11 +83,12 @@ fun DirectiveLineContent(
     onViewEditDirective: ((directiveKey: String, sourceText: String) -> Unit)? = null,
     onButtonClick: ((directiveKey: String, buttonVal: ButtonVal, sourceText: String) -> Unit)? = null,
     buttonExecutionStates: Map<String, ButtonExecutionState> = emptyMap(),
+    lineNoteId: String? = null,
     modifier: Modifier = Modifier
 ) {
     // Build display text with directive results replacing source
-    val displayResult = remember(sourceContent, directiveResults) {
-        DirectiveSegmenter.buildDisplayText(sourceContent, directiveResults)
+    val displayResult = remember(sourceContent, directiveResults, lineNoteId) {
+        DirectiveSegmenter.buildDisplayText(sourceContent, directiveResults, lineNoteId)
     }
 
     if (displayResult.directiveDisplayRanges.isEmpty()) {

@@ -25,7 +25,13 @@ Path: `/notes/{noteId}`
   "state": "String: null or 'deleted'",
   "path": "String: Unique path identifier (URL-safe: alphanumeric, -, _, /). Used by DSL find().",
   "rootNoteId": "String (noteId) [optional]: Root note ID for tree queries. Null for root notes, set on all descendants.",
-  "showCompleted": "Boolean [optional]: Whether completed (checked) lines are visible. Defaults to true. Per-note toggle."
+  "showCompleted": "Boolean [optional]: Whether completed (checked) lines are visible. Defaults to true. Per-note toggle.",
+  "onceCache": {
+    "<normalizedAstKey>": {
+      "type": "String: DslValue type (number, string, date, time, datetime, etc.)",
+      "value": "Any: Serialized DslValue payload"
+    }
+  }
 }
 ```
 
@@ -36,6 +42,7 @@ Path: `/notes/{noteId}`
   - Notes are composed recursively.
   - Empty lines don't have their own note. They are indicated by an empty string in the containedNotes array.
 - **showCompleted**: Per-note toggle controlling whether checked checkbox lines are visible in the editor. Defaults to `true` (all visible). When `false`, checked lines and their subtrees are hidden behind a "(N completed)" placeholder. Only meaningful on root notes.
+- **onceCache**: Persistent cache for `once[...]` expression results. Keys are normalized AST strings (from AstNormalizer), values are serialized DslValues. Enables cross-client consistency: the first client to evaluate `once[datetime]` caches the result, and all subsequent evaluations (including on other devices) return the same value.
 - **rootNoteId**: Set on all non-root notes to enable `where('rootNoteId', '==', rootId)` single-query loading. Null for root notes. During tree save, all descendants get this set to the root note's ID. Old-format notes without this field are migrated lazily on save.
 - **path**: Unique identifier for the note, used by DSL `find(path: ...)` for pattern matching.
   - URL-safe characters only: alphanumeric, `-`, `_`, `/` (for hierarchy).

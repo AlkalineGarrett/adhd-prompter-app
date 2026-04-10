@@ -34,6 +34,7 @@ function makeNote(id: string, content = 'Content', path = `path/${id}`): Note {
     path,
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
   }
 }
 

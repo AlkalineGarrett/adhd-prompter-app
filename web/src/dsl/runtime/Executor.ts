@@ -12,6 +12,7 @@ import { Arguments } from './Arguments'
 import { Environment } from './Environment'
 import { ExecutionException } from './ExecutionException'
 import { BuiltinRegistry } from './BuiltinRegistry'
+import { normalize } from '../cache/AstNormalizer'
 import { callMethod } from './MethodHandler'
 import * as NotePropertyHandler from './NotePropertyHandler'
 import { callNoteMethod } from './NoteMethodHandler'
@@ -102,7 +103,9 @@ export class Executor {
   }
 
   private evaluateOnce(expr: Expression & { kind: 'OnceExpr' }, env: Environment): DslValue {
-    const cacheKey = `once:${hashCode(expr.body)}`
+    const normalized = normalize(expr.body)
+    const lineNoteId = env.getLineNoteId()
+    const cacheKey = lineNoteId ? `${lineNoteId}:${normalized}` : normalized
     const cache = env.getOrCreateOnceCache()
     const cached = cache.get(cacheKey)
     if (cached) return cached
@@ -215,15 +218,3 @@ export class Executor {
   }
 }
 
-/**
- * Simple hash code for an expression (used for once[] cache keys).
- */
-function hashCode(expr: Expression): number {
-  const str = JSON.stringify(expr)
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = ((hash << 5) - hash + char) | 0
-  }
-  return hash
-}

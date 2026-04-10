@@ -1,5 +1,6 @@
 package org.alkaline.taskbrain.dsl.runtime
 
+import org.alkaline.taskbrain.dsl.cache.AstNormalizer
 import org.alkaline.taskbrain.dsl.language.Assignment
 import org.alkaline.taskbrain.dsl.language.CallExpr
 import org.alkaline.taskbrain.dsl.language.CurrentNoteRef
@@ -180,34 +181,28 @@ class Executor {
      * Example: [once[datetime]] captures the datetime at first evaluation
      */
     private fun evaluateOnce(expr: OnceExpr, env: Environment): DslValue {
-        // Compute cache key from the expression body
-        val cacheKey = computeOnceCacheKey(expr.body)
-
-        // Get or create the once cache
+        val cacheKey = computeOnceCacheKey(expr.body, env)
         val cache = env.getOrCreateOnceCache()
 
-        // Check if already cached
         val cached = cache.get(cacheKey)
         if (cached != null) {
             return cached
         }
 
-        // Evaluate the body
         val result = evaluate(expr.body, env)
-
-        // Cache and return the result
         cache.put(cacheKey, result)
         return result
     }
 
     /**
      * Compute a cache key for a once[...] expression.
-     * Uses a simple hash of the expression's string representation.
+     * Uses AstNormalizer for cross-platform consistency, prefixed with lineNoteId
+     * for per-line scoping (so [once[date]] on different lines capture independently).
      */
-    private fun computeOnceCacheKey(expr: Expression): String {
-        // Use the expression's toString() as a basis for the key
-        // This captures the structure of the expression
-        return "once:${expr.hashCode()}"
+    private fun computeOnceCacheKey(expr: Expression, env: Environment): String {
+        val normalized = AstNormalizer.normalize(expr)
+        val lineNoteId = env.getLineNoteId()
+        return if (lineNoteId != null) "$lineNoteId:$normalized" else normalized
     }
 
     /**

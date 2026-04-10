@@ -6,6 +6,20 @@ import org.alkaline.taskbrain.dsl.runtime.values.ButtonVal
 import org.alkaline.taskbrain.dsl.runtime.values.ViewVal
 
 /**
+ * Compute the result-map key for a directive. For directives containing once[...],
+ * the key is scoped per-line ({lineNoteId}:{hash}) so different lines can hold
+ * independent once values. For regular directives, the key is just the hash.
+ */
+fun onceAwareKey(sourceText: String, lineNoteId: String?): String {
+    val hash = DirectiveResult.hashDirective(sourceText)
+    return if (lineNoteId != null && sourceText.contains("once[")) {
+        "$lineNoteId:$hash"
+    } else {
+        hash
+    }
+}
+
+/**
  * Represents a segment of line content - either plain text or a directive.
  * Used for rendering lines with computed directive results.
  */
@@ -96,7 +110,7 @@ object DirectiveSegmenter {
      * @param results Map of directive hash to result
      * @return List of segments in order
      */
-    fun segmentLine(content: String, results: Map<String, DirectiveResult>): List<DirectiveSegment> {
+    fun segmentLine(content: String, results: Map<String, DirectiveResult>, lineNoteId: String? = null): List<DirectiveSegment> {
         val directives = DirectiveFinder.findDirectives(content)
 
         if (directives.isEmpty()) {
@@ -121,7 +135,7 @@ object DirectiveSegmenter {
                 )
             }
 
-            val key = DirectiveResult.hashDirective(directive.sourceText)
+            val key = onceAwareKey(directive.sourceText, lineNoteId)
             val lookupResult = results[key]
             segments.add(
                 DirectiveSegment.Directive(
@@ -158,10 +172,10 @@ object DirectiveSegmenter {
     /**
      * Check if a line has any computed directives (results available).
      */
-    fun hasComputedDirectives(content: String, results: Map<String, DirectiveResult>): Boolean {
+    fun hasComputedDirectives(content: String, results: Map<String, DirectiveResult>, lineNoteId: String? = null): Boolean {
         val directives = DirectiveFinder.findDirectives(content)
         return directives.any { directive ->
-            val key = DirectiveResult.hashDirective(directive.sourceText)
+            val key = onceAwareKey(directive.sourceText, lineNoteId)
             results[key]?.isComputed ?: false
         }
     }
@@ -176,9 +190,10 @@ object DirectiveSegmenter {
      */
     fun buildDisplayText(
         content: String,
-        results: Map<String, DirectiveResult>
+        results: Map<String, DirectiveResult>,
+        lineNoteId: String? = null
     ): DisplayTextResult {
-        val segments = segmentLine(content, results)
+        val segments = segmentLine(content, results, lineNoteId)
 
         if (segments.isEmpty()) {
             return DisplayTextResult(

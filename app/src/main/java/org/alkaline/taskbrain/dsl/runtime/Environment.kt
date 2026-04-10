@@ -67,7 +67,8 @@ class Environment private constructor(
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
             mockedTime = getMockedTime(),
-            cachedExecutor = getCachedExecutor()
+            cachedExecutor = getCachedExecutor(),
+            lineNoteId = getLineNoteId()
         )
     )
 
@@ -120,7 +121,8 @@ class Environment private constructor(
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
             mockedTime = getMockedTime(),
-            cachedExecutor = getCachedExecutor()
+            cachedExecutor = getCachedExecutor(),
+            lineNoteId = getLineNoteId()
         )
     )
 
@@ -147,9 +149,20 @@ class Environment private constructor(
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
             mockedTime = getMockedTime(),
-            cachedExecutor = cachedExecutor
+            cachedExecutor = cachedExecutor,
+            lineNoteId = getLineNoteId()
         )
     )
+
+    // endregion
+
+    // region Line Note ID
+
+    /**
+     * Get the noteId of the specific line containing the directive being executed.
+     * Used for per-line once cache scoping.
+     */
+    fun getLineNoteId(): String? = context.lineNoteId ?: parent?.getLineNoteId()
 
     // endregion
 
@@ -203,7 +216,8 @@ class Environment private constructor(
             viewStack = getViewStack() + noteId,
             onceCache = getOnceCache(),
             mockedTime = getMockedTime(),
-            cachedExecutor = getCachedExecutor()
+            cachedExecutor = getCachedExecutor(),
+            lineNoteId = getLineNoteId()
         )
     )
 
@@ -231,7 +245,8 @@ class Environment private constructor(
             viewStack = getViewStack(),
             onceCache = getOnceCache(),
             mockedTime = time,
-            cachedExecutor = getCachedExecutor()
+            cachedExecutor = getCachedExecutor(),
+            lineNoteId = getLineNoteId()
         )
     )
 

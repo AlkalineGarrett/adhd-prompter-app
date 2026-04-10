@@ -28,6 +28,7 @@ function makeNote(id: string, overrides: Partial<Note> = {}): Note {
     path: `path/${id}`,
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
     ...overrides,
   }
 }

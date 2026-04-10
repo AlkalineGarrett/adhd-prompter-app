@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import org.alkaline.taskbrain.dsl.directives.DirectiveFinder
 import org.alkaline.taskbrain.dsl.directives.DirectiveResult
+import org.alkaline.taskbrain.dsl.directives.onceAwareKey
 import org.alkaline.taskbrain.ui.currentnote.EditorConfig
 import org.alkaline.taskbrain.ui.currentnote.EditorState
 import org.alkaline.taskbrain.ui.currentnote.gestures.LineLayoutInfo
@@ -288,9 +289,11 @@ private fun computeGutterLineLayouts(
         currentY += lineHeight
 
         // Add gap height for each expanded directive on this line
-        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        val lineState = state.lines.getOrNull(index)
+        val lineContent = lineState?.content ?: ""
+        val lineNoteId = lineState?.noteIds?.firstOrNull()
         for (found in DirectiveFinder.findDirectives(lineContent)) {
-            val hashKey = DirectiveResult.hashDirective(found.sourceText)
+            val hashKey = onceAwareKey(found.sourceText, lineNoteId)
             val directiveResult = directiveResults[hashKey]
             if (directiveResult != null && !directiveResult.collapsed) {
                 val measuredHeight = directiveEditHeights[hashKey]
@@ -470,9 +473,11 @@ private fun GutterContent(
         }
 
         // Add gaps for expanded directive edit rows on this line
-        val lineContent = state.lines.getOrNull(index)?.content ?: ""
+        val gutterLineState = state.lines.getOrNull(index)
+        val lineContent = gutterLineState?.content ?: ""
+        val gutterLineNoteId = gutterLineState?.noteIds?.firstOrNull()
         for (found in DirectiveFinder.findDirectives(lineContent)) {
-            val hashKey = DirectiveResult.hashDirective(found.sourceText)
+            val hashKey = onceAwareKey(found.sourceText, gutterLineNoteId)
             val result = directiveResults[hashKey]
             if (result != null && !result.collapsed) {
                 val measuredHeight = directiveEditHeights[hashKey]
@@ -538,9 +543,11 @@ internal fun findViewNotesForLine(
     state: EditorState,
     directiveResults: Map<String, DirectiveResult>
 ): List<org.alkaline.taskbrain.data.Note>? {
-    val lineContent = state.lines.getOrNull(lineIndex)?.content ?: return null
+    val lineState = state.lines.getOrNull(lineIndex) ?: return null
+    val lineContent = lineState.content
+    val lineNoteId = lineState.noteIds.firstOrNull()
     for (found in DirectiveFinder.findDirectives(lineContent)) {
-        val key = DirectiveResult.hashDirective(found.sourceText)
+        val key = onceAwareKey(found.sourceText, lineNoteId)
         val result = directiveResults[key]
         val viewVal = result?.toValue()
         if (viewVal is org.alkaline.taskbrain.dsl.runtime.values.ViewVal && viewVal.notes.isNotEmpty()) {

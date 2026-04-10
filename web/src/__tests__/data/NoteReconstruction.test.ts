@@ -20,6 +20,7 @@ function note(overrides: Partial<Note> & { id: string }): Note {
     path: '',
     rootNoteId: null,
     showCompleted: true,
+    onceCache: {},
     ...overrides,
   }
 }

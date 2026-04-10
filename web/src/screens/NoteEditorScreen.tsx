@@ -124,7 +124,7 @@ export function NoteEditorScreen() {
     [allNotes],
   )
 
-  const { results: directiveResults, mutations: directiveMutations, invalidateAndRecompute, refreshDirective } =
+  const { results: directiveResults, mutations: directiveMutations, pendingOnceCacheEntries, invalidateAndRecompute, refreshDirective } =
     useDirectives({
       noteId: loadedNoteId,
       editorState,
@@ -182,9 +182,20 @@ export function NoteEditorScreen() {
       if (existing) {
         noteStore.updateNote(noteId, { ...existing, content: editorState.text })
       }
+      // Flush staged once cache entries to Firestore (safe here — save already wrote to the doc)
+      if (pendingOnceCacheEntries) {
+        const updates: Record<string, unknown> = {}
+        for (const [cacheKey, value] of Object.entries(pendingOnceCacheEntries)) {
+          updates[`onceCache.${cacheKey}`] = value
+        }
+        const { doc: docRef, updateDoc: updateDocFn, getFirestore: getDb } = await import('firebase/firestore')
+        updateDocFn(docRef(getDb(), 'notes', noteId), updates).catch((e) => {
+          console.error('Failed to persist once cache entries:', e)
+        })
+      }
     }
     invalidateAndRecompute()
-  }, [save, noteId, editorState, invalidateAndRecompute])
+  }, [save, noteId, editorState, invalidateAndRecompute, pendingOnceCacheEntries])
 
   // Directive edit callback
   const handleDirectiveEdit = useCallback((oldSourceText: string, newSourceText: string) => {
